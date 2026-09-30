@@ -940,6 +940,19 @@ export async function garantirTabelas() {
     // Se já existem, segue em frente
     tabelasGarantidas = true;
   }
+  // Avisos de navios de fertilizantes (tabela nova, separada das demais).
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS navios_avisos (
+        chave TEXT PRIMARY KEY,
+        navio TEXT NOT NULL,
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE navios_avisos ENABLE ROW LEVEL SECURITY;
+    `);
+  } catch {
+    // já existe ou sem permissão: segue
+  }
   // Alerta individual do administrador (tabela nova, separada das demais).
   try {
     await db.execute(sql`

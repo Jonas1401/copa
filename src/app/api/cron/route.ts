@@ -4,6 +4,7 @@ import { varrer } from "@/lib/estado";
 import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarEPostarAlertaClima } from "@/lib/clima-alerta";
+import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,11 +47,13 @@ export async function GET(req: Request) {
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
     const clima = await verificarEPostarAlertaClima().catch(() => null);
+    const navios = await verificarNaviosFertilizantes().catch(() => null);
     return NextResponse.json({
       rodou: false,
       motivo: "Nenhum ponto cadastrado — monitoramento em repouso.",
       ...(testes.total ? { testes } : {}),
       ...(clima?.postou ? { clima } : {}),
+      ...(navios?.rodou ? { navios } : {}),
     });
   }
 
@@ -62,6 +65,8 @@ export async function GET(req: Request) {
     testes = await enviarTestesDoCiclo();
   }
   const clima = await verificarEPostarAlertaClima().catch(() => null);
+  // Navios de fertilizantes (APPA + SINPRAPAR): no máximo a cada 5 min.
+  const navios = await verificarNaviosFertilizantes().catch(() => null);
   const tabelas = Object.values(leitura.fila).filter((l) => l.codigos.length);
   return NextResponse.json({
     rodou: true,
@@ -70,5 +75,6 @@ export async function GET(req: Request) {
     quando: new Date().toISOString(),
     ...(testes.total ? { testes } : {}),
     ...(clima?.postou ? { clima } : {}),
+    ...(navios?.rodou ? { navios } : {}),
   });
 }

@@ -30,14 +30,16 @@ JEITO DE FALAR DE PARANAGUÁ:
 - Escreva as palavras técnicas, peças, números e instruções em português claro e correto. Não invente gírias, não escreva imitando pronúncia, não use palavrões, nem faça caricatura. Evite expressões típicas de outros estados. Não finja ter visto pessoalmente o caminhão: faça perguntas quando faltarem sintomas.
 - Se houver risco (freio, direção, vazamento ou superaquecimento), deixe as expressões de lado e dê a orientação de segurança de forma direta antes de falar de causas ou reparos.
 
-SUAS 3 FUNÇÕES:
+SUAS 4 FUNÇÕES:
 1. MECÂNICA PESADA (caminhões truck, cavalo/carreta, diesel): do simples ao avançado — preventiva, freios (inclusive freio motor e retarder), suspensão, direção, embreagem, câmbio, diferencial, arla 32, turbo, arrefecimento, elétrica, pneus, 5ª roda, tacógrafo. Sempre que houver risco de segurança (freio, direção, suspensão, vazamento de diesel/ar), avise claramente: "não rode assim, chame socorro/guincho".
 2. O APP COPALINKS: explique como usar — cadastrar ponto (tipo TRUCK ou CAVALO/C + livro A/B/M + número), monitorar a fila a cada 5 segundos, notificações quando o número é chamado/sai/volta/chega perto, tela de tempo (Paranaguá), cálculo de frete por foto do ticket, contatos/WhatsApp da equipe, chat dos motoristas, serviços (login, consulta de ponto, APPA, SINPRAPAR) e /admin (só administrador).
 3. CLIMA NO PORTO: quando receber o "Clima atual" no contexto, use esses dados reais (temperatura, chuva, vento, boletim APPA) para orientar: chuva forte = pista lisa e fila lenta; vento forte = cuidado com carreta vazia; neblina = farol baixo e distância.
 
+4. NAVIOS NO PORTO (foco em FERTILIZANTES): quando receber o line-up da APPA, as manobras do SINPRAPAR e a maré, responda sobre qualquer navio de Paranaguá ou Antonina: berço, carga, toneladas, chegada, ETA/ETB, atracação e saldo. Dê destaque aos fertilizantes (ureia, MAP, DAP, cloreto de potássio, sulfato de amônio, nitratos, NPK…). Analise a maré de forma prática: compare a hora da manobra e o calado com as próximas preamares e baixa-mares, sem inventar regras oficiais. Diga de onde veio a informação (line-up APPA, SINPRAPAR ou pesquisa na web). Se o dado não estiver no contexto, diga que não encontrou. Nunca invente tonelagem, horário ou berço.
+
 REGRAS:
 - Responda em português, no máximo ~1200 caracteres.
-- Se a pergunta for de outro assunto (futebol, política, etc.), diga gentilmente que só ajuda com caminhão, clima do porto e o app.
+- Se a pergunta for de outro assunto (futebol, política, etc.), diga gentilmente que só ajuda com caminhão, clima do porto, navios do porto e o app.
 - Nunca invente valores de peças/serviços; diga que varia por oficina e região.
 - Nunca peça dados pessoais além do que o app já tem.
 - Em emergência (freio sem pressão, direção solta, fumaça no motor): priorize a segurança ANTES de qualquer explicação técnica.`;
@@ -45,6 +47,62 @@ REGRAS:
 /** A pergunta fala de clima/tempo? Aí anexamos o resumo real do porto. */
 function querClima(texto: string) {
   return /clima|tempo|chuva|chover|vento|neblina|nevoeiro|tempestade|porto|onda|maré|mare/i.test(texto);
+}
+
+/** A pergunta fala de navio/porto/atracação/fertilizante? Anexa line-up, manobras e maré. */
+function querNavios(texto: string) {
+  return /navio|embarca|atrac|ber[cç]o|line-?up|fundead|ao largo|fertiliz|adubo|ureia|uréia|pot[aá]ss|kcl|\bmap\b|\bdap\b|npk|nitrato|sulfato|fosfat|tonelad|mar[eé]|calado|pr[aá]tic|antonina|appa|sinprapar|imo\b/i.test(texto);
+}
+
+/** Pede posição/rota atual? Aí pesquisa na web (VesselFinder/MarineTraffic/Google) pelo Composio. */
+function querPosicao(texto: string) {
+  return /onde (est[aá]|fica|anda)|posi[cç][aã]o|localiza|rota|vindo|destino|chega quando|quando chega|vesselfinder|marinetraffic|rastre/i.test(texto);
+}
+
+async function contextoNavios(pergunta: string): Promise<string> {
+  try {
+    const { ehFertilizante, lerLineup, lerManobras, lerMares, linhaNavio, resumoMares } = await import("@/lib/navios");
+    const [lineup, manobras, mares] = await Promise.all([
+      lerLineup(),
+      lerManobras().catch(() => []),
+      lerMares().catch(() => []),
+    ]);
+    const p = pergunta.toUpperCase();
+    const citados = lineup.filter((n) => n.nome.length >= 3 && p.includes(n.nome.toUpperCase()));
+    const vistos = new Set<string>();
+    const unicos = (lista: typeof lineup) => lista.filter((n) => {
+      const k = `${n.programacao}:${n.secao}`;
+      if (vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    });
+    const ordem = ["ATRACADOS", "PROGRAMADOS", "AO LARGO PARA REATRACAÇÃO", "AO LARGO", "ESPERADOS"];
+    const fert = unicos(citados).concat(unicos(
+      lineup.filter((n) => ehFertilizante(n.mercadoria) && ordem.includes(n.secao))
+        .sort((a, b) => ordem.indexOf(a.secao) - ordem.indexOf(b.secao)),
+    )).slice(0, 30);
+    let txt = `\n\nLine-up oficial (APPA, Paranaguá e Antonina) e manobras da praticagem (SINPRAPAR), lidos agora:\n`;
+    txt += fert.length ? fert.map((n) => `- ${linhaNavio(n, manobras)}`).join("\n") : "- nenhum navio de fertilizante no line-up agora";
+    if (mares.length) txt += `\nMaré na baía de Paranaguá (referência Open-Meteo, não é a tábua oficial): ${resumoMares(mares, 8)}.`;
+
+    if (querPosicao(pergunta)) {
+      const alvo = citados[0]?.nome ?? pergunta.slice(0, 120);
+      try {
+        const { executarFerramenta } = await import("@/lib/composio");
+        const r = await executarFerramenta("COMPOSIO_SEARCH_WEB", {
+          arguments: { query: `${alvo} navio IMO ${citados[0]?.imo ?? ""} posição atual vesselfinder marinetraffic Paranaguá` },
+          userId: "copalinks-servidor",
+        });
+        const bruto = JSON.stringify(r.data ?? {}).slice(0, 3500);
+        if (bruto.length > 20) txt += `\nPesquisa na web (Composio, pode estar desatualizada): ${bruto}`;
+      } catch {
+        /* sem pesquisa: responde com o line-up */
+      }
+    }
+    return txt;
+  } catch {
+    return "\n\n(Não consegui ler o line-up da APPA agora.)";
+  }
 }
 
 /** A pergunta fala da fila/ponto? Aí anexamos o estado atual do monitor. */
@@ -190,6 +248,7 @@ export async function perguntarIA(
   let contexto = "";
   if (querClima(limpa)) contexto += await contextoClima();
   if (querFila(limpa)) contexto += await contextoFila(motoristaId);
+  if (querNavios(limpa)) contexto += await contextoNavios(limpa);
 
   const mensagens = [
     { role: "system", content: PROMPT_SISTEMA },

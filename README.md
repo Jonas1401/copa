@@ -202,6 +202,31 @@ Até isso acontecer, o backend mostra "Firebase não configurado" e não afirma
 que notificou ninguém. FCM aceito não é confirmação de que o Android exibiu o
 aviso. O usuário pode revogar o acesso a notificações no Android quando quiser.
 
+## Navios de fertilizantes (Paranaguá e Antonina)
+
+O `/api/cron` (a cada minuto; no máximo uma leitura a cada 5 min) lê o
+**line-up da APPA** (berço, mercadoria, toneladas, chegada, ETA/ETB,
+atracação, saldo) e as **manobras previstas do SINPRAPAR** (hora, calado,
+confirmada ou não) — `src/lib/navios.ts`. Para navios de **fertilizantes**
+(ureia, MAP, DAP, cloreto de potássio, sulfato de amônio, nitratos, NPK,
+superfosfatos, rocha fosfática…) o app avisa, uma vez cada:
+1. **programado para atracar** (berço definido);
+2. **atracação confirmada** pela praticagem (manobra EA/AT confirmada);
+3. **atracou**.
+
+O aviso é escrito pela IA (Gemini pelo Composio) em tom humano, com a análise
+da **maré** (Open-Meteo Marine, referência — não é a tábua oficial) e o
+calado; sem IA, usa um texto pronto. Sai no chat como **🚢 Navios no Porto** e
+por Web Push (quem silenciou o chat não recebe) — `src/lib/navios-aviso.ts`,
+tabela `navios_avisos`. Na 1ª execução só registra o que já existe.
+
+O **Assistente IA** do chat responde sobre qualquer navio (line-up, manobras e
+maré entram no contexto quando a pergunta fala de navio, berço, carga,
+fertilizante, maré…). Para posição/rota, pesquisa na web pelo Composio
+(`COMPOSIO_SEARCH_WEB`: VesselFinder, MarineTraffic, Google). `GET /api/navios`
+devolve os navios de fertilizantes e as próximas marés (dados públicos).
+Testes: `tests/navios.test.ts` e `tests/navios-aviso.test.ts`.
+
 ## Filtro automático do grupo (PONTOS NA VEZ / PULADAS)
 
 O Monitor Android lê as **notificações** que o WhatsApp publica no aparelho

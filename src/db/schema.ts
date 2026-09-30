@@ -63,6 +63,15 @@ export const alertasMotorista = pgTable("alertas_motorista", {
   resolvidoEm: timestamp("resolvido_em", { withTimezone: true }),
 }, (t) => [index("alertas_motorista_motorista_idx").on(t.motoristaId)]);
 
+// Avisos de navios de fertilizantes já enviados (cada evento sai uma vez só).
+// chave: "P:<programação>" programado · "M:<programação>:<data hora>" manobra
+// confirmada · "A:<programação>" atracado.
+export const naviosAvisos = pgTable("navios_avisos", {
+  chave: text("chave").primaryKey(),
+  navio: text("navio").notNull(),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Identidade deste aparelho: somente o hash do token fica no PostgreSQL.
 export const motoristaSessoes = pgTable("motorista_sessoes", {
   id: serial("id").primaryKey(),
