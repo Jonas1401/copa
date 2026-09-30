@@ -235,33 +235,47 @@ input:focus-visible {
   display: none;
 }
 
-/* ---------------------------------------------- vinheta de abertura
-   Estilos da VinhetaAbertura, restaurados da versão que estava no ar. */
-.vinheta-pista { animation: 0.6s cubic-bezier(0.4, 0, 0.2, 1) infinite vinheta-pista; }
-@keyframes vinheta-pista {
-  0% { opacity: 0.4; transform: translate(-50%, -48px); }
-  50% { opacity: 1; }
-  to { opacity: 0.4; transform: translate(-50%); }
-}
-.vinheta-risco { animation: 0.6s cubic-bezier(0.4, 0, 0.2, 1) infinite vinheta-risco; }
-@keyframes vinheta-risco {
-  0% { opacity: 0; transform: translate(-34px); }
-  35% { opacity: 1; }
-  to { opacity: 0; transform: translate(52px); }
-}
-.vinheta-brilho-loop::after {
+/* ---------------------------------------------- tela de carregamento
+   CarregamentoLogo: logo com brilho, ondas de radar e caminhão na estrada. */
+.carga-tela { animation: carga-trava 0.5s ease 12s forwards; }
+@keyframes carga-trava { to { opacity: 0; visibility: hidden; pointer-events: none; } }
+
+.carga-logo { animation: carga-entra 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.2) both, carga-flutua 3.2s ease-in-out 0.7s infinite; }
+@keyframes carga-entra { from { opacity: 0; transform: scale(0.82) translateY(10px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes carga-flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+.carga-brilho::after {
   content: "";
-  background: linear-gradient(100deg, #0000, #96c3ff8c, #0000);
-  width: 34%;
-  animation: 4.6s ease-in-out infinite vinheta-brilho;
-  position: absolute; top: -10%; bottom: -10%; left: -40%;
-  transform: skew(-18deg);
+  position: absolute; top: -10%; bottom: -10%; left: -45%; width: 38%;
+  background: linear-gradient(100deg, transparent, rgba(255, 244, 200, 0.9), rgba(150, 195, 255, 0.55), transparent);
+  transform: skewX(-18deg);
+  animation: carga-varre 2.2s ease-in-out 0.5s infinite;
 }
-@keyframes vinheta-brilho { 0% { left: -40%; } 45% { left: 130%; } to { left: 130%; } }
-.vinheta-particula { animation: 3.2s ease-in-out infinite vinheta-particula; }
-@keyframes vinheta-particula {
-  0% { opacity: 0; transform: translateY(110vh) scale(0.6); }
-  25% { opacity: 0.9; }
-  75% { opacity: 0.7; }
-  to { opacity: 0; transform: translateY(-10vh) scale(1.3); }
+@keyframes carga-varre { 0% { left: -45%; } 55%, 100% { left: 130%; } }
+
+.carga-halo {
+  background: radial-gradient(closest-side, rgba(63, 140, 255, 0.35), rgba(111, 231, 223, 0.12) 55%, transparent);
+  animation: carga-pulsa 2.4s ease-in-out infinite;
+}
+@keyframes carga-pulsa { 0%, 100% { opacity: 0.55; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1.04); } }
+
+.carga-radar { animation: carga-onda 2.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite; opacity: 0; }
+.carga-radar-2 { animation-delay: 1.3s; }
+@keyframes carga-onda { 0% { transform: scale(0.7); opacity: 0.7; } 100% { transform: scale(1.9); opacity: 0; } }
+
+.carga-faixa {
+  background: repeating-linear-gradient(90deg, rgba(220, 233, 245, 0.35) 0 10px, transparent 10px 22px);
+  animation: carga-anda 0.7s linear infinite;
+}
+@keyframes carga-anda { from { background-position: 0 0; } to { background-position: -22px 0; } }
+
+.carga-caminhao { animation: carga-trepida 0.35s ease-in-out infinite alternate; }
+@keyframes carga-trepida { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-1.5px) rotate(1deg); } }
+
+.carga-frase { animation: carga-frase 0.35s ease-out both; }
+@keyframes carga-frase { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .carga-logo, .carga-brilho::after, .carga-halo, .carga-radar, .carga-faixa, .carga-caminhao, .carga-frase { animation: none !important; }
+  .carga-radar { display: none; }
 }

@@ -32,8 +32,7 @@ import { garantirAssinaturaPush } from "@/lib/push-cliente";
 import ChatMotoristas, { CHAVE_CHAT_LIDO } from "@/components/chat/ChatMotoristas";
 import AlertaAdmin from "@/components/alerta/AlertaAdmin";
 import BoasVindas, { type DadosBoasVindas } from "@/components/motoristas/BoasVindas";
-import VinhetaAbertura from "@/components/inicio/VinhetaAbertura";
-import { lerVinhetaVista, marcarVinhetaVista } from "@/lib/vinheta";
+import CarregamentoLogo from "@/components/inicio/CarregamentoLogo";
 import { CHAVE_MOTORISTA, COOKIE_MOTORISTA, primeiroNome, type Motorista } from "@/lib/motoristas";
 import { IMAGEM_COMPARTILHAR, NOME_APP, linkDoApp, mensagemCompartilhar } from "@/lib/compartilhar";
 import { FUNDO } from "@/lib/fundo";
@@ -714,19 +713,10 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const [editandoNome, setEditandoNome] = useState(false);
   const [novoNome, setNovoNome] = useState("");
 
-  // Vinheta de abertura: roda completa na primeira vez e cobre o
-  // carregamento inicial (internet lenta). Acelera com o progresso real.
-  const [vinhetaAtiva, setVinhetaAtiva] = useState(false);
-  const [primeiraVez, setPrimeiraVez] = useState(false);
-  useEffect(() => {
-    setPrimeiraVez(!lerVinhetaVista());
-    setVinhetaAtiva(true);
-  }, []);
-  const terminarVinheta = useCallback(() => {
-    setVinhetaAtiva(false);
-    marcarVinhetaVista();
-  }, []);
-  const mostrarVinheta = vinhetaAtiva;
+  // Tela de carregamento com a logo: cobre a abertura até o perfil deste
+  // aparelho ser confirmado (já vem desenhada do servidor, sem piscar).
+  const [carregando, setCarregando] = useState(true);
+  const terminarCarregamento = useCallback(() => setCarregando(false), []);
 
   // Notificação de mensagem do chat tocada: o Service Worker abre `/?chat=1`
   // e o app já entra direto na conversa (também ao "navegar" numa aba aberta).
@@ -1690,13 +1680,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
         />
       )}
 
-      {mostrarVinheta && (
-        <VinhetaAbertura
-          pronto={perfilPronto}
-          modoCompleto={primeiraVez && !motorista}
-          onTerminar={terminarVinheta}
-        />
-      )}
+      {carregando && <CarregamentoLogo pronto={perfilPronto} onTerminar={terminarCarregamento} />}
 
       {/* Alerta individual do administrador: só fecha ativando as notificações. */}
       {motorista && <AlertaAdmin motoristaId={motorista.id} onAtivada={() => setAssinada(true)} />}
