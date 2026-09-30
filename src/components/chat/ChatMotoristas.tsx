@@ -270,7 +270,7 @@ export default function ChatMotoristas({
             type="button"
             onClick={() => setIaAberta(true)}
             aria-label="Abrir o assistente de IA"
-            title="Assistente de IA: mecânica pesada e ajuda do app"
+            title="Assistente do CopaLinks: navios, caminhão, tempo e app"
             className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full bg-[#8b3dff] px-3 text-[13px] font-bold text-white shadow-[0_0_22px_-6px_rgba(139,61,255,0.9)] hover:bg-[#9a5bff]"
           >
             <Bot size={17} className="shrink-0" /> <span className="truncate">Assistente IA</span>

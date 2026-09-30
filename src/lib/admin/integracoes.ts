@@ -65,7 +65,7 @@ export const INTEGRACOES: Definicao[] = [
     id: "ia",
     nome: "IA",
     descricao:
-      "Assistente do chat (mecânica pesada + ajuda do app) e alertas inteligentes do clima. Respondem pelo Composio (Google Gemini, sem chave extra; reserva: conta OpenAI conectada no Composio). Esta chave é opcional: só é usada se o Composio falhar.",
+      "Assistente do chat (navios, caminhão, tempo e ajuda do app) e alertas inteligentes do clima. Respondem pelo Composio (Google Gemini, sem chave extra; reserva: conta OpenAI conectada no Composio). Esta chave é opcional: só é usada se o Composio falhar.",
     campos: [
       {
         chave: "AI_PROVIDER",

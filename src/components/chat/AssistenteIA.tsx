@@ -7,10 +7,18 @@ import { Bot, LoaderCircle, RotateCcw, Send, X } from "lucide-react";
 type MsgIA = { papel: "user" | "assistant"; texto: string; criadoEm?: string };
 
 const SUGESTOES = [
-  "Como funciona o app?",
-  "Freio do caminhão falhando, o que fazer?",
-  "Como está o clima no porto?",
-  "Quando trocar o óleo do diesel?",
+  "Quais navios de fertilizante estão chegando?",
+  "Como está o tempo no porto?",
+  "O freio tá falhando, e agora?",
+  "Como cadastro meu ponto?",
+];
+
+/** O que o assistente sabe fazer (mostrado ao abrir, antes da 1ª pergunta). */
+const PODE_FAZER: { emoji: string; titulo: string; texto: string }[] = [
+  { emoji: "🚢", titulo: "Navios no porto", texto: "Quem está atracado, esperando ou chegando em Paranaguá e Antonina, com foco em fertilizante, toneladas e maré." },
+  { emoji: "🚛", titulo: "Caminhão", texto: "Freio, motor, suspensão, elétrica, pneu, Arla… do básico ao mais cabeludo." },
+  { emoji: "🌦️", titulo: "Tempo no porto", texto: "Chuva, vento e neblina agora, e o que isso muda na estrada e na fila." },
+  { emoji: "📍", titulo: "Seus pontos e o app", texto: "Como anda a sua fila e como usar cada parte do CopaLinks." },
 ];
 
 export default function AssistenteIA({
@@ -130,8 +138,8 @@ export default function AssistenteIA({
           <Bot size={22} strokeWidth={2.2} />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-[18px] leading-tight font-extrabold text-white">Mecânico do CopaLinks</h2>
-          <p className="truncate text-[12.5px] text-gelo/70">Mecânica pesada + ajuda do app · via Composio</p>
+          <h2 className="font-display text-[18px] leading-tight font-extrabold text-white">Assistente do CopaLinks</h2>
+          <p className="truncate text-[12.5px] text-gelo/70">De motorista para motorista · navios, caminhão, tempo e app</p>
         </div>
         <button
           type="button"
@@ -172,12 +180,22 @@ export default function AssistenteIA({
           {motorista && carregado && msgs.length === 0 && (
             <div className="rounded-[20px] border border-[#8b3dff]/45 bg-[#1a1040]/80 p-4">
               <p className="font-display text-[16px] font-bold text-white">
-                Daí, tudo certo? Sou o mecânico do CopaLinks, aqui de Paranaguá 🔧
+                E aí, {motorista.nome.trim().split(/\s+/)[0]}! Beleza? 👋
               </p>
               <p className="mt-1.5 text-[14px] leading-relaxed text-gelo/80">
-                Pergunte sobre caminhão (motor, freio, suspensão, elétrica…), sobre o clima no porto ou sobre como
-                usar o app. Toque numa sugestão ou escreva abaixo.
+                Sou o assistente do CopaLinks. Pode perguntar do jeito que você fala no pátio, que eu te ajudo com:
               </p>
+              <ul className="mt-3 space-y-2">
+                {PODE_FAZER.map((p) => (
+                  <li key={p.titulo} className="flex gap-2.5 rounded-[14px] bg-white/[0.04] px-3 py-2">
+                    <span className="shrink-0 text-[20px] leading-6" aria-hidden>{p.emoji}</span>
+                    <span className="text-[13.5px] leading-snug text-gelo/85">
+                      <b className="text-white">{p.titulo}:</b> {p.texto}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-[13px] text-gelo/65">Toca numa pergunta abaixo ou manda a sua. 🚛</p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {SUGESTOES.map((s) => (
                   <button
@@ -204,7 +222,7 @@ export default function AssistenteIA({
               <div key={i} className="flex justify-start">
                 <div className="max-w-[88%] rounded-[18px] rounded-tl-md border border-[#8b3dff]/45 bg-[#150d33]/95 px-3.5 py-2.5">
                   <div className="mb-1 flex items-center gap-1.5 text-[12px] font-bold text-[#b98cf5]">
-                    <Bot size={13} /> Mecânico do CopaLinks
+                    <Bot size={13} /> Assistente
                   </div>
                   <div className="text-[15px] leading-relaxed break-words whitespace-pre-wrap text-gelo">{m.texto}</div>
                 </div>
@@ -214,7 +232,7 @@ export default function AssistenteIA({
           {enviando && (
             <div className="flex justify-start">
               <div className="flex items-center gap-2 rounded-[18px] rounded-tl-md border border-[#8b3dff]/45 bg-[#150d33]/95 px-3.5 py-3 text-[14px] text-gelo/70">
-                <LoaderCircle size={16} className="animate-spin" /> Pensando…
+                <LoaderCircle size={16} className="animate-spin" /> Já te respondo…
               </div>
             </div>
           )}
@@ -245,7 +263,7 @@ export default function AssistenteIA({
               }}
               rows={1}
               disabled={!motorista}
-              placeholder={motorista ? "Pergunte sobre caminhão, clima ou o app…" : "Cadastre seu nome para conversar…"}
+              placeholder={motorista ? "Manda sua pergunta: navio, caminhão, tempo…" : "Cadastre seu nome para conversar…"}
               aria-label="Pergunta para o assistente"
               className="max-h-[120px] min-h-[48px] flex-1 resize-none rounded-[24px] border-[1.5px] border-[#8b3dff]/60 bg-[#150d33]/80 px-4 py-3 text-[15px] text-white outline-none placeholder:text-gelo/45 focus:border-[#b98cf5] disabled:opacity-50"
             />

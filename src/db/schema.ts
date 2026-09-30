@@ -207,7 +207,7 @@ export const chatMensagens = pgTable("chat_mensagens", {
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 
-// Conversa privada de cada motorista com o assistente de IA (mecânica pesada
+// Conversa privada de cada motorista com o assistente de IA (navios, caminhão
 // + ajuda do app). Papel: "user" (pergunta) ou "assistant" (resposta).
 export const iaMensagens = pgTable("ia_mensagens", {
   id: serial("id").primaryKey(),
