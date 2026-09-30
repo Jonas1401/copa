@@ -21,23 +21,24 @@ export default function VinhetaAbertura({
 }) {
   const reduzido = useReducedMotion();
   const [quadro, setQuadro] = useState({ t: 0, carga: 0, saindo: false });
-  const [videoSrc, setVideoSrc] = useState<string>("/vinheta.mp4");
+  const [videoSrc, setVideoSrc] = useState<string>(() => {
+    try {
+      return localStorage.getItem("copalinks_vinheta_video") || "/vinheta.mp4";
+    } catch {
+      return "/vinheta.mp4";
+    }
+  });
+
   const estado = useRef({ t: 0, inicio: 0, ultimo: 0, terminou: false, pintou: 0 });
   const prontoRef = useRef(pronto);
-  prontoRef.current = pronto;
   const modoRef = useRef(modoCompleto);
-  modoRef.current = modoCompleto;
   const fimRef = useRef(onTerminar);
-  fimRef.current = onTerminar;
 
   useEffect(() => {
-    try {
-      const salvo = localStorage.getItem("copalinks_vinheta_video");
-      if (salvo) {
-        setVideoSrc(salvo);
-      }
-    } catch {}
-  }, []);
+    prontoRef.current = pronto;
+    modoRef.current = modoCompleto;
+    fimRef.current = onTerminar;
+  }, [pronto, modoCompleto, onTerminar]);
 
   useEffect(() => {
     if (!reduzido) return;
@@ -166,14 +167,13 @@ export default function VinhetaAbertura({
           className="absolute h-full w-full object-cover opacity-95"
           src={videoSrc}
           onError={() => {
-            // Fallback se o vídeo customizado não carregar
             setVideoSrc("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4");
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#030816] via-transparent to-black/30 pointer-events-none" />
       </div>
 
-      {/* Controles discretos / Barra de carregamento e botão de upload de vídeo no topo/baixo */}
+      {/* Controles discretos / Barra de carregamento */}
       <div className="absolute bottom-10 z-20 w-[min(280px,80vw)] text-center">
         <div className="h-1.5 overflow-hidden rounded-full bg-white/20 shadow-inner backdrop-blur-sm">
           <div
