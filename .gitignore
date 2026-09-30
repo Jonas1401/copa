@@ -1,0 +1,49 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# arquivos de ambiente — NUNCA enviar segredos (só o .env.example vai para o GitHub)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# backups de banco
+*.dump
+
+# Android Monitor: configurações locais e arquivos de assinatura
+/android/**/.gradle/
+/android/**/build/
+/android/**/local.properties
+/android/**/google-services.json
+/android/**/*.keystore
+/android/**/*.jks
+/android/**/*.apk
+/android/**/*.aab
+**/*service-account*.json
+**/*firebase-adminsdk*.json

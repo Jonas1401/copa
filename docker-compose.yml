@@ -1,0 +1,39 @@
+# CopaLinks: aplicativo + banco de dados.
+#   docker compose up -d --build
+# As variáveis vêm do arquivo .env (veja .env.example).
+services:
+  banco:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: copalinks
+      POSTGRES_PASSWORD: ${POSTGRES_SENHA:-troque-essa-senha}
+      POSTGRES_DB: copalinks
+    volumes:
+      - dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copalinks"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      banco:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://copalinks:${POSTGRES_SENHA:-troque-essa-senha}@banco:5432/copalinks
+      SITE_URL: ${SITE_URL:-}
+      SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY:-}
+      ADMIN_SETUP_CODE: ${ADMIN_SETUP_CODE:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      INTRANET_URL: ${INTRANET_URL:-}
+      SIMPORT_AUTH_TOKEN: ${SIMPORT_AUTH_TOKEN:-}
+    ports:
+      - "3000:3000"
+
+volumes:
+  dados:
