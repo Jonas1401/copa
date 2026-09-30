@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import CartaoNotificacoesAdmin from "@/components/admin/CartaoNotificacoesAdmin";
 import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
-import ConectarWhatsAppComposio from "@/components/admin/ConectarWhatsAppComposio";
 import {
   BellRing,
   Bot,
@@ -17,7 +16,6 @@ import {
   History,
   KeyRound,
   LogOut,
-  MessageCircle,
   Plug,
   RefreshCw,
   Save,
@@ -67,7 +65,6 @@ type Registro = { id: number; admin: string; integracao: string; acao: string; d
 const ICONES: Record<string, typeof Plug> = {
   composio: Plug,
   clima: CloudSun,
-  whatsapp: MessageCircle,
   ia: Bot,
   notificacoes: BellRing,
   banco: Database,
@@ -76,7 +73,6 @@ const ICONES: Record<string, typeof Plug> = {
 const COR_ICONE: Record<string, string> = {
   composio: "bg-[#8b3dff]",
   clima: "bg-[#2f8cf0]",
-  whatsapp: "bg-[#22c06d]",
   ia: "bg-[#e8892d]",
   notificacoes: "bg-[#e63950]",
   banco: "bg-[#1aa6b8]",
@@ -326,14 +322,8 @@ function CardIntegracao({
         <p className={`mt-2 text-[13px] leading-snug ${it.status === "erro" ? "text-red-300" : "text-gelo/80"}`}>{it.mensagem}</p>
       )}
 
-      {it.id === "whatsapp" && <ConectarWhatsAppComposio api={api} onSessaoExpirada={onSessaoExpirada} />}
-
-      {/* Campos diretos existentes continuam disponíveis como alternativa. */}
       {it.podeSalvar && (
         <div className="mt-3 space-y-3">
-          {it.id === "whatsapp" && (
-            <p className="text-[12px] text-gelo/60">Alternativa: conectar diretamente à Meta com token e Phone Number ID.</p>
-          )}
           {it.campos.map((c) => (
             <CampoSecreto
               key={c.chave}

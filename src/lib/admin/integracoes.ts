@@ -11,12 +11,11 @@ import {
   type InfoSegredo,
 } from "@/lib/admin/segredos";
 import { composioConfigurado, ErroComposio, geminiViaComposio, testarComposio } from "@/lib/composio";
-import { estadoWhatsappComposio, testarWhatsappComposio } from "@/lib/whatsapp-composio";
 import { chavePublica, notificarTeste, vapidConfigurado } from "@/lib/push";
 import { obterPrevisao } from "@/lib/tempo";
 
 /* ------------------------------------------------------------ catálogo */
-export type IdIntegracao = "composio" | "clima" | "whatsapp" | "ia" | "notificacoes" | "banco";
+export type IdIntegracao = "composio" | "clima" | "ia" | "notificacoes" | "banco";
 
 export type Campo = {
   chave: string; // nome da variável: COMPOSIO_API_KEY
@@ -43,7 +42,7 @@ export const INTEGRACOES: Definicao[] = [
   {
     id: "composio",
     nome: "Composio",
-    descricao: "Conexão com ferramentas externas: IA Gemini do chat, leitura de reserva e WhatsApp Business após autorização da conta na Meta.",
+    descricao: "Conexão com ferramentas externas: IA Gemini do chat, navios do porto e leitura de reserva do ponto e do clima.",
     campos: [{ chave: "COMPOSIO_API_KEY", rotulo: "Project API Key", secreto: true, dica: "Composio → Settings → Project API Key" }],
     obrigatorios: ["COMPOSIO_API_KEY"],
     podeSalvar: true,
@@ -60,21 +59,6 @@ export const INTEGRACOES: Definicao[] = [
     podeSalvar: false,
     podeRemover: false,
     rotuloSalvar: "",
-    rotuloTestar: "Testar conexão",
-  },
-  {
-    id: "whatsapp",
-    nome: "WhatsApp",
-    descricao: "WhatsApp Business pela conta autorizada no Composio; opcionalmente, conexão direta com a Meta. Os contatos do app continuam abrindo o WhatsApp normalmente.",
-    campos: [
-      { chave: "WHATSAPP_ACCESS_TOKEN", rotulo: "WhatsApp Access Token", secreto: true },
-      { chave: "WHATSAPP_PHONE_NUMBER_ID", rotulo: "Phone Number ID", secreto: true },
-      { chave: "WHATSAPP_BUSINESS_ACCOUNT_ID", rotulo: "WhatsApp Business Account ID", secreto: true },
-    ],
-    obrigatorios: ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
-    podeSalvar: true,
-    podeRemover: true,
-    rotuloSalvar: "Salvar",
     rotuloTestar: "Testar conexão",
   },
   {
@@ -166,10 +150,7 @@ export async function listarEstados(): Promise<EstadoIntegracao[]> {
 
   const estados: EstadoIntegracao[] = [];
   for (const d of INTEGRACOES) {
-    const configurada = d.id === "whatsapp"
-      ? Boolean(info.COMPOSIO_API_KEY?.configurado ||
-        (info.WHATSAPP_ACCESS_TOKEN?.configurado && info.WHATSAPP_PHONE_NUMBER_ID?.configurado))
-      : d.obrigatorios.every((c) => info[c]?.configurado);
+    const configurada = d.obrigatorios.every((c) => info[c]?.configurado);
     const s = salvos.find((x) => x.id === d.id);
     const detalhes: { rotulo: string; valor: string }[] = [];
 
@@ -177,7 +158,7 @@ export async function listarEstados(): Promise<EstadoIntegracao[]> {
       detalhes.push({ rotulo: "Endpoint", valor: "backend.composio.dev/api/v3.1 · x-api-key" });
       detalhes.push({
         rotulo: "Uso no CopaLinks",
-        valor: "IA Gemini do chat · WhatsApp Business se autorizado · reserva da leitura do ponto e do clima",
+        valor: "IA Gemini do chat · navios do porto · reserva da leitura do ponto e do clima",
       });
     }
     if (d.id === "ia") {
@@ -309,52 +290,6 @@ async function testarIA() {
   return { ok: false, msg: `${p.nome} respondeu ${r.status}.` };
 }
 
-async function testarWhatsApp() {
-  const token = await obterSegredo("WHATSAPP_ACCESS_TOKEN");
-  const phoneId = await obterSegredo("WHATSAPP_PHONE_NUMBER_ID");
-  const composio = await obterSegredo("COMPOSIO_API_KEY");
-  if (composio) {
-    try {
-      const estado = await estadoWhatsappComposio();
-      if (estado.conectado) {
-        const teste = await testarWhatsappComposio();
-        return { ok: teste.conectado, msg: teste.mensagem };
-      }
-    } catch (e) {
-      // A conexão direta antiga continua útil se o Composio estiver fora do ar.
-      if (!token || !phoneId) throw e;
-    }
-  }
-  if (!token || !phoneId) {
-    return {
-      ok: false,
-      naoConfig: true,
-      msg: composio
-        ? "Autorize uma conta WhatsApp Business no bloco Via Composio deste card. Nenhuma mensagem foi enviada."
-        : "Configure o Composio ou o token e o Phone Number ID da Meta para testar.",
-    };
-  }
-  const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(phoneId)}?fields=display_phone_number,verified_name,quality_rating`;
-  const r = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-    signal: AbortSignal.timeout(12000),
-  });
-  const d = (await r.json().catch(() => ({}))) as {
-    display_phone_number?: string;
-    verified_name?: string;
-    error?: { message?: string; code?: number };
-  };
-  if (r.ok) {
-    return {
-      ok: true,
-      msg: `Conectado · ${d.verified_name ?? "número verificado"}${d.display_phone_number ? ` (${d.display_phone_number})` : ""}.`,
-    };
-  }
-  if (d.error?.code === 190 || r.status === 401) return { ok: false, msg: "Access Token inválido ou expirado." };
-  return { ok: false, msg: semSegredos(d.error?.message ?? `A Meta respondeu ${r.status}.`, [token, phoneId]) };
-}
-
 /**
  * Testa a integração no servidor e grava o resultado.
  * `endpointAparelho`: para "notificacoes", envia o teste só para o aparelho
@@ -367,7 +302,6 @@ export async function testar(id: IdIntegracao, opcoes: { endpointAparelho?: stri
   const segredosEnvolvidos = [
     await obterSegredo("COMPOSIO_API_KEY"),
     await obterSegredo("AI_API_KEY"),
-    await obterSegredo("WHATSAPP_ACCESS_TOKEN"),
   ];
 
   try {
@@ -386,11 +320,6 @@ export async function testar(id: IdIntegracao, opcoes: { endpointAparelho?: stri
       msg = ok
         ? `Conectado · previsão APPA ${p.horas.length}h${p.fontes.estacao ? " + estação do porto" : ""} (${Date.now() - t0} ms). Agora: ${p.agora.temperatura}°C, ${p.agora.descricao.toLowerCase()}.`
         : "A SIMPORT não respondeu. Usando só a Open-Meteo como reserva.";
-    } else if (id === "whatsapp") {
-      const r = await testarWhatsApp();
-      ok = r.ok;
-      naoConfig = Boolean(r.naoConfig);
-      msg = r.msg;
     } else if (id === "ia") {
       const r = await testarIA();
       ok = r.ok;

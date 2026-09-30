@@ -115,32 +115,6 @@ notificações ativadas no aparelho (botão **Ativar notificações**).
 Teste: `TEST_DATABASE_URL=... tsx --test tests/chat-push.test.ts` (banco
 `fila_push_test_*`, com serviço Push falso local).
 
-## WhatsApp Business pelo Composio
-
-O card **WhatsApp** em `/admin` mostra o estado da conta e permite gerar um link
-seguro do Composio. A `COMPOSIO_API_KEY` já utilizada pelo app autentica a API
-Composio; a configuração OAuth gerenciada limita as ferramentas às consultas
-de perfil/números/templates e ao envio de texto ou template. Nenhum token da Meta
-é guardado no navegador ou no GitHub.
-
-1. Entre em `/admin` e abra o card **WhatsApp → Via Composio**.
-2. Clique **Conectar via Composio** e depois **Autorizar na Meta**.
-3. Na página hospedada pelo Composio, informe o **WABA ID** (Meta Business
-   Suite → Configurações → Contas → Contas do WhatsApp), faça login na conta
-   Business e autorize o acesso. O número de telefone de um contato **não** é o
-   WABA ID. Volte ao painel e clique **Atualizar estado da conexão**.
-4. Clique **Testar conexão**: o teste faz só uma consulta de leitura dos números
-   da conta empresarial; **não envia mensagem**. A conexão direta com a Meta
-   (Access Token + Phone Number ID) permanece disponível como alternativa.
-
-O toolkit Composio suporta apenas **WhatsApp Business Platform**, não WhatsApp
-pessoal. Os botões da página *Contatos Operacionais* continuam abrindo o
-WhatsApp via link (`wa.me`) e **não** dependem dessa autorização. Conectar a
-conta não espelha o chat dos motoristas nem cria disparos automáticos. Para
-iniciar conversas pela API, é preciso consentimento do destinatário e,
-fora da janela de atendimento de 24 horas, um template aprovado pela Meta;
-envios podem ter custo. Não envie chaves, senhas ou tokens pelo chat.
-
 ## Filtro do grupo SEM APK (pelo servidor)
 
 Um site/PWA não consegue ler notificações nem mensagens de outros apps. Para o
