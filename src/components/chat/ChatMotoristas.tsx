@@ -234,7 +234,7 @@ export default function ChatMotoristas({
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_50%_at_50%_0%,rgba(30,90,190,0.32),transparent_60%)]" />
 
-      <header className="relative mx-auto w-full max-w-[360px] border-b border-[#1d4690]/60 px-3 pt-3 pb-2.5">
+      <header className="largura-aparelho relative border-b border-[#1d4690]/60 px-3 pt-3 pb-2.5">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#2f8cf0] text-white shadow-[0_0_22px_-6px_rgba(47,140,240,0.9)]">
             <MessagesSquare size={21} strokeWidth={2.3} />
@@ -289,7 +289,7 @@ export default function ChatMotoristas({
         }}
         className="relative flex-1 overflow-y-auto"
       >
-        <div className="mx-auto flex w-full max-w-[360px] flex-col gap-1.5 px-3 py-4">
+        <div className="largura-aparelho flex flex-col gap-1.5 px-3 py-4">
           {!carregado && <p className="py-8 text-center text-[14px] text-gelo/60">Carregando…</p>}
           {carregado && msgs.length === 0 && (
             <div className="mt-4 rounded-[20px] border border-[#2a5bb0]/55 bg-[#0b2152]/70 p-4 text-center">
@@ -357,7 +357,7 @@ export default function ChatMotoristas({
       </div>
 
       <div className="relative border-t border-[#1d4690]/60 bg-[#06122b]/95 px-3 pt-2" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
-        <div className="mx-auto w-full max-w-[360px]">
+        <div className="largura-aparelho">
           {motorista ? (
             <>
               {erro && <p className="mb-1.5 text-[13px] text-ambar">{erro}</p>}

@@ -21,6 +21,11 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 ## Tecnologia
 
 - **Next.js (App Router) + TypeScript + Tailwind CSS**
+- **Layout na largura do aparelho**: as telas do motorista usam toda a largura
+  em **dp** configurada no celular (classe `.largura-aparelho` em
+  `globals.css`), em vez de uma coluna fixa de 360 px. A viewport já é
+  `device-width`; só a partir de 768 px (tablet/desktop) a coluna é
+  centralizada com teto de 768 px.
 - **PostgreSQL** com Drizzle ORM
 - **Web Push** (`web-push`, VAPID) com Service Worker próprio
 - **Leitura do site monitorado**: `intranet.copadubo.com.br/ponto/` (3 quadros,

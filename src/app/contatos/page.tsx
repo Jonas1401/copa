@@ -19,7 +19,7 @@ export default function ContatosPage() {
   return (
     <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
 
-      <main className="relative mx-auto w-full max-w-[360px] px-3 pt-4 pb-10">
+      <main className="largura-aparelho relative px-3 pt-4 pb-10">
         <header className="flex items-center gap-3">
           <Link
             href="/"

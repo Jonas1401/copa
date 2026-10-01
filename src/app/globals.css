@@ -35,6 +35,24 @@ body {
   background-attachment: fixed;
 }
 
+/* --- largura do aparelho ------------------------------------------------
+   O app ocupa toda a largura em dp que o aparelho está configurado (no
+   Android 1 dp = 1 px CSS e a viewport já é `device-width`). Nada de coluna
+   fixa de 360 px: o conteúdo acompanha a tela do celular, seja 360, 412 ou
+   480 dp. Só em telas grandes (tablet/desktop, a partir de 768 px) a coluna
+   é centralizada para o conteúdo não esticar demais. */
+.largura-aparelho {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+@media (min-width: 768px) {
+  .largura-aparelho {
+    max-width: 768px;
+  }
+}
+
 /* --- degradê suave para imagens de topo se fundirem ao fundo azul do app --- */
 .imagem-degrade {
   -webkit-mask-image: linear-gradient(

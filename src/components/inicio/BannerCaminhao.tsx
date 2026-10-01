@@ -153,7 +153,7 @@ export default function BannerCaminhao({ motoristaId, children }: { motoristaId:
       {menu && (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-abismo/75 p-3 backdrop-blur-sm sm:items-center" onClick={() => setMenu(false)}>
           <div role="dialog" aria-modal="true" aria-label="Personalizar imagem"
-            className="vidro w-full max-w-[360px] rounded-[26px] p-5" onClick={(e) => e.stopPropagation()}>
+            className="vidro largura-aparelho rounded-[26px] p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="font-display text-[19px] font-extrabold text-white">Personalizar imagem</h2>
