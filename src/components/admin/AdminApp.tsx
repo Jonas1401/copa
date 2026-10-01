@@ -718,8 +718,7 @@ export default function AdminApp() {
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-[#050f28]">
-      <div className="fixed inset-0 bg-[radial-gradient(120%_60%_at_50%_0%,rgba(30,90,190,0.35),transparent_60%),linear-gradient(180deg,#0a1d45_0%,#071636_45%,#050f28_100%)]" />
+    <div className="relative min-h-screen w-full bg-[#063a78]">
 
       <main className="relative mx-auto w-full max-w-[980px] px-3 pt-4 pb-12">
         <header className="flex items-center gap-3">

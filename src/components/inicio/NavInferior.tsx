@@ -31,7 +31,7 @@ export default function NavInferior({
       className="fixed inset-x-0 bottom-0 z-40 border-t border-[#1d4690]/60 bg-[#06122b]/95 backdrop-blur-lg"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <div className="mx-auto grid max-w-[390px] grid-cols-3 items-center gap-2 px-3 py-2.5">
+      <div className="mx-auto grid max-w-[360px] grid-cols-3 items-center gap-2 px-3 py-2.5">
         {ITENS.map(({ id, rotulo, Icone }, i) => {
           const ativo = aba === id;
           const botao = (

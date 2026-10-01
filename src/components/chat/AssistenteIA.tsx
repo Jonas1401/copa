@@ -129,11 +129,11 @@ export default function AssistenteIA({
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22 }}
-      className="fixed inset-0 z-[70] flex flex-col bg-[#050f28]"
+      className="fixed inset-0 z-[70] flex flex-col bg-[#063a78]"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_50%_at_50%_0%,rgba(139,61,255,0.22),transparent_60%)]" />
 
-      <header className="relative mx-auto flex w-full max-w-[640px] items-center gap-3 border-b border-[#1d4690]/60 px-3 py-3">
+      <header className="relative mx-auto flex w-full max-w-[360px] items-center gap-3 border-b border-[#1d4690]/60 px-3 py-3">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#8b3dff] text-white shadow-[0_0_22px_-6px_rgba(139,61,255,0.9)]">
           <Bot size={22} strokeWidth={2.2} />
         </span>
@@ -168,7 +168,7 @@ export default function AssistenteIA({
         }}
         className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
-        <div className="mx-auto flex w-full max-w-[640px] flex-col gap-2.5 px-3 py-4">
+        <div className="mx-auto flex w-full max-w-[360px] flex-col gap-2.5 px-3 py-4">
           {!motorista && (
             <p className="rounded-[16px] border border-ambar/40 bg-ambar/10 px-4 py-3 text-center text-[14px] text-gelo/85">
               Cadastre seu nome no app para conversar com o assistente.
@@ -243,7 +243,7 @@ export default function AssistenteIA({
         className="relative border-t border-[#1d4690]/60 bg-[#06122b]/95 px-3 pt-2"
         style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
       >
-        <div className="mx-auto w-full max-w-[640px]">
+        <div className="mx-auto w-full max-w-[360px]">
           {erro && <p className="mb-1.5 text-[13px] text-ambar">{erro}</p>}
           <form
             onSubmit={(e) => {

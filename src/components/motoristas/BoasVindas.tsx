@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, MapPin, User } from "lucide-react";
 import { LOGO } from "@/lib/logo";
-import { FUNDO } from "@/lib/fundo";
 
 export type DadosBoasVindas = {
   nome: string;
@@ -51,14 +50,7 @@ export default function BoasVindas({
     "w-full appearance-none rounded-full border-[1.5px] border-[#2a5bb0]/80 bg-[#06122b]/85 px-4 py-3 font-display text-[16px] font-bold text-white outline-none transition-colors placeholder:font-medium placeholder:text-gelo/40 focus:border-ciano/80";
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-abismo">
-      <img
-        src={FUNDO.src}
-        alt=""
-        aria-hidden
-        className="fixed inset-0 h-full w-full object-cover object-center"
-      />
-      <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(6,20,52,0.78)_0%,rgba(5,16,42,0.7)_40%,rgba(4,12,32,0.94)_100%)]" />
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#063a78]">
 
       <motion.form
         onSubmit={entrar}

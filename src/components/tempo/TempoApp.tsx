@@ -202,10 +202,9 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
         : { borda: "border-[#38b6ff]/60", barra: "bg-[#38b6ff]", texto: "text-[#38b6ff]" };
 
   return (
-    <div className="relative min-h-screen w-full bg-[#050f28]">
-      <div className="fixed inset-0 bg-[radial-gradient(120%_60%_at_50%_0%,rgba(30,90,190,0.35),transparent_60%),linear-gradient(180deg,#0a1d45_0%,#071636_45%,#050f28_100%)]" />
+    <div className="relative min-h-screen w-full bg-[#063a78]">
 
-      <main className="relative mx-auto w-full max-w-[390px] pb-10">
+      <main className="relative mx-auto w-full max-w-[360px] pb-10">
         {/* ------------------------------------------------ cabeçalho */}
         <header className="relative overflow-hidden px-4 pt-4 pb-5">
           <img

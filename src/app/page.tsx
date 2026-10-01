@@ -24,8 +24,8 @@ export default async function Home() {
 
 function AguardandoBanco() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#050f28] px-4">
-      <div className="w-full max-w-[420px] rounded-[28px] border border-[#2a5bb0]/60 bg-[#0a1d45]/90 p-7 text-center">
+    <main className="flex min-h-screen items-center justify-center bg-[#063a78] px-4">
+      <div className="w-full max-w-[360px] rounded-[28px] border border-[#2a5bb0]/60 bg-[#0a1d45]/90 p-7 text-center">
         <img
           src={LOGO.src}
           alt="CopaLinks"

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft, Phone } from "lucide-react";
 import { CONTATOS, linkWhatsApp } from "@/lib/servicos";
-import { FUNDO } from "@/lib/fundo";
 
 export const metadata: Metadata = {
   title: "Contatos Operacionais · Monitor Ponto CopaLinks",
@@ -18,16 +17,9 @@ function IconeWhatsApp({ className = "" }: { className?: string }) {
 
 export default function ContatosPage() {
   return (
-    <div className="relative min-h-screen w-full bg-abismo">
-      <img
-        src={FUNDO.src}
-        alt=""
-        aria-hidden
-        className="fixed inset-0 h-full w-full object-cover object-center"
-      />
-      <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(4,16,42,0.45)_0%,rgba(3,12,32,0.35)_45%,rgba(2,8,24,0.60)_100%)]" />
+    <div className="relative min-h-screen w-full bg-[#063a78]">
 
-      <main className="relative mx-auto w-full max-w-[390px] px-3 pt-4 pb-10">
+      <main className="relative mx-auto w-full max-w-[360px] px-3 pt-4 pb-10">
         <header className="flex items-center gap-3">
           <Link
             href="/"
