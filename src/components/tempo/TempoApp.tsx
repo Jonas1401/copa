@@ -204,7 +204,7 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
   return (
     <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
 
-      <main className="relative mx-auto w-full max-w-[360px] pb-10">
+      <main className="largura-aparelho relative pb-10">
         {/* ------------------------------------------------ cabeçalho */}
         <header className="relative overflow-x-clip px-4 pt-4 pb-5">
           <div aria-hidden className="imagem-degrade pointer-events-none absolute inset-x-0 top-0 -bottom-4 overflow-hidden">

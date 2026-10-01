@@ -57,7 +57,7 @@ export default function BoasVindas({
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.2, 0.7, 0.3, 1] }}
-        className="relative mx-auto flex min-h-full w-full max-w-[460px] flex-col justify-center px-5 py-8"
+        className="largura-aparelho relative flex min-h-full flex-col justify-center px-5 py-8"
       >
         <img
           src={LOGO.src}

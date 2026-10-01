@@ -429,7 +429,7 @@ function FolhaCadastro({
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: [0.2, 0.7, 0.3, 1] }}
-        className="w-full max-w-[360px] rounded-t-[30px] border border-violeta/40 bg-[linear-gradient(180deg,#1c1240_0%,#120c2c_100%)] p-5 pb-8 shadow-[0_-20px_80px_-20px_rgba(185,140,245,0.45)] sm:rounded-[30px] sm:pb-6"
+        className="largura-aparelho rounded-t-[30px] border border-violeta/40 bg-[linear-gradient(180deg,#1c1240_0%,#120c2c_100%)] p-5 pb-8 shadow-[0_-20px_80px_-20px_rgba(185,140,245,0.45)] sm:rounded-[30px] sm:pb-6"
       >
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gelo/20 sm:hidden" />
         <div className="flex items-center justify-between gap-3">
@@ -1310,7 +1310,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   return (
     <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
 
-      <div className="relative mx-auto w-full max-w-[360px] px-3 pt-3 pb-[118px]">
+      <div className="largura-aparelho relative px-3 pt-3 pb-[118px]">
         {/* =============================================== INÍCIO */}
         {aba === "inicio" && (
           <>
@@ -1696,7 +1696,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
 
       {painelNotif && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-abismo/80 p-3 backdrop-blur-md sm:items-center">
-          <div className="vidro w-full max-w-[360px] rounded-[30px] p-6">
+          <div className="vidro largura-aparelho rounded-[30px] p-6">
             <PainelNotificacoes
               modo={painelNotif}
               ativas={ativas}
