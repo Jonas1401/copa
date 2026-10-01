@@ -183,7 +183,7 @@ export default function AssistenteIA({
                 E aí, {motorista.nome.trim().split(/\s+/)[0]}! Beleza? 👋
               </p>
               <p className="mt-1.5 text-[14px] leading-relaxed text-gelo/80">
-                Sou o assistente do CopaLinks. Pode perguntar do jeito que você fala no pátio, que eu te ajudo com:
+                Sou o assistente do CopaLinks. Pode perguntar à vontade, que eu te ajudo com:
               </p>
               <ul className="mt-3 space-y-2">
                 {PODE_FAZER.map((p) => (
