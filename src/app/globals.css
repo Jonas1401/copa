@@ -279,3 +279,8 @@ input:focus-visible {
   .carga-logo, .carga-brilho::after, .carga-halo, .carga-radar, .carga-faixa, .carga-caminhao, .carga-frase { animation: none !important; }
   .carga-radar { display: none; }
 }
+
+/* ---------------------------------------------- foto do topo (banner) */
+.banner-entra { animation: banner-entra 0.6s ease-out both; }
+@keyframes banner-entra { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .banner-entra { animation: none; } }

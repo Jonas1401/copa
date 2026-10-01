@@ -176,6 +176,23 @@ Até isso acontecer, o backend mostra "Firebase não configurado" e não afirma
 que notificou ninguém. FCM aceito não é confirmação de que o Android exibiu o
 aviso. O usuário pode revogar o acesso a notificações no Android quando quiser.
 
+## Imagem do topo personalizável
+
+A tela inicial mostra uma foto de caminhão atrás do logo e da saudação
+(`public/images/caminhao-padrao.webp`). Em **Personalizar imagem** o motorista
+tira uma foto ou escolhe da galeria; o celular reduz a foto e envia para
+`POST /api/motoristas/banner`. O servidor (`src/lib/banner.ts`) valida tipo
+(JPG/PNG/WebP), tamanho (até 8 MB) e se é imagem de verdade, e manda para o
+**Nano Banana pelo Composio** (`GEMINI_GENERATE_IMAGE`) com um prompt que
+transforma a foto em imagem cinematográfica **preservando o caminhão** (sem
+textos, logos ou placas inventadas). Os campos da ferramenta são lidos na hora;
+a foto fica num endereço secreto por no máximo 10 min só para o gerador baixar.
+Se o gerador não estiver disponível, aplica um tratamento local (cor,
+contraste, nitidez, luz de cinema). Resultado: WebP 1536×1024 com recorte
+inteligente, salvo em `banners_motorista` — cada motorista só vê o próprio
+(`/api/motoristas/banner/imagem`, sessão httpOnly). Limite de 6 trocas por
+hora. Teste: `tests/banner.test.ts`.
+
 ## Regras de segurança do Porto
 
 Quando o ponto de um motorista **sai para o trabalho** (SAIU depois de ter

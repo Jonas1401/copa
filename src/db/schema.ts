@@ -82,6 +82,23 @@ export const regrasEnvios = pgTable("regras_envios", {
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Imagem do topo da tela inicial escolhida por cada motorista (já tratada).
+// Só o próprio motorista vê a dele. imagem = WebP em base64.
+export const bannersMotorista = pgTable("banners_motorista", {
+  motoristaId: integer("motorista_id").primaryKey().references(() => motoristas.id, { onDelete: "cascade" }),
+  imagem: text("imagem").notNull(),
+  via: text("via").notNull(), // ia | local
+  versao: text("versao").notNull(),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Foto original guardada por poucos minutos para o gerador de imagem buscar.
+export const bannerFontes = pgTable("banner_fontes", {
+  token: text("token").primaryKey(),
+  imagem: text("imagem").notNull(), // JPEG em base64
+  expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
+});
+
 // Identidade deste aparelho: somente o hash do token fica no PostgreSQL.
 export const motoristaSessoes = pgTable("motorista_sessoes", {
   id: serial("id").primaryKey(),

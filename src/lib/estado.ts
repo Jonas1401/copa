@@ -940,6 +940,27 @@ export async function garantirTabelas() {
     // Se já existem, segue em frente
     tabelasGarantidas = true;
   }
+  // Imagem do topo personalizada por motorista (tabelas novas, separadas).
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS banners_motorista (
+        motorista_id INTEGER PRIMARY KEY REFERENCES motoristas(id) ON DELETE CASCADE,
+        imagem TEXT NOT NULL,
+        via TEXT NOT NULL,
+        versao TEXT NOT NULL,
+        atualizado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS banner_fontes (
+        token TEXT PRIMARY KEY,
+        imagem TEXT NOT NULL,
+        expira_em TIMESTAMP WITH TIME ZONE NOT NULL
+      );
+      ALTER TABLE banners_motorista ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE banner_fontes ENABLE ROW LEVEL SECURITY;
+    `);
+  } catch {
+    // já existe ou sem permissão: segue
+  }
   // Regras de segurança após a saída para o trabalho (tabela nova, separada).
   try {
     await db.execute(sql`

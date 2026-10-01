@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import Cabecalho from "@/components/inicio/Cabecalho";
+import BannerCaminhao from "@/components/inicio/BannerCaminhao";
 import Servicos from "@/components/inicio/Servicos";
 import NavInferior, { type Aba } from "@/components/inicio/NavInferior";
 import { garantirAssinaturaPush } from "@/lib/push-cliente";
@@ -1311,17 +1312,20 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
         {/* =============================================== INÍCIO */}
         {aba === "inicio" && (
           <>
-            <Cabecalho
-              nome={motorista ? primeiroNome(motorista.nome) : null}
-              onCompartilhar={compartilhar}
-            />
+            {/* topo: foto do caminhão (personalizável) atrás do logo e da saudação */}
+            <BannerCaminhao motoristaId={motorista?.id ?? null}>
+              <Cabecalho
+                nome={motorista ? primeiroNome(motorista.nome) : null}
+                onCompartilhar={compartilhar}
+              />
+            </BannerCaminhao>
 
             {/* ------------------------------------------ cartão do número */}
             <motion.section
               initial={reduzido ? false : { opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, ease: [0.2, 0.7, 0.3, 1] }}
-              className="cartao-monitor relative mt-3 overflow-hidden rounded-[24px] px-3 pt-3 pb-5"
+              className="cartao-monitor relative -mt-14 overflow-hidden rounded-[24px] px-3 pt-3 pb-5"
             >
               <div className="varredura" aria-hidden />
 

@@ -367,3 +367,7 @@ export async function climaAgoraComposio(local = "Paranagua,BR"): Promise<ClimaC
     medidoEm: w.dt ?? Math.floor(Date.now() / 1000),
   };
 }
+
+/** Mesma chamada autenticada usada acima (para ferramentas sem helper próprio). */
+export const chamarComposio = chamar;
+export const USUARIO_COMPOSIO = USUARIO_SERVIDOR;
