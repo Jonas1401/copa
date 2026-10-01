@@ -80,3 +80,13 @@ test("o app usa a largura do aparelho e não uma coluna fixa de 360 px", () => {
     assert.ok(ler(p).includes("largura-aparelho"), `${p} não usa a largura do aparelho`);
   }
 });
+
+test("banner do caminhão mantém a faixa de limpeza no topo (58%), base (44%), esquerda, legenda e enquadramento", () => {
+  const s = ler("src/components/inicio/BannerCaminhao.tsx");
+  assert.ok(s.includes("top-0 h-[58%]"), "BannerCaminhao.tsx sem a faixa azul de 58% no topo");
+  assert.ok(s.includes("bottom-0 h-[44%]") && s.includes("#002b6b_100%"), "BannerCaminhao.tsx sem a base de 44% fundindo no #002b6b");
+  assert.ok(s.includes("linear-gradient(90deg,"), "BannerCaminhao.tsx sem proteção do lado esquerdo");
+  assert.ok(s.includes("radial-gradient("), "BannerCaminhao.tsx sem limpeza da linha da legenda");
+  assert.ok(s.includes("object-[68%_46%]"), "BannerCaminhao.tsx alterou o enquadramento do caminhão");
+});
+
