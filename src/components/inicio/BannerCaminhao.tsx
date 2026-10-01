@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Camera, ImageIcon, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
+import { LOGO } from "@/lib/logo";
 
 export const BANNER_PADRAO = "/images/caminhao-padrao.webp";
 const LADO_MAX = 1600;
@@ -27,11 +28,59 @@ async function reduzirFoto(arquivo: File): Promise<Blob> {
 }
 
 /**
- * Topo da tela inicial: foto do caminhão integrada ao fundo, atrás do logo e
- * da saudação. Cada motorista pode trocar pela foto do próprio caminhão; o
- * servidor transforma em imagem profissional e guarda só para ele.
+ * Logo + saudação do motorista, no canto esquerdo da parte de baixo da foto.
+ * Fica logo acima do cartão do número (que sobe sobre os últimos 5% da
+ * imagem). Nome comprido é cortado com reticências para não invadir o botão
+ * da câmera, no canto direito.
  */
-export default function BannerCaminhao({ motoristaId, children }: { motoristaId: number | null; children: ReactNode }) {
+function Identidade({ nome }: { nome?: string | null }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <img
+        src={LOGO.src}
+        alt="CopaLinks"
+        width={LOGO.largura}
+        height={LOGO.altura}
+        className="h-[26px] w-auto shrink-0 object-contain drop-shadow-[0_2px_10px_rgba(0,10,30,0.9)] sm:h-[30px]"
+      />
+      <span className="min-w-0 truncate font-display text-[17px] leading-tight font-extrabold text-white drop-shadow-[0_2px_10px_rgba(0,10,30,0.95)] sm:text-[19px]">
+        {nome ? (
+          <>
+            Olá,{" "}
+            <span className="text-[#3a9dff] drop-shadow-[0_0_18px_rgba(58,157,255,0.55)]">
+              {nome}!
+            </span>
+          </>
+        ) : (
+          "Olá!"
+        )}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Topo da tela inicial: foto do caminhão integrada ao fundo, atrás dos
+ * controles do cabeçalho e da saudação. Cada motorista pode trocar pela foto
+ * do próprio caminhão; o servidor transforma em imagem profissional e guarda
+ * só para ele.
+ *
+ * A moldura da foto tem a proporção do arquivo original (1536×1024), então a
+ * imagem nunca é deformada nem sobra azul sobrando. O cartão do número sobe
+ * exatamente sobre os últimos 5% desta altura (ver `MonitorApp`), e o logo
+ * com o nome do motorista fica no canto esquerdo da base, logo acima do
+ * cartão — dentro da faixa de 5%, sem encostar nele.
+ */
+export default function BannerCaminhao({
+  motoristaId,
+  nome,
+  children,
+}: {
+  motoristaId: number | null;
+  /** Primeiro nome do motorista (mostrado no canto de baixo da foto). */
+  nome?: string | null;
+  children: ReactNode;
+}) {
   const [versao, setVersao] = useState<string | null>(null);
   const [falhou, setFalhou] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -87,62 +136,74 @@ export default function BannerCaminhao({ motoristaId, children }: { motoristaId:
   const src = motoristaId && versao && !falhou ? `/api/motoristas/banner/imagem?v=${versao}` : BANNER_PADRAO;
 
   return (
-    <div className="relative -mx-3 -mt-3 overflow-x-clip">
-      {/* camada da foto: nítida de cima até a base, só os últimos 5% em degradê */}
-      <div aria-hidden className="imagem-nitida pointer-events-none absolute inset-x-0 top-0 -bottom-8 overflow-hidden">
-        {/* foto: caminhão à direita, sem deformar (recorte inteligente + object-cover) */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          key={src}
-          src={src}
-          alt=""
-          aria-hidden
-          fetchPriority="high"
-          decoding="async"
-          onError={() => setFalhou(true)}
-          className="banner-entra absolute inset-0 h-full w-full object-cover object-[68%_46%]"
-        />
-        {/* integração com o fundo azul: só a base da foto (5%) se dissolve no #002b6b */}
-        <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,#002b6b_100%)]" />
-      </div>
-
-      <div className="relative px-3 pt-3 pb-[78px]">
-        {children}
-        <p className="mt-1 max-w-[62%] text-[14px] leading-snug text-gelo/90 drop-shadow-[0_1px_8px_rgba(0,0,0,0.85)]">
-          Aqui está o resumo da sua operação de hoje.
-        </p>
-      </div>
-
-      {motoristaId && (
-        <button
-          type="button"
-          onClick={() => setMenu(true)}
-          disabled={estado === "processando"}
-          aria-label="Personalizar imagem"
-          title="Personalizar imagem"
-          className="absolute right-2.5 bottom-[72px] z-10 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/55 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white disabled:opacity-50"
-        >
-          {estado === "processando" ? <Loader2 size={15} className="animate-spin" /> : <Camera size={16} strokeWidth={1.8} />}
-        </button>
-      )}
-
-      {estado === "processando" && (
-        <div className="absolute inset-0 grid place-items-center bg-[#030c20]/55 backdrop-blur-[2px]" role="status">
-          <div className="flex items-center gap-2 rounded-full bg-[#06173a]/90 px-4 py-2.5 text-[14px] font-bold text-white">
-            <Sparkles size={17} className="animate-pulse text-ouro" /> {mensagem}
-          </div>
+    <div className="relative -mx-3 -mt-3">
+      {/* moldura da foto: mesma proporção do arquivo (1536×1024) */}
+      <div className="relative aspect-[1536/1024] w-full">
+        {/* camada da foto: nítida de cima até a base, só os últimos 5% em degradê */}
+        <div aria-hidden className="imagem-nitida pointer-events-none absolute inset-0 overflow-hidden">
+          {/* foto: caminhão à direita, sem deformar (recorte inteligente + object-cover) */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            key={src}
+            src={src}
+            alt=""
+            aria-hidden
+            fetchPriority="high"
+            decoding="async"
+            onError={() => setFalhou(true)}
+            className="banner-entra absolute inset-0 h-full w-full object-cover object-[68%_46%]"
+          />
+          {/* integração com o fundo azul: só a base da foto (5%) se dissolve no #002b6b */}
+          <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,#002b6b_100%)]" />
         </div>
-      )}
-      {(estado === "ok" || estado === "erro") && (
-        <p
-          role="status"
-          className={`absolute inset-x-3 top-1/2 z-10 -translate-y-1/2 rounded-2xl px-4 py-2.5 text-center text-[14px] font-bold ${
-            estado === "ok" ? "bg-verde/90 text-[#03240f]" : "bg-red-500/90 text-white"
-          }`}
-        >
-          {mensagem}
-        </p>
-      )}
+
+        {/* controles do topo (compartilhar, previsão do tempo) e legenda */}
+        <div className="absolute inset-x-0 top-0 px-3 pt-3">
+          {children}
+          <p className="mt-1 max-w-[62%] text-[14px] leading-snug text-gelo/90 drop-shadow-[0_1px_8px_rgba(0,0,0,0.85)]">
+            Aqui está o resumo da sua operação de hoje.
+          </p>
+        </div>
+
+        {/* logo + nome do motorista: canto esquerdo da parte de baixo da foto,
+            logo acima do cartão (que cobre os últimos 5% da imagem). O
+            `bottom` também é proporcional: 5% da ALTURA da moldura + 8 px de
+            folga, para o encaixe valer em qualquer largura de tela. */}
+        <div className="absolute bottom-[calc(5%_+_8px)] left-3 z-10 max-w-[calc(100%-88px)]">
+          <Identidade nome={nome} />
+        </div>
+
+        {motoristaId && (
+          <button
+            type="button"
+            onClick={() => setMenu(true)}
+            disabled={estado === "processando"}
+            aria-label="Personalizar imagem"
+            title="Personalizar imagem"
+            className="absolute right-2.5 bottom-[calc(5%_+_8px)] z-10 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/55 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white disabled:opacity-50"
+          >
+            {estado === "processando" ? <Loader2 size={15} className="animate-spin" /> : <Camera size={16} strokeWidth={1.8} />}
+          </button>
+        )}
+
+        {estado === "processando" && (
+          <div className="absolute inset-0 z-20 grid place-items-center bg-[#030c20]/55 backdrop-blur-[2px]" role="status">
+            <div className="flex items-center gap-2 rounded-full bg-[#06173a]/90 px-4 py-2.5 text-[14px] font-bold text-white">
+              <Sparkles size={17} className="animate-pulse text-ouro" /> {mensagem}
+            </div>
+          </div>
+        )}
+        {(estado === "ok" || estado === "erro") && (
+          <p
+            role="status"
+            className={`absolute inset-x-3 top-1/2 z-20 -translate-y-1/2 rounded-2xl px-4 py-2.5 text-center text-[14px] font-bold ${
+              estado === "ok" ? "bg-verde/90 text-[#03240f]" : "bg-red-500/90 text-white"
+            }`}
+          >
+            {mensagem}
+          </p>
+        )}
+      </div>
 
       <input ref={camera} type="file" accept="image/*" capture="environment" className="hidden"
         onChange={(e) => { void enviar(e.target.files?.[0]); e.target.value = ""; }} />

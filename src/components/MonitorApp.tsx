@@ -1310,182 +1310,192 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   return (
     <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
 
-      <div className="largura-aparelho relative px-3 pt-3 pb-[118px]">
+      {/* pb: o rodapé de navegação é estreito (~72 px) — o conteúdo só precisa
+          de folga para não ficar embaixo dele. */}
+      <div className="largura-aparelho relative px-3 pt-3 pb-[92px]">
         {/* =============================================== INÍCIO */}
         {aba === "inicio" && (
           <>
-            {/* topo: foto do caminhão (personalizável) atrás do logo e da saudação */}
-            <BannerCaminhao motoristaId={motorista?.id ?? null}>
-              <Cabecalho
-                nome={motorista ? primeiroNome(motorista.nome) : null}
-                onCompartilhar={compartilhar}
-              />
+            {/* topo: foto do caminhão (personalizável); logo e saudação no canto
+                esquerdo da base da foto, controles discretos no topo à direita */}
+            <BannerCaminhao
+              motoristaId={motorista?.id ?? null}
+              nome={motorista ? primeiroNome(motorista.nome) : null}
+            >
+              <Cabecalho onCompartilhar={compartilhar} />
             </BannerCaminhao>
 
             {/* ------------------------------------------ cartão do número */}
-            <motion.section
-              initial={reduzido ? false : { opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, ease: [0.2, 0.7, 0.3, 1] }}
-              className="cartao-monitor relative -mt-14 overflow-hidden rounded-[24px] px-3 pt-3 pb-5"
-            >
-              <div className="varredura" aria-hidden />
-
-              {/* tipo/livro + seta, no topo à direita: abre/fecha o painel completo */}
-              <div className="relative z-10 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setExpandido((v) => !v)}
-                  aria-expanded={expandido}
-                  title={expandido ? "Toque para recolher" : "Toque para abrir o painel"}
-                  className="-my-[11px] -mr-1 flex min-h-[44px] max-w-full items-center gap-1 rounded-full pl-3 text-white transition-colors hover:text-ciano"
-                >
-                  <span className="min-w-0 truncate font-display text-[14.5px] leading-[22px] font-bold">
-                    {alvo
-                      ? `${ROTULO[alvo.tipo]} - LIVRO ${alvo.livro}`
-                      : "Toque para cadastrar um ponto"}
-                  </span>
-                  {expandido ? (
-                    <ChevronUp size={28} className="shrink-0 text-azulclaro" />
-                  ) : (
-                    <ChevronDown size={28} className="shrink-0 text-azulclaro" />
-                  )}
-                </button>
-              </div>
-
-              {/* número + status (toque = abrir o painel; arrastar = trocar de ponto) */}
-              <motion.div
-                key={idx}
-                initial={reduzido ? false : { opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.35 }}
-                drag={total > 1 ? "x" : false}
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.12}
-                onDragStart={() => {
-                  arrastou.current = true;
-                }}
-                onDragEnd={(_, info) => {
-                  if (info.offset.x < -60 && idx < total - 1) setIdx(idx + 1);
-                  else if (info.offset.x > 60 && idx > 0) setIdx(idx - 1);
-                  setTimeout(() => {
-                    arrastou.current = false;
-                  }, 60);
-                }}
-                className="mt-5"
+            {/* O cartão começa exatamente nos últimos 5% da foto. A moldura da
+                imagem tem a proporção 1536×1024 (altura = largura ÷ 1,5), logo
+                5% da altura = 3,3333% da largura. A margem negativa em % é
+                resolvida contra a largura do elemento pai — por isso este
+                invólucro tem a MESMA largura da foto (full-bleed, -mx-3). */}
+            <div className="-mx-3">
+              <motion.section
+                initial={reduzido ? false : { opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, ease: [0.2, 0.7, 0.3, 1] }}
+                className="cartao-monitor relative mx-3 -mt-[3.3333%] overflow-hidden rounded-[24px] px-3 pt-3 pb-5"
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!arrastou.current) setExpandido((v) => !v);
+                <div className="varredura" aria-hidden />
+
+                {/* tipo/livro + seta, no topo à direita: abre/fecha o painel completo */}
+                <div className="relative z-10 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setExpandido((v) => !v)}
+                    aria-expanded={expandido}
+                    title={expandido ? "Toque para recolher" : "Toque para abrir o painel"}
+                    className="-my-[11px] -mr-1 flex min-h-[44px] max-w-full items-center gap-1 rounded-full pl-3 text-white transition-colors hover:text-ciano"
+                  >
+                    <span className="min-w-0 truncate font-display text-[14.5px] leading-[22px] font-bold">
+                      {alvo
+                        ? `${ROTULO[alvo.tipo]} - LIVRO ${alvo.livro}`
+                        : "Toque para cadastrar um ponto"}
+                    </span>
+                    {expandido ? (
+                      <ChevronUp size={28} className="shrink-0 text-azulclaro" />
+                    ) : (
+                      <ChevronDown size={28} className="shrink-0 text-azulclaro" />
+                    )}
+                  </button>
+                </div>
+
+                {/* número + status (toque = abrir o painel; arrastar = trocar de ponto) */}
+                <motion.div
+                  key={idx}
+                  initial={reduzido ? false : { opacity: 0, x: 24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.35 }}
+                  drag={total > 1 ? "x" : false}
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.12}
+                  onDragStart={() => {
+                    arrastou.current = true;
                   }}
-                  aria-expanded={expandido}
-                  title={expandido ? "Toque para recolher" : "Toque para abrir o painel"}
-                  className={`flex w-full flex-wrap items-center gap-y-2 pl-2 text-left ${
-                    alvo?.status === "AGUARDANDO" ? "gap-x-3" : "gap-x-4"
-                  }`}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.x < -60 && idx < total - 1) setIdx(idx + 1);
+                    else if (info.offset.x > 60 && idx > 0) setIdx(idx - 1);
+                    setTimeout(() => {
+                      arrastou.current = false;
+                    }, 60);
+                  }}
+                  className="mt-5"
                 >
-                  <span
-                    className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(47,155,255,0.45)] ${
-                      alvo && alvo.codigo.length > 3
-                        ? "text-[clamp(50px,15.5vw,66px)]"
-                        : "text-[clamp(64px,21.5vw,92px)]"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!arrastou.current) setExpandido((v) => !v);
+                    }}
+                    aria-expanded={expandido}
+                    title={expandido ? "Toque para recolher" : "Toque para abrir o painel"}
+                    className={`flex w-full flex-wrap items-center gap-y-2 pl-2 text-left ${
+                      alvo?.status === "AGUARDANDO" ? "gap-x-3" : "gap-x-4"
                     }`}
                   >
-                    {alvo ? alvo.codigo : "—"}
-                  </span>
-                  {alvo && (
                     <span
-                      className={`flex translate-y-[5px] items-center gap-3.5 rounded-full border border-[#1d4690]/80 bg-[#06122b]/90 ${
-                        alvo.status === "AGUARDANDO" ? "px-3 py-[7px]" : "px-4 py-3.5"
+                      className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(47,155,255,0.45)] ${
+                        alvo && alvo.codigo.length > 3
+                          ? "text-[clamp(50px,15.5vw,66px)]"
+                          : "text-[clamp(64px,21.5vw,92px)]"
                       }`}
                     >
-                      <Led cor={alvo.status === "AGUARDANDO" ? "verde" : "ambar"} pulsante tamanho={18} />
-                      <span className="flex flex-col">
-                        <span className={`font-display text-[20.5px] leading-[26px] font-bold ${corStatus}`}>
-                          {alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status}
-                        </span>
-                        {alvo.status === "AGUARDANDO" && (
-                          <span className="tabular whitespace-nowrap text-[12px] leading-[14px] font-semibold text-gelo/75">
-                            {alvo.vistoEm ? `${alvo.naFrente} na frente` : "Varrendo…"}
-                          </span>
-                        )}
-                      </span>
-                      {/* A posição completa continua acessível sem repetir o contador visível. */}
-                      <span className="sr-only">
-                        {alvo.status === "SAIU"
-                          ? alvo.detalhe
-                          : alvo.status === "AGUARDANDO" && alvo.vistoEm
-                            ? `fila nº ${alvo.posicao}`
-                            : `nº ${alvo.posicao} · ${alvo.detalhe}`}
-                      </span>
+                      {alvo ? alvo.codigo : "—"}
                     </span>
-                  )}
-                </button>
-              </motion.div>
+                    {alvo && (
+                      <span
+                        className={`flex translate-y-[5px] items-center gap-3.5 rounded-full border border-[#1d4690]/80 bg-[#06122b]/90 ${
+                          alvo.status === "AGUARDANDO" ? "px-3 py-[7px]" : "px-4 py-3.5"
+                        }`}
+                      >
+                        <Led cor={alvo.status === "AGUARDANDO" ? "verde" : "ambar"} pulsante tamanho={18} />
+                        <span className="flex flex-col">
+                          <span className={`font-display text-[20.5px] leading-[26px] font-bold ${corStatus}`}>
+                            {alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status}
+                          </span>
+                          {alvo.status === "AGUARDANDO" && (
+                            <span className="tabular whitespace-nowrap text-[12px] leading-[14px] font-semibold text-gelo/75">
+                              {alvo.vistoEm ? `${alvo.naFrente} na frente` : "Varrendo…"}
+                            </span>
+                          )}
+                        </span>
+                        {/* A posição completa continua acessível sem repetir o contador visível. */}
+                        <span className="sr-only">
+                          {alvo.status === "SAIU"
+                            ? alvo.detalhe
+                            : alvo.status === "AGUARDANDO" && alvo.vistoEm
+                              ? `fila nº ${alvo.posicao}`
+                              : `nº ${alvo.posicao} · ${alvo.detalhe}`}
+                        </span>
+                      </span>
+                    )}
+                  </button>
+                </motion.div>
 
-              {/* informações da fila */}
-              <div className="mt-[18px] space-y-3">
-                <FaixaInfo
-                  icone={<Clock size={24} strokeWidth={2.1} className="text-[#3b82f6]" />}
-                  anel="border-[#3b82f6]/70 bg-[#3b82f6]/10 shadow-[0_0_20px_-6px_rgba(59,130,246,0.9)]"
-                  rotulo="Último escalado"
-                  valor={ultimoEscalado}
-                  corValor="text-white"
-                  sub={ultimoQuando}
-                  divisor
-                />
-                <FaixaInfo
-                  icone={<Truck size={24} strokeWidth={2} className="text-[#f5a524]" />}
-                  anel="border-[#f5a524]/70 bg-[#f5a524]/10 shadow-[0_0_20px_-6px_rgba(245,165,36,0.9)]"
-                  rotulo="Pontos no quadro"
-                  destaque={{ texto: "TRUCK", cor: "text-[#ff9f2e]" }}
-                  valor={String(quadroTruck)}
-                  corValor="text-[#ff9f2e]"
-                  sub="ponto ativo"
-                />
-                <FaixaInfo
-                  icone={<Truck size={24} strokeWidth={2} className="text-[#22c55e]" />}
-                  anel="border-[#22c55e]/70 bg-[#22c55e]/10 shadow-[0_0_20px_-6px_rgba(34,197,94,0.9)]"
-                  rotulo="Pontos no quadro"
-                  destaque={{ texto: "CAVALO/C", cor: "text-[#3ee48a]" }}
-                  valor={String(quadroCavalo)}
-                  corValor="text-[#3ee48a]"
-                  sub="ponto ativo"
-                />
-              </div>
+                {/* informações da fila */}
+                <div className="mt-[18px] space-y-3">
+                  <FaixaInfo
+                    icone={<Clock size={24} strokeWidth={2.1} className="text-[#3b82f6]" />}
+                    anel="border-[#3b82f6]/70 bg-[#3b82f6]/10 shadow-[0_0_20px_-6px_rgba(59,130,246,0.9)]"
+                    rotulo="Último escalado"
+                    valor={ultimoEscalado}
+                    corValor="text-white"
+                    sub={ultimoQuando}
+                    divisor
+                  />
+                  <FaixaInfo
+                    icone={<Truck size={24} strokeWidth={2} className="text-[#f5a524]" />}
+                    anel="border-[#f5a524]/70 bg-[#f5a524]/10 shadow-[0_0_20px_-6px_rgba(245,165,36,0.9)]"
+                    rotulo="Pontos no quadro"
+                    destaque={{ texto: "TRUCK", cor: "text-[#ff9f2e]" }}
+                    valor={String(quadroTruck)}
+                    corValor="text-[#ff9f2e]"
+                    sub="ponto ativo"
+                  />
+                  <FaixaInfo
+                    icone={<Truck size={24} strokeWidth={2} className="text-[#22c55e]" />}
+                    anel="border-[#22c55e]/70 bg-[#22c55e]/10 shadow-[0_0_20px_-6px_rgba(34,197,94,0.9)]"
+                    rotulo="Pontos no quadro"
+                    destaque={{ texto: "CAVALO/C", cor: "text-[#3ee48a]" }}
+                    valor={String(quadroCavalo)}
+                    corValor="text-[#3ee48a]"
+                    sub="ponto ativo"
+                  />
+                </div>
 
-              {/* rodapé do cartão */}
-              <div className="mt-[22px] flex items-center justify-between gap-3 pl-1.5">
-                <span className="flex items-center gap-2 text-[15px] leading-6 text-gelo/90">
-                  <Clock size={24} strokeWidth={2} className="shrink-0 text-[#3b82f6]" />
-                  <span className="tabular" title={estado.temLeitura ? `Última leitura real do quadro: ${hora(estado.atualizadoEm)}` : undefined}>
-                    {estado.temLeitura === false
-                      ? "Aguardando 1ª leitura"
-                      : `Atualizado há ${decorrido(estado.atualizadoEm, agora + desvioRelogio)}`}
+                {/* rodapé do cartão */}
+                <div className="mt-[22px] flex items-center justify-between gap-3 pl-1.5">
+                  <span className="flex items-center gap-2 text-[15px] leading-6 text-gelo/90">
+                    <Clock size={24} strokeWidth={2} className="shrink-0 text-[#3b82f6]" />
+                    <span className="tabular" title={estado.temLeitura ? `Última leitura real do quadro: ${hora(estado.atualizadoEm)}` : undefined}>
+                      {estado.temLeitura === false
+                        ? "Aguardando 1ª leitura"
+                        : `Atualizado há ${decorrido(estado.atualizadoEm, agora + desvioRelogio)}`}
+                    </span>
                   </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={atualizar}
-                  title="Varrer o site agora"
-                  className="-my-2.5 flex items-center gap-2 rounded-full px-2 py-2.5 transition-colors hover:bg-white/5"
-                >
-                  {ocupado ? (
-                    <RotateCw size={14} className="animate-spin text-verde" />
-                  ) : (
-                    <Led cor={estado.online ? "verde" : "ambar"} />
-                  )}
-                  <span
-                    className={`font-display text-[18px] leading-6 font-bold ${
-                      estado.online ? "text-verde" : "text-ambar"
-                    }`}
+                  <button
+                    type="button"
+                    onClick={atualizar}
+                    title="Varrer o site agora"
+                    className="-my-2.5 flex items-center gap-2 rounded-full px-2 py-2.5 transition-colors hover:bg-white/5"
                   >
-                    {estado.online ? "ONLINE" : "OFFLINE"}
-                  </span>
-                </button>
-              </div>
-            </motion.section>
+                    {ocupado ? (
+                      <RotateCw size={14} className="animate-spin text-verde" />
+                    ) : (
+                      <Led cor={estado.online ? "verde" : "ambar"} />
+                    )}
+                    <span
+                      className={`font-display text-[18px] leading-6 font-bold ${
+                        estado.online ? "text-verde" : "text-ambar"
+                      }`}
+                    >
+                      {estado.online ? "ONLINE" : "OFFLINE"}
+                    </span>
+                  </button>
+                </div>
+              </motion.section>
+            </div>
 
             {/* painel completo: abre ao tocar no número */}
             {expandido && (

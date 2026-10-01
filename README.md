@@ -183,16 +183,33 @@ aviso. O usuário pode revogar o acesso a notificações no Android quando quise
 
 ## Imagem do topo personalizável
 
-A tela inicial mostra uma foto de caminhão atrás do logo e da saudação
-(`public/images/caminhao-padrao.webp`). A foto é mostrada **nítida, sem véu
-azul** (era assim antes e sujava o céu): a máscara `.imagem-nitida`
-(`src/app/globals.css`) deixa 0–95% exatamente como o arquivo original e só os
-últimos **5% da base** se dissolvem no `#002b6b` do app, para não ficar linha
-dura. Os controles sobre a foto — compartilhar, previsão do tempo e trocar a
-imagem — são discretos de propósito: ícone pequeno (17 px), ganho de toque de
-44 px, fundo `bg-black/20` e borda `border-white/10`, sem caixa azul pesada.
+A tela inicial mostra uma foto de caminhão no topo
+(`public/images/caminhao-padrao.webp`), numa moldura com a **proporção do
+arquivo original (1536×1024)** — nada de deformar a imagem nem sobrar azul. A
+foto é mostrada **nítida, sem véu azul** (era assim antes e sujava o céu): a
+máscara `.imagem-nitida` (`src/app/globals.css`) deixa 0–95% exatamente como o
+arquivo original e só os últimos **5% da base** se dissolvem no `#002b6b` do
+app, para não ficar linha dura.
+
+O **cartão do número começa exatamente nos 5% finais da foto**: 5% da altura =
+3,3333% da largura (altura = largura ÷ 1,5), e o cartão sobe com
+`-mt-[3.3333%]` dentro de um invólucro full-bleed (`-mx-3`) com a mesma largura
+da imagem, para a conta valer em qualquer tela. A **logo e a saudação do
+motorista** ficam no **canto esquerdo da parte de baixo da foto**
+(`BannerCaminhao`, `bottom-[calc(5%_+_8px)] left-3`) — logo acima do cartão,
+dentro da faixa de 5%, com o nome cortado em reticências para não invadir o
+botão da câmera. O topo da foto ficou só com os controles discretos:
+compartilhar, previsão do tempo e trocar a imagem — ícone pequeno (17 px),
+ganho de toque de 44 px, fundo `bg-black/20` e borda `border-white/10`, sem
+caixa azul pesada.
+
+O **rodapé de navegação é uma faixa estreita** (~69 px): ícones de 22 px,
+rótulos de 12,5 px e o botão do chat de 48 px — sobra mais tela para o
+conteúdo (o `pb` do app acompanha, `pb-[92px]`).
+
 **Nada de voltar a cobrir a foto com degradê no topo, na esquerda ou com
-brilho** — `tests/layout-largura.test.ts` trava isso. Em **Personalizar imagem** o motorista
+brilho**, nem de subir o cartão além dos 5% — `tests/layout-largura.test.ts`
+trava isso. Em **Personalizar imagem** o motorista
 tira uma foto ou escolhe da galeria; o celular reduz a foto e envia para
 `POST /api/motoristas/banner`. O servidor (`src/lib/banner.ts`) valida tipo
 (JPG/PNG/WebP), tamanho (até 8 MB) e se é imagem de verdade, e manda para o
