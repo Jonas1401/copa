@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Camera, ImageIcon, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
 import { LOGO } from "@/lib/logo";
 
-export const BANNER_PADRAO = "/images/caminhao-padrao.webp";
+export const BANNER_PADRAO = "https://github.com/user-attachments/assets/9d4fca0f-8de0-4476-9ca5-f6b92d6e38f9";
 const LADO_MAX = 1600;
 
 type Estado = "parado" | "processando" | "ok" | "erro";
@@ -157,12 +157,9 @@ export default function BannerCaminhao({
           <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,#002b6b_100%)]" />
         </div>
 
-        {/* controles do topo (compartilhar, previsão do tempo) e legenda */}
+        {/* controles do topo (compartilhar e previsão do tempo) */}
         <div className="absolute inset-x-0 top-0 px-3 pt-3">
           {children}
-          <p className="mt-1 max-w-[62%] text-[14px] leading-snug text-gelo/90 drop-shadow-[0_1px_8px_rgba(0,0,0,0.85)]">
-            Aqui está o resumo da sua operação de hoje.
-          </p>
         </div>
 
         {/* logo + nome do motorista: canto esquerdo da parte de baixo da foto,
