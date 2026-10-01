@@ -525,9 +525,10 @@ function haQuanto(iso: string, agora: number) {
   return `há ${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
 }
 
-/** Linha de informação: ícone simples, texto e valor. */
+/** Linha de informação: ícone em anel, texto e valor (com a seta à direita). */
 function FaixaInfo({
   icone,
+  anel,
   rotulo,
   destaque,
   valor,
@@ -536,6 +537,8 @@ function FaixaInfo({
   divisor = false,
 }: {
   icone: React.ReactNode;
+  /** Cor do anel do ícone (borda + brilho). */
+  anel: string;
   rotulo: string;
   destaque?: { texto: string; cor: string };
   valor: string;
@@ -545,8 +548,12 @@ function FaixaInfo({
   divisor?: boolean;
 }) {
   return (
-    <div className="flex min-h-[67px] w-full items-center gap-3 rounded-[24px] border border-[#2a5bb0]/70 bg-[#0a2144]/85 py-2.5 pr-3.5 pl-4 text-left">
-      <span className="shrink-0">{icone}</span>
+    <div className="flex min-h-[67px] w-full items-center gap-3 rounded-[24px] border border-[#2a5bb0]/70 bg-[#0a2144]/85 py-2.5 pr-2.5 pl-3 text-left">
+      <span
+        className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full border-[1.5px] ${anel}`}
+      >
+        {icone}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block font-display text-[14.5px] leading-tight font-extrabold text-white">
           {rotulo}
@@ -554,12 +561,18 @@ function FaixaInfo({
         </span>
         <span className="mt-1 block text-[13px] leading-tight text-gelo/75">{sub}</span>
       </span>
-      <span className={`flex shrink-0 items-center ${divisor ? "h-[35px] border-l border-gelo/25 pl-6" : ""}`}>
+      <span className={`flex shrink-0 items-center ${divisor ? "h-[35px] border-l border-gelo/25 pl-5" : ""}`}>
         <span
           className={`tabular font-display text-[clamp(24px,7.3vw,31px)] leading-none font-extrabold ${corValor}`}
         >
           {valor}
         </span>
+        <ChevronRight
+          aria-hidden
+          size={22}
+          strokeWidth={2.6}
+          className="ml-1 shrink-0 text-gelo/70"
+        />
       </span>
     </div>
   );
@@ -1384,7 +1397,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   }`}
                 >
                   <span
-                    className={`tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] text-[#3fe8d0] drop-shadow-[0_0_28px_rgba(63,232,208,0.35)] ${
+                    className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(47,155,255,0.45)] ${
                       alvo && alvo.codigo.length > 3
                         ? "text-[clamp(50px,15.5vw,66px)]"
                         : "text-[clamp(64px,21.5vw,92px)]"
@@ -1425,7 +1438,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               {/* informações da fila */}
               <div className="mt-[18px] space-y-3">
                 <FaixaInfo
-                  icone={<Clock size={33} strokeWidth={2} className="text-[#3b82f6]" />}
+                  icone={<Clock size={24} strokeWidth={2.1} className="text-[#3b82f6]" />}
+                  anel="border-[#3b82f6]/70 bg-[#3b82f6]/10 shadow-[0_0_20px_-6px_rgba(59,130,246,0.9)]"
                   rotulo="Último escalado"
                   valor={ultimoEscalado}
                   corValor="text-white"
@@ -1433,7 +1447,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   divisor
                 />
                 <FaixaInfo
-                  icone={<Truck size={34} strokeWidth={1.8} className="text-[#f5a524]" />}
+                  icone={<Truck size={24} strokeWidth={2} className="text-[#f5a524]" />}
+                  anel="border-[#f5a524]/70 bg-[#f5a524]/10 shadow-[0_0_20px_-6px_rgba(245,165,36,0.9)]"
                   rotulo="Pontos no quadro"
                   destaque={{ texto: "TRUCK", cor: "text-[#ff9f2e]" }}
                   valor={String(quadroTruck)}
@@ -1441,7 +1456,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   sub="ponto ativo"
                 />
                 <FaixaInfo
-                  icone={<Truck size={34} strokeWidth={1.8} className="text-[#22c55e]" />}
+                  icone={<Truck size={24} strokeWidth={2} className="text-[#22c55e]" />}
+                  anel="border-[#22c55e]/70 bg-[#22c55e]/10 shadow-[0_0_20px_-6px_rgba(34,197,94,0.9)]"
                   rotulo="Pontos no quadro"
                   destaque={{ texto: "CAVALO/C", cor: "text-[#3ee48a]" }}
                   valor={String(quadroCavalo)}

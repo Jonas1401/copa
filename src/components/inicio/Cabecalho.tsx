@@ -68,7 +68,10 @@ export default function Cabecalho({
         <h1 className="order-last w-full min-w-0 font-display text-[clamp(22px,6.6vw,26px)] leading-tight font-extrabold text-white [overflow-wrap:anywhere] min-[460px]:order-none min-[460px]:w-auto min-[460px]:flex-1 min-[460px]:text-center min-[460px]:text-[24px]">
           {nome ? (
             <>
-              Olá, <span className="text-ouro">{nome}!</span>
+              Olá,{" "}
+              <span className="text-[#3a9dff] drop-shadow-[0_0_18px_rgba(58,157,255,0.45)]">
+                {nome}!
+              </span>
             </>
           ) : (
             "Olá!"
