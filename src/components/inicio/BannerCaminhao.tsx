@@ -102,9 +102,11 @@ export default function BannerCaminhao({ motoristaId, children }: { motoristaId:
           onError={() => setFalhou(true)}
           className="banner-entra absolute inset-0 h-full w-full object-cover object-[68%_46%]"
         />
-        {/* integração em degradê com o fundo azul: protege a leitura no topo/esquerda e dissolve a base no azul do app */}
+        {/* integração em degradê com o fundo azul: limpa o topo (58%), funde a base (44%) no #002b6b, protege a esquerda e limpa a linha da legenda */}
+        <div className="absolute inset-x-0 top-0 h-[58%] bg-[linear-gradient(180deg,#002b6b_0%,rgba(0,43,107,0.9)_26%,rgba(0,36,92,0.52)_62%,rgba(0,43,107,0)_100%)]" />
+        <div className="absolute inset-x-0 bottom-0 h-[44%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,rgba(0,48,118,0.7)_56%,#002b6b_100%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,18,52,0.72)_0%,rgba(0,24,68,0.34)_42%,rgba(0,24,68,0)_70%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,15,44,0.42)_0%,rgba(0,28,78,0)_28%,rgba(0,43,107,0)_50%,rgba(0,52,128,0.68)_76%,#002b6b_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(75%_55%_at_20%_48%,rgba(0,38,98,0.58)_0%,rgba(0,43,107,0)_75%)]" />
       </div>
 
       <div className="relative px-3 pt-3 pb-[78px]">
