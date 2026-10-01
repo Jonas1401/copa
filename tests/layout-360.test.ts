@@ -14,7 +14,17 @@ test("telas não usam mais a foto do navio como fundo", () => {
   for (const p of TELAS) {
     const s = ler(p);
     assert.ok(!s.includes("FUNDO.src"), `${p} ainda usa a foto de fundo`);
-    assert.ok(s.includes("#063a78"), `${p} sem a cor azul do fundo`);
+    assert.ok(s.includes("#002b6b") && s.includes("fundo-app"), `${p} sem a cor azul do fundo`);
+  }
+});
+
+test("imagens de topo usam degradê suave para se fundir ao fundo azul", () => {
+  const css = ler("src/app/globals.css");
+  assert.ok(css.includes(".imagem-degrade"), "globals.css sem a classe .imagem-degrade");
+  for (const p of ["src/components/inicio/BannerCaminhao.tsx", "src/components/tempo/TempoApp.tsx"]) {
+    const s = ler(p);
+    assert.ok(s.includes("imagem-degrade"), `${p} sem degradê de máscara na imagem`);
+    assert.ok(s.includes("#002b6b"), `${p} não funde a base na cor azul do fundo`);
   }
 });
 

@@ -202,18 +202,20 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
         : { borda: "border-[#38b6ff]/60", barra: "bg-[#38b6ff]", texto: "text-[#38b6ff]" };
 
   return (
-    <div className="relative min-h-screen w-full bg-[#063a78]">
+    <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
 
       <main className="relative mx-auto w-full max-w-[360px] pb-10">
         {/* ------------------------------------------------ cabeçalho */}
-        <header className="relative overflow-hidden px-4 pt-4 pb-5">
-          <img
-            src="/images/tempo-topo.webp"
-            alt=""
-            aria-hidden
-            className="absolute inset-0 h-full w-full object-cover object-right"
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(5,15,40,0.92)_0%,rgba(5,15,40,0.6)_55%,rgba(5,15,40,0.15)_100%),linear-gradient(180deg,transparent_60%,#0a1d45_100%)]" />
+        <header className="relative overflow-x-clip px-4 pt-4 pb-5">
+          <div aria-hidden className="imagem-degrade pointer-events-none absolute inset-x-0 top-0 -bottom-4 overflow-hidden">
+            <img
+              src="/images/tempo-topo.webp"
+              alt=""
+              aria-hidden
+              className="absolute inset-0 h-full w-full object-cover object-right"
+            />
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,18,52,0.88)_0%,rgba(0,28,78,0.55)_55%,rgba(0,28,78,0.12)_100%),linear-gradient(180deg,transparent_48%,rgba(0,43,107,0.75)_78%,#002b6b_100%)]" />
+          </div>
           <div className="relative flex items-center gap-3">
             <IconeLinha icone="sol-nuvem" tamanho={44} className="!text-[#ffc83d]" />
             <div className="min-w-0 flex-1">

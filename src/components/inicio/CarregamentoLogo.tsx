@@ -67,7 +67,7 @@ export default function CarregamentoLogo({ pronto, onTerminar }: { pronto: boole
       className={`carga-tela fixed inset-0 z-[95] flex flex-col items-center justify-center overflow-hidden px-6 transition-[opacity,transform] duration-500 ease-out ${
         saindo ? "pointer-events-none scale-[1.04] opacity-0" : "opacity-100"
       }`}
-      style={{ background: "radial-gradient(120% 75% at 50% 38%, #10306e 0%, #06173a 48%, #020812 100%)" }}
+      style={{ background: "radial-gradient(110% 65% at 50% 42%, #00479e 0%, #002b6b 54%, #000d28 100%)" }}
     >
       {/* grade suave do pátio ao fundo */}
       <div

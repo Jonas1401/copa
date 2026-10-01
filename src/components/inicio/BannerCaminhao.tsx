@@ -87,22 +87,25 @@ export default function BannerCaminhao({ motoristaId, children }: { motoristaId:
   const src = motoristaId && versao && !falhou ? `/api/motoristas/banner/imagem?v=${versao}` : BANNER_PADRAO;
 
   return (
-    <div className="relative -mx-3 -mt-3 overflow-hidden">
-      {/* foto: caminhão à direita, sem deformar (recorte inteligente + object-cover) */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        key={src}
-        src={src}
-        alt=""
-        aria-hidden
-        fetchPriority="high"
-        decoding="async"
-        onError={() => setFalhou(true)}
-        className="banner-entra absolute inset-0 h-full w-full object-cover object-[68%_50%]"
-      />
-      {/* integração com o fundo: escurece o lado do texto e funde a base com a página */}
-      <div aria-hidden className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,12,32,0.82)_0%,rgba(3,12,32,0.45)_42%,rgba(3,12,32,0)_70%)]" />
-      <div aria-hidden className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,12,32,0.55)_0%,rgba(3,12,32,0)_30%,rgba(3,12,32,0)_62%,rgba(4,16,31,0.96)_100%)]" />
+    <div className="relative -mx-3 -mt-3 overflow-x-clip">
+      {/* camada da foto com degradê suave fundindo na cor azul do fundo do app */}
+      <div aria-hidden className="imagem-degrade pointer-events-none absolute inset-x-0 top-0 -bottom-8 overflow-hidden">
+        {/* foto: caminhão à direita, sem deformar (recorte inteligente + object-cover) */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          key={src}
+          src={src}
+          alt=""
+          aria-hidden
+          fetchPriority="high"
+          decoding="async"
+          onError={() => setFalhou(true)}
+          className="banner-entra absolute inset-0 h-full w-full object-cover object-[68%_46%]"
+        />
+        {/* integração em degradê com o fundo azul: protege a leitura no topo/esquerda e dissolve a base no azul do app */}
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,18,52,0.72)_0%,rgba(0,24,68,0.34)_42%,rgba(0,24,68,0)_70%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,15,44,0.42)_0%,rgba(0,28,78,0)_28%,rgba(0,43,107,0)_50%,rgba(0,52,128,0.68)_76%,#002b6b_100%)]" />
+      </div>
 
       <div className="relative px-3 pt-3 pb-[78px]">
         {children}
