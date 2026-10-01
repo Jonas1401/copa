@@ -88,8 +88,8 @@ export default function BannerCaminhao({ motoristaId, children }: { motoristaId:
 
   return (
     <div className="relative -mx-3 -mt-3 overflow-x-clip">
-      {/* camada da foto com degradê suave fundindo na cor azul do fundo do app */}
-      <div aria-hidden className="imagem-degrade pointer-events-none absolute inset-x-0 top-0 -bottom-8 overflow-hidden">
+      {/* camada da foto: nítida de cima até a base, só os últimos 5% em degradê */}
+      <div aria-hidden className="imagem-nitida pointer-events-none absolute inset-x-0 top-0 -bottom-8 overflow-hidden">
         {/* foto: caminhão à direita, sem deformar (recorte inteligente + object-cover) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -102,16 +102,13 @@ export default function BannerCaminhao({ motoristaId, children }: { motoristaId:
           onError={() => setFalhou(true)}
           className="banner-entra absolute inset-0 h-full w-full object-cover object-[68%_46%]"
         />
-        {/* integração em degradê com o fundo azul: limpa o topo (58%), funde a base (44%) no #002b6b, protege a esquerda e limpa a linha da legenda */}
-        <div className="absolute inset-x-0 top-0 h-[58%] bg-[linear-gradient(180deg,#002b6b_0%,rgba(0,43,107,0.9)_26%,rgba(0,36,92,0.52)_62%,rgba(0,43,107,0)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-[44%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,rgba(0,48,118,0.7)_56%,#002b6b_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,18,52,0.72)_0%,rgba(0,24,68,0.34)_42%,rgba(0,24,68,0)_70%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(75%_55%_at_20%_48%,rgba(0,38,98,0.58)_0%,rgba(0,43,107,0)_75%)]" />
+        {/* integração com o fundo azul: só a base da foto (5%) se dissolve no #002b6b */}
+        <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,#002b6b_100%)]" />
       </div>
 
       <div className="relative px-3 pt-3 pb-[78px]">
         {children}
-        <p className="mt-1 max-w-[62%] text-[14px] leading-snug text-gelo/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+        <p className="mt-1 max-w-[62%] text-[14px] leading-snug text-gelo/90 drop-shadow-[0_1px_8px_rgba(0,0,0,0.85)]">
           Aqui está o resumo da sua operação de hoje.
         </p>
       </div>
@@ -122,10 +119,10 @@ export default function BannerCaminhao({ motoristaId, children }: { motoristaId:
           onClick={() => setMenu(true)}
           disabled={estado === "processando"}
           aria-label="Personalizar imagem"
-          className="absolute right-3 bottom-[68px] z-10 flex items-center gap-1.5 rounded-full border border-white/20 bg-[#06173a]/70 px-3 py-2 text-[12.5px] font-bold text-white backdrop-blur-md transition-colors hover:border-ciano/70 disabled:opacity-60"
+          title="Personalizar imagem"
+          className="absolute right-2.5 bottom-[72px] z-10 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/55 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white disabled:opacity-50"
         >
-          {estado === "processando" ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
-          Personalizar imagem
+          {estado === "processando" ? <Loader2 size={15} className="animate-spin" /> : <Camera size={16} strokeWidth={1.8} />}
         </button>
       )}
 
