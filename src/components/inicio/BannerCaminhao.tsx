@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Camera, ImageIcon, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
 import { LOGO } from "@/lib/logo";
 
-export const BANNER_PADRAO = "/images/caminhao-padrao.webp";
+export const BANNER_PADRAO = "https://github.com/user-attachments/assets/9d4fca0f-8de0-4476-9ca5-f6b92d6e38f9";
 const LADO_MAX = 1600;
 
 type Estado = "parado" | "processando" | "ok" | "erro";
