@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { Share2 } from "lucide-react";
 import type { Icone } from "@/lib/tempo";
 import { IconeLinha } from "@/components/tempo/IconeTempo";
-import { LOGO } from "@/lib/logo";
 
 type Agora = { temperatura: number; descricao: string; icone: Icone };
 
@@ -46,53 +45,30 @@ function ChipClima() {
   );
 }
 
-export default function Cabecalho({
-  nome,
-  onCompartilhar,
-}: {
-  /** Primeiro nome do motorista ("Mestre" só existe na tela de boas-vindas). */
-  nome?: string | null;
-  onCompartilhar: () => void;
-}) {
+/**
+ * Controles do topo da foto do caminhão. A logo e a saudação saíram daqui:
+ * agora vivem no canto esquerdo da base da imagem (ver `BannerCaminhao`), logo
+ * acima do cartão do número. Aqui ficam só os controles discretos, alinhados à
+ * direita, para não tapar a frente do caminhão.
+ */
+export default function Cabecalho({ onCompartilhar }: { onCompartilhar: () => void }) {
   return (
-    <>
-      <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <img
-          src={LOGO.src}
-          alt="CopaLinks"
-          width={LOGO.largura}
-          height={LOGO.altura}
-          className="h-[50px] w-auto max-w-[46vw] shrink-0 object-contain sm:h-[60px]"
-        />
-        <h1 className="order-last w-full min-w-0 font-display text-[clamp(22px,6.6vw,26px)] leading-tight font-extrabold text-white drop-shadow-[0_2px_12px_rgba(0,10,30,0.75)] [overflow-wrap:anywhere] min-[460px]:order-none min-[460px]:w-auto min-[460px]:flex-1 min-[460px]:text-center min-[460px]:text-[24px]">
-          {nome ? (
-            <>
-              Olá,{" "}
-              <span className="text-[#3a9dff] drop-shadow-[0_0_18px_rgba(58,157,255,0.45)]">
-                {nome}!
-              </span>
-            </>
-          ) : (
-            "Olá!"
-          )}
-        </h1>
-        {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
-            para não brigar com a foto do caminhão. Ganhos de toque mantidos
-            em 44 px (acessibilidade). */}
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onCompartilhar}
-            aria-label="Compartilhar o aplicativo"
-            title="Compartilhar"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/65 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white sm:h-12 sm:w-12"
-          >
-            <Share2 size={17} strokeWidth={1.8} />
-          </button>
-          <ChipClima />
-        </div>
-      </header>
-
-    </>
+    <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+      {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
+          para não brigar com a foto do caminhão. Ganhos de toque mantidos
+          em 44 px (acessibilidade). */}
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onCompartilhar}
+          aria-label="Compartilhar o aplicativo"
+          title="Compartilhar"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/65 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white sm:h-12 sm:w-12"
+        >
+          <Share2 size={17} strokeWidth={1.8} />
+        </button>
+        <ChipClima />
+      </div>
+    </header>
   );
 }
