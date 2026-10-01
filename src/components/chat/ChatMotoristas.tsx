@@ -230,7 +230,7 @@ export default function ChatMotoristas({
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22 }}
-      className="fixed inset-0 z-[65] flex flex-col bg-[#063a78]"
+      className="fundo-app fixed inset-0 z-[65] flex flex-col bg-[#002b6b]"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_50%_at_50%_0%,rgba(30,90,190,0.32),transparent_60%)]" />
 

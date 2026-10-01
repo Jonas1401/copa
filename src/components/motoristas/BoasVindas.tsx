@@ -50,7 +50,7 @@ export default function BoasVindas({
     "w-full appearance-none rounded-full border-[1.5px] border-[#2a5bb0]/80 bg-[#06122b]/85 px-4 py-3 font-display text-[16px] font-bold text-white outline-none transition-colors placeholder:font-medium placeholder:text-gelo/40 focus:border-ciano/80";
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#063a78]">
+    <div className="fundo-app fixed inset-0 z-[80] overflow-y-auto bg-[#002b6b]">
 
       <motion.form
         onSubmit={entrar}

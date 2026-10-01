@@ -20,19 +20,39 @@
 
 html,
 body {
-  background-color: #063a78;
+  background-color: #002b6b;
+  background-image: radial-gradient(110% 65% at 50% 42%, #00479e 0%, #002b6b 54%, #000d28 100%);
+  background-attachment: fixed;
   color: var(--color-gelo);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-/* --- fundo da tela inicial (azul-marinho como na referência) --------- */
+/* --- fundo da tela inicial (azul-marinho com brilho central como na referência) --- */
 .fundo-app {
-  background:
-    radial-gradient(120% 60% at 50% -10%, rgba(30, 90, 190, 0.35), transparent 60%),
-    radial-gradient(90% 50% at 100% 60%, rgba(20, 60, 150, 0.22), transparent 70%),
-    linear-gradient(180deg, #0a1d45 0%, #071636 45%, #050f28 100%);
+  background-color: #002b6b;
+  background-image: radial-gradient(110% 65% at 50% 42%, #00479e 0%, #002b6b 54%, #000d28 100%);
   background-attachment: fixed;
+}
+
+/* --- degradê suave para imagens de topo se fundirem ao fundo azul do app --- */
+.imagem-degrade {
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 52%,
+    rgba(0, 0, 0, 0.78) 68%,
+    rgba(0, 0, 0, 0.32) 85%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 52%,
+    rgba(0, 0, 0, 0.78) 68%,
+    rgba(0, 0, 0, 0.32) 85%,
+    transparent 100%
+  );
 }
 
 .cartao-monitor {

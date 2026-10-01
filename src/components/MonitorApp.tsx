@@ -1308,7 +1308,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
 
 
   return (
-    <div className="relative min-h-screen w-full bg-[#063a78]">
+    <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
 
       <div className="relative mx-auto w-full max-w-[360px] px-3 pt-3 pb-[118px]">
         {/* =============================================== INÍCIO */}

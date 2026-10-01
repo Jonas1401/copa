@@ -80,7 +80,7 @@ export default function MonitorDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-[#050f28] px-4 pb-16 text-white">
+    <main className="fundo-app min-h-screen bg-[#002b6b] px-4 pb-16 text-white">
       <div className="mx-auto max-w-4xl pt-7">
         <Link href="/admin" className="inline-flex items-center gap-2 text-sm text-[#9cbbeb] hover:text-white">
           <ArrowLeft size={18} /> Voltar ao administrador
