@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Calculator,
   ChevronRight,
@@ -120,19 +121,41 @@ export default function Servicos({
 }: {
   onSemLink: (s: Servico) => void;
 }) {
+  // Como na referência: uma linha de cards e o "Ver todos" para revelar o resto.
+  const [mostrarTodos, setMostrarTodos] = useState(false);
+  const visiveis = mostrarTodos ? SERVICOS : SERVICOS.slice(0, 2);
+  const temMais = SERVICOS.length > 2;
   return (
     <section className="rounded-[26px] border border-[#1d4690]/60 bg-[#0a1c42]/70 p-4">
-      <h2 className="mb-4 flex items-center gap-3 px-1 font-display text-[22px] font-extrabold tracking-[0.02em] text-white uppercase">
-        <LayoutGrid size={26} strokeWidth={2.2} className="text-gelo" />
-        Serviços
-      </h2>
+      <header className="mb-4 flex items-center justify-between gap-3 px-1">
+        <h2 className="flex items-center gap-3 font-display text-[22px] font-extrabold tracking-[0.02em] text-white uppercase">
+          <LayoutGrid size={26} strokeWidth={2.2} className="text-gelo" />
+          Serviços
+        </h2>
+        {temMais && (
+          <button
+            type="button"
+            onClick={() => setMostrarTodos((v) => !v)}
+            aria-expanded={mostrarTodos}
+            title={mostrarTodos ? "Mostrar menos serviços" : "Mostrar todos os serviços"}
+            className="flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-1.5 font-display text-[15px] font-bold text-white transition-colors hover:text-ciano"
+          >
+            {mostrarTodos ? "Ver menos" : "Ver todos"}
+            <ChevronRight
+              size={19}
+              strokeWidth={2.4}
+              className={`transition-transform ${mostrarTodos ? "rotate-90" : ""}`}
+            />
+          </button>
+        )}
+      </header>
       <div className="grid grid-cols-2 gap-2.5 min-[400px]:gap-3">
-        {SERVICOS.map((s, i) => (
+        {visiveis.map((s, i) => (
           <CartaoServico
             key={s.id}
             s={s}
             // número ímpar de cards: o último ocupa a linha inteira
-            largo={SERVICOS.length % 2 === 1 && i === SERVICOS.length - 1}
+            largo={visiveis.length % 2 === 1 && i === visiveis.length - 1}
             onSemLink={onSemLink}
           />
         ))}

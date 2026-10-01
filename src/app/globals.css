@@ -49,6 +49,15 @@ body {
   color: var(--color-abismo);
 }
 
+/* --- número gigante do cartão: gradiente azul → ciano (como na referência) */
+.numero-gradiente {
+  background-image: linear-gradient(118deg, #2f9bff 0%, #46c2ff 45%, #8ef0ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
 /* --- micro rótulos em versalete travado ------------------------------ */
 .micro {
   font-family: var(--font-sans);

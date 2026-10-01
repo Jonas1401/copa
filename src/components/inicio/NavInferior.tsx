@@ -45,10 +45,8 @@ export default function NavInferior({
                   ? `${rotulo} · ${totalMotoristas} motorista${totalMotoristas === 1 ? "" : "s"}`
                   : undefined
               }
-              className={`flex flex-col items-center justify-center gap-1 rounded-[22px] border-2 py-2 transition-colors ${
-                ativo
-                  ? "border-ouro bg-ouro/5 text-ouro"
-                  : "border-transparent text-aco hover:text-gelo"
+              className={`flex flex-col items-center justify-center gap-1 rounded-[22px] border-2 border-transparent py-2 transition-colors ${
+                ativo ? "text-ouro" : "text-aco hover:text-gelo"
               }`}
             >
               <span className="relative">
@@ -67,6 +65,13 @@ export default function NavInferior({
                 )}
               </span>
               <span className="text-[15px] font-semibold">{rotulo}</span>
+              {/* traço dourado embaixo do item ativo (como na referência) */}
+              <span
+                aria-hidden
+                className={`h-[3px] w-10 rounded-full transition-colors ${
+                  ativo ? "bg-ouro shadow-[0_0_10px_rgba(245,197,24,0.85)]" : "bg-transparent"
+                }`}
+              />
             </button>
           );
           if (i !== 0) return botao;
