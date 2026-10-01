@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { ehFertilizante, lerLineup, lerManobras, lerMares, manobraDo } from "@/lib/navios";
+import {
+  deveRodarFallback,
+  dispararAlertasEmBackground,
+} from "@/lib/alertas-fallback";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/navios → navios de FERTILIZANTES em Paranaguá e Antonina (dados
  * públicos da APPA + SINPRAPAR) e as próximas marés. Sem dados de usuários.
+ *
+ * Assim como /api/tempo, aqui também damos uma chance aos alertas de clima
+ * e navios rodarem em background, quando o cron externo não está vivo.
  */
 export async function GET() {
   try {
@@ -14,6 +21,9 @@ export async function GET() {
       lerManobras().catch(() => []),
       lerMares().catch(() => []),
     ]);
+    if (await deveRodarFallback().catch(() => false)) {
+      dispararAlertasEmBackground();
+    }
     const vistos = new Set<string>();
     const navios = lineup
       .filter((n) => ehFertilizante(n.mercadoria) && n.secao !== "DESPACHADOS")

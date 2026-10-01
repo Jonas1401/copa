@@ -1,0 +1,60 @@
+# Keepalive do /api/cron do CopaLinks.
+#
+# Dispara a cada 5 minutos, 24h por dia, chamando a rota com CRON_SECRET
+# (ou SUPABASE_CRON_SECRET) em HTTP GET. Funciona em QUALQUER plano da
+# Vercel (inclusive Hobby), sem depender de Supabase pg_cron, e também
+# funciona se o site estiver hospedado em outra plataforma que não
+# ofereça cron por minuto.
+#
+# Para usar:
+#   1. No repositório do GitHub, Settings → Secrets and variables → Actions
+#      → New repository secret:
+#         - CRON_URL : URL completa do /api/cron em produção
+#                      (ex.: https://copalinks.app/api/cron)
+#         - CRON_SECRET : o mesmo valor da variável de ambiente CRON_SECRET
+#                      configurada na Vercel.
+#   2. Se CRON_SECRET não estiver definido no servidor, pode enviar o
+#      wake token em CRON_WAKE_TOKEN (obtido uma vez em /api/cron/wake).
+#
+# Sem nenhum segredo configurado na Vercel, o endpoint roda aberto e
+# basta CRON_URL.
+
+name: copalinks-cron-keepalive
+
+on:
+  schedule:
+    # A cada 5 minutos (GitHub Actions só aceita granularidade de minuto;
+    # o /api/cron tem antispam interno, então ligar de 5 em 5 min já
+    # garante alertas de chuva e navios, e o keepalive do Service Worker
+    # cobre os outros minutos quando há algum navegador por perto).
+    - cron: "*/5 * * * *"
+  workflow_dispatch: # permite disparar manualmente para teste
+
+jobs:
+  wake:
+    name: Chamar /api/cron
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: GET /api/cron
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_WAKE_TOKEN: ${{ secrets.CRON_WAKE_TOKEN }}
+        run: |
+          if [ -z "$CRON_URL" ]; then
+            echo "::warning::CRON_URL não configurado em Secrets. Pulando."
+            exit 0
+          fi
+          AUTH_HEADER=""
+          if [ -n "$CRON_SECRET" ]; then
+            AUTH_HEADER="Authorization: Bearer $CRON_SECRET"
+          elif [ -n "$CRON_WAKE_TOKEN" ]; then
+            AUTH_HEADER="X-Wake-Token: $CRON_WAKE_TOKEN"
+          fi
+          echo "Chamando $CRON_URL ..."
+          if [ -n "$AUTH_HEADER" ]; then
+            curl -fsS -m 45 -H "$AUTH_HEADER" "$CRON_URL"
+          else
+            curl -fsS -m 45 "$CRON_URL"
+          fi

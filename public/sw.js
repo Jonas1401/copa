@@ -1,16 +1,34 @@
 /* ------------------------------------------------------------------
    Service Worker — Monitor Ponto CopaLinks
    Recebe os pushes do backend e transforma em notificação real do
-   Chrome (desktop e Android). Não faz leitura da página monitorada:
-   o monitoramento continua no servidor, a cada 5 segundos.
+   Chrome (desktop e Android). Também mantém o /api/cron acordado
+   a cada minuto, para os alertas de chuva/navios/ponto saírem
+   mesmo com o aplicativo fechado.
 ------------------------------------------------------------------ */
 
 const APP_URL = "/";
-// Ícone oficial CopaLinks (mesmo do app instalado) e badge monocromático.
+const CRON_URL = "/api/cron";
+const WAKE_URL = "/api/cron/wake";
 const ICONE = "/icons/copalinks-192.png";
-// Ícone pequeno/monocromático da notificação (Android espera 72x72).
 const BADGE = "/icons/copalinks-badge-72.png";
 const ACAO_PADRAO = [{ action: "ver-monitor", title: "Ver monitor" }];
+
+/* Intervalo do keepalive: 60 s, como o cron do servidor. */
+const WAKE_INTERVALO_MS = 60 * 1000;
+/* Não acorda entre 22:30 e 05:30 a não ser que chegue um push. */
+const HORA_SILENCIO_INICIO = 22 * 60 + 30;
+const HORA_SILENCIO_FIM = 5 * 60 + 30;
+
+let wakeToken = null;
+let wakeTimer = null;
+let ultimoWake = 0;
+let ultimoCronOk = 0;
+
+/* Defensivo: em alguns worker contexts (testes, SW antigos) essas APIs
+   podem não existir. Sem elas o keepalive simplesmente não roda, mas o
+   recebimento de push continua funcionando normalmente. */
+const _setTimeout = (typeof setTimeout !== "undefined") ? setTimeout : function (_fn, _t) { return 0; };
+const _clearTimeout = (typeof clearTimeout !== "undefined") ? clearTimeout : function () {};
 
 self.addEventListener("install", (evento) => {
   self.skipWaiting();
@@ -18,18 +36,19 @@ self.addEventListener("install", (evento) => {
 
 self.addEventListener("activate", (evento) => {
   evento.waitUntil(self.clients.claim());
+  // Assim que o SW ativa (inclusive após novo deploy), começa a manter
+  // o /api/cron acordado.
+  evento.waitUntil(iniciarKeepalive());
 });
 
-/* ------------------------------------------------------- rede (passa direto)
-   Um handler de fetch é exigido por algumas versões do Chrome para considerar
-   o app instalável — e é o app instalado que mostra a LOGO do CopaLinks no
-   lugar do ícone do Chrome na notificação. */
+/* ------------------------------------------------------- rede (passa direto) */
 self.addEventListener("fetch", (evento) => {
   const req = evento.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  // Deixa o servidor/HTTP cache cuidarem das respostas.
+  // Usa "credenciais same-origin" para os cookies da sessão do admin
+  // (não afeta o wake token, que vai por header).
   evento.respondWith(
     fetch(req).catch(
       () =>
@@ -41,8 +60,108 @@ self.addEventListener("fetch", (evento) => {
   );
 });
 
+/* ---------------------------------------------------- wake / keepalive ---- */
+
+function minutosDoDia(d = new Date()) {
+  return d.getHours() * 60 + d.getMinutes();
+}
+function emHorarioSilencio(d = new Date()) {
+  const m = minutosDoDia(d);
+  return m >= HORA_SILENCIO_INICIO || m < HORA_SILENCIO_FIM;
+}
+
+async function buscarWakeToken() {
+  try {
+    const r = await fetch(WAKE_URL, { cache: "no-store", credentials: "omit" });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function chamarCron() {
+  // Evita disparar duas vezes no mesmo segundo (ex.: um push chega
+  // enquanto o timer está disparando).
+  const agora = Date.now();
+  if (agora - ultimoWake < 45_000) return;
+  ultimoWake = agora;
+
+  // Busca o token se não tiver ou se o anterior já tiver sido rejeitado.
+  if (!wakeToken) wakeToken = await buscarWakeToken();
+  if (!wakeToken) return;
+
+  try {
+    const r = await fetch(CRON_URL, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "X-Wake-Token": wakeToken },
+    });
+    if (r.status === 401) {
+      // Token pode ter sido rotacionado; tenta pegar um novo na próxima.
+      wakeToken = null;
+      return;
+    }
+    if (r.ok) ultimoCronOk = Date.now();
+  } catch {
+    // Sem rede: tenta de novo no próximo ciclo.
+  }
+}
+
+function agendarProximoWake() {
+  _clearTimeout(wakeTimer);
+  let atraso = WAKE_INTERVALO_MS;
+  if (emHorarioSilencio()) {
+    const agora = new Date();
+    const fim = new Date(agora);
+    fim.setHours(5, 30, 0, 0);
+    if (minutosDoDia(agora) >= HORA_SILENCIO_INICIO) {
+      fim.setDate(fim.getDate() + 1);
+    }
+    atraso = Math.max(30 * 60_000, fim.getTime() - agora.getTime());
+  }
+  wakeTimer = _setTimeout(() => {
+    void chamarCron().finally(() => agendarProximoWake());
+  }, atraso);
+}
+
+async function iniciarKeepalive() {
+  _setTimeout(() => { void chamarCron().finally(() => agendarProximoWake()); }, 1500);
+
+  try {
+    const reg = self.registration;
+    if (reg && reg.periodicSync) {
+      const tags = await reg.periodicSync.getTags().catch(() => []);
+      if (!tags.includes("copalinks-cron")) {
+        await reg.periodicSync.register("copalinks-cron", {
+          minInterval: 60 * 1000,
+        }).catch(() => {});
+      }
+    }
+  } catch { /* ignorar se não suportado */ }
+}
+
+self.addEventListener("periodicsync", (evento) => {
+  if (evento.tag === "copalinks-cron") {
+    evento.waitUntil(chamarCron());
+  }
+});
+
+// Quando chega qualquer push, já chamamos o cron mais cedo (o SO acabou
+// de acordar o navegador, é um bom momento para consultar novidades).
+function acordar() {
+  ultimoWake = 0;
+  void chamarCron().finally(() => agendarProximoWake());
+}
+
 /* ---------------------------------------------------------- push */
 self.addEventListener("push", (evento) => {
+  // Avisa o cron que o navegador está vivo — puxa possíveis novidades
+  // imediatamente sem esperar o próximo timer.
+  _setTimeout(acordar, 500);
+
   let dados = {};
   try {
     dados = evento.data ? evento.data.json() : {};
@@ -52,19 +171,15 @@ self.addEventListener("push", (evento) => {
 
   const titulo = dados.title || "🚛 Monitor Ponto CopaLinks";
   const corpo = dados.body || "Atualização do monitoramento.";
-  // Tag dinâmica: agrupa notificações do mesmo caso e evita repetição
-  // (ex.: TRUCK_LIVRO_A_A025_A030).
   const tag = dados.tag || `monitor_${Date.now()}`;
 
   const opcoes = {
     body: corpo,
     tag: tag,
-    // renotify: true garante som e vibração toda vez que a notificação for atualizada
     renotify: true,
     icon: dados.icon || ICONE,
     badge: dados.badge || BADGE,
     image: dados.image || undefined,
-    // vibração padrão para acordar o celular no bolso (vibra 300ms, pausa 100ms, vibra 400ms)
     vibrate: [300, 100, 400, 100, 300],
     requireInteraction: Boolean(dados.requireInteraction),
     silent: false,
@@ -87,52 +202,34 @@ self.addEventListener("push", (evento) => {
 self.addEventListener("notificationclick", (evento) => {
   const dados = (evento.notification && evento.notification.data) || {};
   evento.notification.close();
-
-  // action "fechar" só descarta; qualquer outra (inclusive o corpo) abre.
   if (evento.action === "fechar") return;
-
   const destino = new URL(dados.url || APP_URL, self.location.origin).href;
-
   evento.waitUntil(
     (async () => {
       const janelas = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,
       });
-
-      // 1) já existe uma aba do Monitor Ponto? foca nela.
       for (const janela of janelas) {
         if (janela.url && janela.url.startsWith(self.location.origin)) {
           if ("focus" in janela) await janela.focus();
-          // Mensagem do chat: pede à aba já aberta para abrir a conversa,
-          // sem recarregar a página (o app escuta "abrir-chat").
           if (dados.acao === "chat" && "postMessage" in janela) {
-            try {
-              janela.postMessage({ tipo: "abrir-chat", tag: dados.tag });
-            } catch (e) {
-              /* segue para a navegação normal */
-            }
+            try { janela.postMessage({ tipo: "abrir-chat", tag: dados.tag }); }
+            catch (e) { /* segue */ }
           }
           if ("navigate" in janela && janela.url !== destino) {
-            try {
-              await janela.navigate(destino);
-            } catch (e) {
-              /* mantém onde está */
-            }
+            try { await janela.navigate(destino); }
+            catch (e) { /* mantém */ }
           }
           return;
         }
       }
-
-      // 2) não existe: abre o aplicativo.
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(destino);
-      }
+      if (self.clients.openWindow) return self.clients.openWindow(destino);
     })(),
   );
 });
 
-/* --------- assinatura renovada pelo próprio navegador: volta ao backend */
+/* --------- assinatura renovada pelo próprio navegador ---- */
 self.addEventListener("pushsubscriptionchange", (evento) => {
   evento.waitUntil(
     (async () => {
@@ -145,9 +242,15 @@ self.addEventListener("pushsubscriptionchange", (evento) => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify(nova.toJSON()),
         });
-      } catch (e) {
-        /* fica para a próxima ativação */
-      }
+      } catch (e) { /* fica para a próxima */ }
     })(),
   );
+});
+
+self.addEventListener("message", (evento) => {
+  const dados = evento.data || {};
+  if (dados.tipo === "ping") {
+    // A página abriu: garante que o keepalive está rodando.
+    void iniciarKeepalive();
+  }
 });
