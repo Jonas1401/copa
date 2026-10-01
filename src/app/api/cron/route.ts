@@ -5,6 +5,7 @@ import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarEPostarAlertaClima } from "@/lib/clima-alerta";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
+import { enviarRegrasSeguranca } from "@/lib/regras-seguranca";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -67,6 +68,8 @@ export async function GET(req: Request) {
   const clima = await verificarEPostarAlertaClima().catch(() => null);
   // Navios de fertilizantes (APPA + SINPRAPAR): no máximo a cada 5 min.
   const navios = await verificarNaviosFertilizantes().catch(() => null);
+  // Regras de segurança do Porto para quem saiu para o trabalho.
+  const regras = await enviarRegrasSeguranca().catch(() => null);
   const tabelas = Object.values(leitura.fila).filter((l) => l.codigos.length);
   return NextResponse.json({
     rodou: true,
@@ -76,5 +79,6 @@ export async function GET(req: Request) {
     ...(testes.total ? { testes } : {}),
     ...(clima?.postou ? { clima } : {}),
     ...(navios?.rodou ? { navios } : {}),
+    ...(regras?.enviadas ? { regras } : {}),
   });
 }

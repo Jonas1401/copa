@@ -940,6 +940,21 @@ export async function garantirTabelas() {
     // Se já existem, segue em frente
     tabelasGarantidas = true;
   }
+  // Regras de segurança após a saída para o trabalho (tabela nova, separada).
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS regras_envios (
+        chave TEXT PRIMARY KEY,
+        motorista_id INTEGER NOT NULL REFERENCES motoristas(id) ON DELETE CASCADE,
+        enviadas INTEGER NOT NULL DEFAULT 0,
+        ultimo_envio_em TIMESTAMP WITH TIME ZONE,
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE regras_envios ENABLE ROW LEVEL SECURITY;
+    `);
+  } catch {
+    // já existe ou sem permissão: segue
+  }
   // Avisos de navios de fertilizantes (tabela nova, separada das demais).
   try {
     await db.execute(sql`

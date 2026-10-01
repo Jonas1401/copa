@@ -72,6 +72,16 @@ export const naviosAvisos = pgTable("navios_avisos", {
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Regras de segurança do Porto enviadas depois que o ponto sai para o
+// trabalho. Uma linha por saída (motorista + horário da saída).
+export const regrasEnvios = pgTable("regras_envios", {
+  chave: text("chave").primaryKey(), // "<motoristaId>:<saidaEm ISO>"
+  motoristaId: integer("motorista_id").notNull().references(() => motoristas.id, { onDelete: "cascade" }),
+  enviadas: integer("enviadas").default(0).notNull(),
+  ultimoEnvioEm: timestamp("ultimo_envio_em", { withTimezone: true }),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Identidade deste aparelho: somente o hash do token fica no PostgreSQL.
 export const motoristaSessoes = pgTable("motorista_sessoes", {
   id: serial("id").primaryKey(),

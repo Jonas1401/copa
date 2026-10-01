@@ -176,6 +176,17 @@ Até isso acontecer, o backend mostra "Firebase não configurado" e não afirma
 que notificou ninguém. FCM aceito não é confirmação de que o Android exibiu o
 aviso. O usuário pode revogar o acesso a notificações no Android quando quiser.
 
+## Regras de segurança do Porto
+
+Quando o ponto de um motorista **sai para o trabalho** (SAIU depois de ter
+aparecido no quadro), o `/api/cron` manda as **11 regras de segurança**
+(faróis, sinalização, lona, velocidade, vias livres, local proibido, fumar,
+escada lateral, beirada do costado, guindaste, segurança sempre), uma de cada
+vez, só para os aparelhos dele: a 1ª um minuto depois do aviso de saída e as
+seguintes a cada 30 min (≈5 h de serviço). Saídas com mais de 6 h não recebem.
+Texto e tempos em `src/lib/regras-seguranca.ts`; controle na tabela
+`regras_envios`. Não altera a fila. Teste: `tests/regras-seguranca.test.ts`.
+
 ## Navios de fertilizantes (Paranaguá e Antonina)
 
 O `/api/cron` (a cada minuto; no máximo uma leitura a cada 5 min) lê o
