@@ -53,6 +53,28 @@ body {
   }
 }
 
+/* --- foto de topo 100% nítida, com só a base em degradê ------------------
+   Pedido do Jonas: nada de véu azul sobre a foto. O topo e o meio ficam
+   exatamente como o arquivo original (nítidos, cor real); apenas os últimos
+   5% da altura se dissolvem no azul do app, para não criar linha dura onde a
+   foto termina. */
+.imagem-nitida {
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 95%,
+    rgba(0, 0, 0, 0.55) 98.5%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 95%,
+    rgba(0, 0, 0, 0.55) 98.5%,
+    transparent 100%
+  );
+}
+
 /* --- degradê suave para imagens de topo se fundirem ao fundo azul do app --- */
 .imagem-degrade {
   -webkit-mask-image: linear-gradient(

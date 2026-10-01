@@ -184,7 +184,15 @@ aviso. O usuário pode revogar o acesso a notificações no Android quando quise
 ## Imagem do topo personalizável
 
 A tela inicial mostra uma foto de caminhão atrás do logo e da saudação
-(`public/images/caminhao-padrao.webp`). Em **Personalizar imagem** o motorista
+(`public/images/caminhao-padrao.webp`). A foto é mostrada **nítida, sem véu
+azul** (era assim antes e sujava o céu): a máscara `.imagem-nitida`
+(`src/app/globals.css`) deixa 0–95% exatamente como o arquivo original e só os
+últimos **5% da base** se dissolvem no `#002b6b` do app, para não ficar linha
+dura. Os controles sobre a foto — compartilhar, previsão do tempo e trocar a
+imagem — são discretos de propósito: ícone pequeno (17 px), ganho de toque de
+44 px, fundo `bg-black/20` e borda `border-white/10`, sem caixa azul pesada.
+**Nada de voltar a cobrir a foto com degradê no topo, na esquerda ou com
+brilho** — `tests/layout-largura.test.ts` trava isso. Em **Personalizar imagem** o motorista
 tira uma foto ou escolhe da galeria; o celular reduz a foto e envia para
 `POST /api/motoristas/banner`. O servidor (`src/lib/banner.ts`) valida tipo
 (JPG/PNG/WebP), tamanho (até 8 MB) e se é imagem de verdade, e manda para o

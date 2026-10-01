@@ -32,17 +32,16 @@ function ChipClima() {
     <Link
       href="/tempo"
       aria-label="Abrir a previsão do tempo"
-      className="flex h-12 shrink-0 items-center gap-1.5 rounded-full border border-[#2a5bb0]/70 bg-[#0b2152]/80 pr-3 pl-2.5 transition-colors hover:border-ciano/70 sm:h-[54px] sm:gap-2 sm:pr-4 sm:pl-3"
+      title="Previsão do tempo"
+      className="group flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-black/20 pr-2.5 pl-2 text-gelo/65 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white sm:h-12 sm:pr-3"
     >
-      <IconeLinha icone={agora?.icone ?? "nuvem"} tamanho={24} />
-      <div className="leading-none">
-        <div className="tabular text-right font-display text-[18px] font-bold text-white sm:text-[20px]">
-          {agora ? `${agora.temperatura}°` : "—°"}
-        </div>
-        <div className="mt-1 text-right text-[12px] font-medium whitespace-nowrap text-gelo/90">
-          {agora ? agora.descricao : "Paranaguá"}
-        </div>
-      </div>
+      <IconeLinha icone={agora?.icone ?? "nuvem"} tamanho={17} className="opacity-80 transition-opacity group-hover:opacity-100" />
+      <span className="tabular font-display text-[14px] leading-none font-bold">
+        {agora ? `${agora.temperatura}°` : "—°"}
+      </span>
+      <span className="hidden text-[12px] leading-none font-medium whitespace-nowrap opacity-70 min-[420px]:inline">
+        {agora ? agora.descricao : "Paranaguá"}
+      </span>
     </Link>
   );
 }
@@ -65,7 +64,7 @@ export default function Cabecalho({
           height={LOGO.altura}
           className="h-[50px] w-auto max-w-[46vw] shrink-0 object-contain sm:h-[60px]"
         />
-        <h1 className="order-last w-full min-w-0 font-display text-[clamp(22px,6.6vw,26px)] leading-tight font-extrabold text-white [overflow-wrap:anywhere] min-[460px]:order-none min-[460px]:w-auto min-[460px]:flex-1 min-[460px]:text-center min-[460px]:text-[24px]">
+        <h1 className="order-last w-full min-w-0 font-display text-[clamp(22px,6.6vw,26px)] leading-tight font-extrabold text-white drop-shadow-[0_2px_12px_rgba(0,10,30,0.75)] [overflow-wrap:anywhere] min-[460px]:order-none min-[460px]:w-auto min-[460px]:flex-1 min-[460px]:text-center min-[460px]:text-[24px]">
           {nome ? (
             <>
               Olá,{" "}
@@ -77,17 +76,20 @@ export default function Cabecalho({
             "Olá!"
           )}
         </h1>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={onCompartilhar}
-          aria-label="Compartilhar o aplicativo"
-          title="Compartilhar"
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#2a5bb0]/70 bg-[#0b2152]/80 text-white transition-colors hover:border-ciano/70 hover:text-ciano sm:h-[54px] sm:w-[54px]"
-        >
-          <Share2 size={22} strokeWidth={1.9} />
-        </button>
-        <ChipClima />
+        {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
+            para não brigar com a foto do caminhão. Ganhos de toque mantidos
+            em 44 px (acessibilidade). */}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onCompartilhar}
+            aria-label="Compartilhar o aplicativo"
+            title="Compartilhar"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/65 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white sm:h-12 sm:w-12"
+          >
+            <Share2 size={17} strokeWidth={1.8} />
+          </button>
+          <ChipClima />
         </div>
       </header>
 
