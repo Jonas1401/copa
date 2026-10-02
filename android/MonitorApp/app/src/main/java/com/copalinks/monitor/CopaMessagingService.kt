@@ -45,7 +45,7 @@ class CopaMessagingService : FirebaseMessagingService() {
         val pending = PendingIntent.getActivity(this, codigo.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_monitor_notification)
+            .setSmallIcon(R.drawable.copalinks_24)
             .setContentTitle(data["titulo"] ?: "CopaLinks · código monitorado")
             .setContentText(data["corpo"] ?: "Código $codigo detectado no WhatsApp")
             .setStyle(NotificationCompat.BigTextStyle().bigText(data["corpo"] ?: "Código $codigo detectado"))
