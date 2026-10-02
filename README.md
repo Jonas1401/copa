@@ -11,10 +11,10 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Início** | ponto monitorado ao vivo, último escalado e contadores das 6 tabelas (TRUCK e CAVALO/C nos Livros A, B e M) |
 | **Cadastrar ponto** | tipo + livro + número, com ativação de notificações |
 | **Notificações** | Web Push (VAPID) quando o ponto é chamado, sai da tabela ou chega perto da vez |
-| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral |
+| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h) |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão e auditoria |
 
@@ -128,6 +128,34 @@ notificações ativadas no aparelho (botão **Ativar notificações**).
 Teste: `TEST_DATABASE_URL=... tsx --test tests/chat-push.test.ts` (banco
 `fila_push_test_*`, com serviço Push falso local); conteúdo da IA:
 `tsx --test tests/boas-vindas-conteudo.test.ts`.
+
+## Previsão do tempo no chat (24 h por dia)
+
+O `/api/cron` manda o tempo para o chat dos motoristas em dois formatos,
+sempre escritos pela IA (**Gemini pelo Composio**) com os dados reais do porto
+(SIMPORT/APPA + Open-Meteo, boletim da APPA e maré). Se a IA falhar, vale um
+texto pronto montado pelas regras — nunca um palpite:
+
+1. **🌤️ Previsão do Porto** — um boletim por turno, todo dia: **00h, 06h,
+   12h e 18h** no horário de Brasília (`src/lib/clima-boletim.ts`). São 4
+   boletins por dia, 24 horas por dia: quem pega serviço de madrugada
+   também recebe a previsão. A chave do turno fica em `configuracao`
+   (`clima_boletim_chat`) e nunca saem dois boletins com menos de 5 h de
+   diferença.
+2. **🌦️ Clima no Porto** — o alerta de chuva forte ou vento (ou boletim ruim
+   da APPA): assume o lugar do boletim enquanto o tempo estiver ruim e
+   reaparece a cada 3 h (`src/lib/clima-alerta.ts`).
+
+Um único ponto de entrada decide quem fala: `verificarClima()` tenta o alerta
+primeiro e, com o tempo tranquilo, publica o boletim do turno. Nos dois casos
+a mensagem entra no chat como `motorista_id = 0` (sistema) e dispara **Web
+Push para todos os aparelhos, mesmo com o aplicativo fechado**: o Service
+Worker mostra o nome do agente e o texto e, ao tocar, abre o chat. Quem
+silenciou o chat não recebe — o mesmo caminho dos avisos de navios
+(`src/lib/chat-push.ts`).
+Teste: `TEST_DATABASE_URL=... tsx --test tests/clima-boletim.test.ts` (banco
+`fila_push_test_*`): turnos de 6 h, texto do boletim e o fluxo completo
+chat + Push, incluindo o alerta tomando o lugar do boletim.
 
 ## Filtro do grupo SEM APK (pelo servidor)
 

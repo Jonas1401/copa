@@ -3,7 +3,7 @@ import { garantirTabelas, garantirSemente, temPontoCadastrado } from "@/lib/esta
 import { varrer } from "@/lib/estado";
 import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
-import { verificarEPostarAlertaClima } from "@/lib/clima-alerta";
+import { verificarClima } from "@/lib/clima-alerta";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 import { enviarRegrasSeguranca } from "@/lib/regras-seguranca";
 
@@ -43,11 +43,11 @@ export async function GET(req: Request) {
 
   // Testes "com o app fechado" pedidos pelos aparelhos saem neste ciclo,
   // depois da leitura (o aviso leva a posição atualizada do ponto).
-  // O alerta inteligente do clima também roda aqui (mesmo sem ponto,
-  // os motoristas precisam saber do tempo no porto).
+  // O clima também roda aqui (mesmo sem ponto, os motoristas precisam saber
+  // do tempo no porto): alerta em tempo ruim ou boletim de previsão do turno.
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
-    const clima = await verificarEPostarAlertaClima().catch(() => null);
+    const clima = await verificarClima().catch(() => null);
     const navios = await verificarNaviosFertilizantes().catch(() => null);
     return NextResponse.json({
       rodou: false,
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
   } finally {
     testes = await enviarTestesDoCiclo();
   }
-  const clima = await verificarEPostarAlertaClima().catch(() => null);
+  const clima = await verificarClima().catch(() => null);
   // Navios de fertilizantes (APPA + SINPRAPAR): no máximo a cada 5 min.
   const navios = await verificarNaviosFertilizantes().catch(() => null);
   // Regras de segurança do Porto para quem saiu para o trabalho.
