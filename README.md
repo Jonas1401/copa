@@ -193,12 +193,18 @@ aviso. O usuário pode revogar o acesso a notificações no Android quando quise
 ## Imagem do topo personalizável
 
 A tela inicial mostra uma foto de caminhão no topo
-(`public/images/caminhao-padrao.webp`), numa moldura com a **proporção do
+(`public/images/porto-dia.webp`), numa moldura com a **proporção do
 arquivo original (1536×1024)** — nada de deformar a imagem nem sobrar azul. A
 foto é mostrada **nítida, sem véu azul** (era assim antes e sujava o céu): a
 máscara `.imagem-nitida` (`src/app/globals.css`) deixa 0–95% exatamente como o
 arquivo original e só os últimos **5% da base** se dissolvem no `#002b6b` do
 app, para não ficar linha dura.
+
+Para trocar a imagem padrão de **todo mundo**: substitua
+`public/images/porto-dia.webp` (mantenha 1536×1024 em WebP) e atualize o `?v=`
+de `BANNER_PADRAO` em `src/components/inicio/BannerCaminhao.tsx` com o sha1
+curto do arquivo novo — assim o celular não segura a versão antiga no cache.
+Quem já personalizou a própria foto continua vendo a foto dele.
 
 O **cartão do número começa exatamente nos 5% finais da foto**: 5% da altura =
 3,3333% da largura (altura = largura ÷ 1,5), e o cartão sobe com
