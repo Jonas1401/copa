@@ -129,7 +129,30 @@ test("chat: mensagem de motorista e de agente viram Push com nome + texto, sem a
   assert.equal(doClima?.titulo, "🌦️ Clima no Porto");
   assert.equal(doClima?.corpo, "Vento forte no cais, atenção na lona.");
 
-  // 4) Texto longo é resumido para caber na notificação.
+  // 4) Boas-vindas do sistema notificam os demais, mas não o recém-chegado.
+  const [paulo] = await db.insert(motoristas).values({ nome: "Paulo" }).returning();
+  await salvarSubscription({ endpoint: `${base}/paulo`, keys: { p256dh: chaveP256dh(), auth } }, "Paulo-cel", paulo.id);
+  recebidos.length = 0;
+  const [boasVindas] = await db.insert(chatMensagens).values({
+    motoristaId: 0,
+    nome: "👋 CopaLinks",
+    texto: "Fala, turma! O Paulo chegou ao CopaLinks. Deixem um alô! 🚛",
+  }).returning();
+  const r4 = await notificarMensagemChat(
+    { id: boasVindas.id, motoristaId: 0, nome: "👋 CopaLinks", texto: boasVindas.texto },
+    {
+      excetoMotoristaId: paulo.id,
+      notificacao: { titulo: "👋 Reforço novo na boleia!", corpo: "Paulo chegou. Abra o chat e mande um alô!" },
+    },
+  );
+  assert.equal(r4.enviadas, 3);
+  assert.deepEqual(recebidos.map((r) => r.url).sort(), ["/ana", "/beto", "/sem-dono"]);
+  const avisos = await db.select().from(notificacoes);
+  const avisoBoasVindas = avisos.find((n) => n.tag === `CHAT_${boasVindas.id}`);
+  assert.equal(avisoBoasVindas?.titulo, "👋 Reforço novo na boleia!");
+  assert.equal(avisoBoasVindas?.corpo, "Paulo chegou. Abra o chat e mande um alô!");
+
+  // 5) Texto longo é resumido para caber na notificação.
   const longo = "x".repeat(600);
   const [m4] = await db.insert(chatMensagens).values({ motoristaId: beto.id, nome: "Beto", texto: longo }).returning();
   await notificarMensagemChat({ id: m4.id, motoristaId: beto.id, nome: "Beto", texto: longo });
