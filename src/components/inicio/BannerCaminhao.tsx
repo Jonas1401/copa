@@ -6,11 +6,11 @@ import { LOGO } from "@/lib/logo";
 
 /**
  * Imagem padrão do topo: o arquivo do repositório, usado EXATAMENTE como está —
- * `public/images/caminhao-padrao.webp` (1536×1024, WebP), sem gerar, recortar,
- * tratar ou reempacotar nada. O `?v=` é só o carimbo do conteúdo, para o celular
- * não reaproveitar uma versão antiga guardada no cache.
+ * `public/images/porto-noite.webp` (WebP), sem gerar, recortar, tratar ou
+ * reempacotar nada. O `?v=` é só o carimbo do conteúdo, para o celular não
+ * reaproveitar uma versão antiga guardada no cache.
  */
-export const BANNER_PADRAO = "/images/caminhao-padrao.webp?v=2896355c";
+export const BANNER_PADRAO = "/images/porto-noite.webp?v=porto-noite-1";
 const LADO_MAX = 1600;
 
 type Estado = "parado" | "processando" | "ok" | "erro";
@@ -183,7 +183,7 @@ export default function BannerCaminhao({
             disabled={estado === "processando"}
             aria-label="Personalizar imagem"
             title="Personalizar imagem"
-            className="absolute right-2.5 bottom-[calc(5%_+_8px)] z-10 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/55 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white disabled:opacity-50"
+            className="absolute right-2.5 bottom-[calc(5%_+_8px)] z-10 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/55 backdrop-blur-[2px] transition hover:scale-[1.02] hover:bg-black/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {estado === "processando" ? <Loader2 size={15} className="animate-spin" /> : <Camera size={16} strokeWidth={1.8} />}
           </button>
@@ -234,7 +234,7 @@ export default function BannerCaminhao({
                 <Camera size={18} /> Tirar foto
               </button>
               <button type="button" onClick={() => galeria.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-full border border-[#2a5bb0]/80 bg-[#0b2152]/80 px-5 py-3.5 font-display text-[15px] font-bold text-white hover:border-ciano/70">
+                className="flex items-center justify-center gap-2 rounded-full border border-[#2a5bb0]/80 bg-[#0b2152]/80 px-5 py-3.5 font-display text-[15px] font-bold text-white hover:border-ciano hover:text-ciano">
                 <ImageIcon size={18} /> Escolher da galeria
               </button>
               {versao && (
