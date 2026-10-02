@@ -8,8 +8,12 @@
 const APP_URL = "/";
 // Ícone oficial CopaLinks (mesmo do app instalado) e badge monocromático.
 const ICONE = "/icons/copalinks-192.png";
-// Ícone pequeno/monocromático da notificação (Android espera 72x72).
-const BADGE = "/icons/copalinks-badge-72.png";
+// Ícone pequeno da notificação (barra de status, ao lado do relógio).
+// O Android/Chrome só aceita PNG monocromático BRANCO sobre transparente em
+// 72x72: se a imagem tiver cor (ex.: desenho preto), o sistema não consegue
+// aplicar a máscara e desenha um quadradinho cinza no lugar do badge.
+// O ?v=2 é para o celular não reaproveitar o arquivo antigo em cache.
+const BADGE = "/icons/copalinks-badge-72.png?v=2";
 const ACAO_PADRAO = [{ action: "ver-monitor", title: "Ver monitor" }];
 
 self.addEventListener("install", (evento) => {
