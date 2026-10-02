@@ -6,11 +6,12 @@ import { LOGO } from "@/lib/logo";
 
 /**
  * Imagem padrão do topo: o arquivo do repositório, usado EXATAMENTE como está —
- * `public/images/porto-noite.webp` (WebP), sem gerar, recortar, tratar ou
- * reempacotar nada. O `?v=` é só o carimbo do conteúdo, para o celular não
- * reaproveitar uma versão antiga guardada no cache.
+ * `public/images/porto-dia.webp` (WebP 1536×1024), sem gerar, recortar, tratar
+ * ou reempacotar nada na hora de servir. O `?v=` é só o carimbo do conteúdo
+ * (sha1 do arquivo, como em `src/lib/logo.ts`), para o celular não reaproveitar
+ * uma versão antiga guardada no cache.
  */
-export const BANNER_PADRAO = "/images/porto-noite.webp?v=porto-noite-1";
+export const BANNER_PADRAO = "/images/porto-dia.webp?v=8b56328d";
 const LADO_MAX = 1600;
 
 type Estado = "parado" | "processando" | "ok" | "erro";
