@@ -107,18 +107,27 @@ todos os cadastrados, situação/posição e aparelhos com avisos ativos. A rota
 O chat é coletivo: mensagens que uma pessoa publica nele são visíveis para
 as demais, independentemente dos pontos particulares.
 
-**Notificações do chat (Web Push):** toda mensagem gravada no chat — escrita
-por um motorista ou postada por um agente do servidor (ex.: "🌦️ Clima no
-Porto", gerado via Composio no `/api/cron`) — dispara um Web Push com o
-**nome de quem enviou** no título e o **texto da mensagem** no corpo
-(`src/lib/chat-push.ts`). O envio é aguardado pelo `POST /api/chat` antes de
-responder, por isso funciona na Vercel com o app fechado; o Service Worker
+**Boas-vindas a novos motoristas:** no primeiro cadastro, o servidor usa o
+Gemini pelo Composio para criar uma mensagem original para o chat e um título e
+texto próprios para a notificação. O recado aparece como **👋 CopaLinks**; os
+outros motoristas com Push ativo recebem o convite mesmo com o app fechado, e
+tocar no aviso abre o chat. O novo integrante não recebe a própria
+notificação. Se o Composio estiver indisponível, há uma saudação padrão; falha
+da IA não impede o cadastro. Como os demais avisos do chat, respeita quem
+silenciou o chat e depende de permissão de notificações no aparelho.
+
+**Notificações do chat (Web Push):** mensagens escritas por motoristas ou
+postadas por agentes do servidor (ex.: "🌦️ Clima no Porto", gerado via
+Composio no `/api/cron`) disparam Push (`src/lib/chat-push.ts`). Em geral, o
+título mostra quem enviou e o corpo contém a mensagem; boas-vindas podem usar
+texto criativo separado. O envio funciona com o app fechado: o Service Worker
 exibe o aviso e, ao tocar, abre o app direto no chat (`/?chat=1`, ou
 `postMessage` "abrir-chat" quando a aba já está aberta). Quem escreveu não
 recebe o próprio aviso; a tag `CHAT_<id>` impede aviso repetido. Exige as
 notificações ativadas no aparelho (botão **Ativar notificações**).
 Teste: `TEST_DATABASE_URL=... tsx --test tests/chat-push.test.ts` (banco
-`fila_push_test_*`, com serviço Push falso local).
+`fila_push_test_*`, com serviço Push falso local); conteúdo da IA:
+`tsx --test tests/boas-vindas-conteudo.test.ts`.
 
 ## Filtro do grupo SEM APK (pelo servidor)
 

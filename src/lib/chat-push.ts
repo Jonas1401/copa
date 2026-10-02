@@ -8,8 +8,8 @@ import { motoristasComChatSilenciado } from "@/lib/chat-silencio";
  * postada por um agente do servidor (ex.: "🌦️ Clima no Porto", via Composio)
  * — vira uma notificação com o NOME de quem enviou e o TEXTO da mensagem.
  *
- * - Sai para todos os aparelhos com notificações ativas, menos os de quem
- *   escreveu (ninguém precisa ser avisado da própria mensagem).
+ * - Sai para os aparelhos com notificações ativas, menos os de quem escreveu;
+ *   anúncios do sistema também podem excluir uma pessoa específica.
  * - A tag `CHAT_<id>` garante que cada mensagem notifica uma única vez, mesmo
  *   se a rota for chamada de novo.
  * - Tocar na notificação abre o app direto no chat (`/?chat=1`), com o
@@ -27,7 +27,7 @@ export const URL_ABRIR_CHAT = "/?chat=1";
 
 export type MensagemChatParaPush = {
   id: number;
-  /** 0 = mensagem do sistema/agente (não exclui ninguém do envio). */
+  /** 0 = mensagem do sistema/agente (envia a todos, salvo exclusão explícita). */
   motoristaId: number;
   nome: string;
   texto: string;
@@ -40,7 +40,13 @@ function resumir(texto: string, max: number) {
 
 export async function notificarMensagemChat(
   m: MensagemChatParaPush,
-  opcoes: { requireInteraction?: boolean } = {},
+  opcoes: {
+    requireInteraction?: boolean;
+    /** Para anúncios do sistema, permite não avisar o próprio recém-chegado. */
+    excetoMotoristaId?: number | null;
+    /** Texto criativo opcional para a notificação, diferente do recado no chat. */
+    notificacao?: { titulo?: string; corpo?: string };
+  } = {},
 ) {
   const nome = resumir(m.nome || "Motorista", TITULO_MAX);
   const corpo = resumir(m.texto, CORPO_MAX);
@@ -52,8 +58,8 @@ export async function notificarMensagemChat(
   return enviarPush(
     {
       // Motorista: "💬 Fulano"; agente do servidor já traz o próprio emoji no nome.
-      title: doSistema ? nome : `💬 ${nome}`,
-      body: corpo,
+      title: resumir(opcoes.notificacao?.titulo?.trim() || (doSistema ? nome : `💬 ${nome}`), TITULO_MAX),
+      body: resumir(opcoes.notificacao?.corpo?.trim() || m.texto, CORPO_MAX),
       tag: `CHAT_${m.id}`,
       acao: "chat",
       url: URL_ABRIR_CHAT,
@@ -65,8 +71,8 @@ export async function notificarMensagemChat(
     },
     {
       unica: true,
-      // Quem escreveu não recebe o próprio recado; mensagens do sistema vão a todos.
-      excetoMotoristaId: doSistema ? null : m.motoristaId,
+      // Quem escreveu não recebe o próprio recado; o sistema pode excluir o novo integrante.
+      excetoMotoristaId: doSistema ? (opcoes.excetoMotoristaId ?? null) : m.motoristaId,
       semMotoristas: silenciados,
     },
   );

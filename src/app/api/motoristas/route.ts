@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { motoristas } from "@/db/schema";
 import { garantirTabelas } from "@/lib/estado";
 import { iniciarSessaoMotorista, motoristaDaSessao } from "@/lib/motorista-sessao";
 import { limparNome, limparPonto, paraMotorista } from "@/lib/motoristas";
+import { publicarBoasVindasMotorista } from "@/lib/boas-vindas-motorista";
 
 export const dynamic = "force-dynamic";
+// O recado e o Web Push rodam após a resposta, ainda dentro do tempo da função.
+export const maxDuration = 30;
 
 /** Quantos motoristas usam o CopaLinks (só o número — nenhum nome sai daqui). */
 export async function GET() {
@@ -37,8 +40,20 @@ export async function POST(req: Request) {
       pontoNumero: ponto?.numero ?? null,
     })
     .returning();
-  return iniciarSessaoMotorista(
+  const resposta = await iniciarSessaoMotorista(
     m.id,
     NextResponse.json(paraMotorista(m), { status: 201, headers: { "Cache-Control": "no-store" } }),
   );
+
+  // Não atrasa a entrada do motorista. O servidor cria o recado, chama o
+  // Composio e envia Web Push para os demais aparelhos mesmo após responder.
+  after(async () => {
+    try {
+      await publicarBoasVindasMotorista({ id: m.id, nome: m.nome });
+    } catch {
+      console.error("[boas-vindas] Falha ao publicar o recado de novo motorista.");
+    }
+  });
+
+  return resposta;
 }
