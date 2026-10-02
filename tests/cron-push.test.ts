@@ -68,7 +68,10 @@ test("app fechado: cron aguarda Push, NA VEZ não vira SAIU e uma página parcia
     configurable: true,
     value: async (_endpoint: unknown, corpo: string) => {
       await new Promise((r) => setTimeout(r, 90));
-      enviados.push(JSON.parse(corpo));
+      const aviso = JSON.parse(corpo) as (typeof enviados)[number];
+      // O cron também publica boletins no chat. Esta regressão conta somente
+      // avisos da fila; chat/clima são verificados em seus próprios testes.
+      if (aviso.acao !== "chat") enviados.push(aviso);
       return { statusCode: 201, body: "" };
     },
   });

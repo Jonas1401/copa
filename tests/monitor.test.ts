@@ -35,12 +35,14 @@ test("monitor só aceita o grupo exato, códigos sem texto bruto e origem WhatsA
   ]) assert.equal(validarEventoMonitor(p).ok, false);
 });
 
+// Mesma proteção dos demais testes de integração: banco local descartável
+// fila_push_test_*, com DATABASE_URL e TEST_DATABASE_URL idênticas.
 const uri = process.env.TEST_DATABASE_URL;
 const local = (() => {
   try {
     if (!uri || process.env.DATABASE_URL !== uri) return false;
     const u = new URL(uri);
-    return ["localhost", "127.0.0.1"].includes(u.hostname) && u.pathname.startsWith("/monitor_test_");
+    return ["localhost", "127.0.0.1"].includes(u.hostname) && u.pathname.startsWith("/fila_push_test_");
   } catch { return false; }
 })();
 
