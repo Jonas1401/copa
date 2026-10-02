@@ -6,8 +6,8 @@
 ------------------------------------------------------------------ */
 
 const APP_URL = "/";
-// Ícone oficial CopaLinks (mesmo do app instalado) e badge monocromático.
-const ICONE = "/icons/copalinks-192.png";
+// Ícone CopaLinks otimizado para notificações e badge monocromático.
+const ICONE = "/icons/copalinks-24.png";
 // Ícone pequeno da notificação (barra de status, ao lado do relógio).
 // O Android/Chrome só aceita PNG monocromático BRANCO sobre transparente em
 // 72x72: se a imagem tiver cor (ex.: desenho preto), o sistema não consegue

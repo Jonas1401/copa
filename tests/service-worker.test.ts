@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 
 test("Service Worker mostra Push sem janela do app e abre o monitor ao tocar", async () => {
   type Evento = { data?: { json(): unknown }; waitUntil(p: Promise<unknown>): void };
-  type Notificacao = { body: string; tag: string; requireInteraction: boolean; data: { url: string } };
+  type Notificacao = { body: string; tag: string; icon?: string; requireInteraction: boolean; data: { url: string } };
   const handlers = new Map<string, (evento: Evento & Record<string, unknown>) => void>();
   const mostradas: { titulo: string; opcoes: Notificacao }[] = [];
   const janelasAbertas: string[] = [];
@@ -44,6 +44,11 @@ test("Service Worker mostra Push sem janela do app e abre o monitor ao tocar", a
   assert.ok(pendente, "o Worker precisa manter o evento vivo até a notificação aparecer");
   await pendente;
   assert.equal(mostradas.length, 1);
+  assert.equal(mostradas[0].opcoes.icon, "/icons/copalinks-24.png");
+  const iconePng = readFileSync("public/icons/copalinks-24.png");
+  assert.equal(iconePng.toString("hex", 0, 8), "89504e470d0a1a0a");
+  assert.equal(iconePng.readUInt32BE(16), 24);
+  assert.equal(iconePng.readUInt32BE(20), 24);
   assert.match(mostradas[0].opcoes.body, /Último Escalado/);
   assert.equal(mostradas[0].opcoes.requireInteraction, true);
   assert.equal(mostradas[0].opcoes.tag, "SAIU_CAVALO_LIVRO_A_A184_A187_M1");

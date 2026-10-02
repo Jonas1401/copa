@@ -12,7 +12,7 @@
  *
  * Arquivos gerados (os mesmos nomes que o app já usa — nada fica quebrado):
  *   images/copalinks-logo.webp e .png            cabeçalho e boas-vindas (transparente)
- *   icons/copalinks-{32..512}.png                favicon, app instalado, notificação
+ *   icons/copalinks-{24,32,48,96,128,144,192,384,512}.png  favicon, app instalado, notificação
  *   icons/copalinks-maskable-{192,512}.png       Android (logo dentro da área segura)
  *   icons/copalinks-apple-180.png                iPhone
  *   images/compartilhar.jpg                      prévia no WhatsApp/redes (1200x630)
@@ -212,7 +212,7 @@ async function main() {
   await grava("images/copalinks-logo.png", png);
 
   // Ícones do app instalado, favicon e notificação.
-  for (const S of [32, 48, 96, 128, 144, 192, 384, 512]) {
+  for (const S of [24, 32, 48, 96, 128, 144, 192, 384, 512]) {
     const pequeno = S <= 48;
     await grava(`icons/copalinks-${S}.png`, await icone(logoPng, S, { ocupa: pequeno ? 0.94 : 0.84, raio: pequeno ? 0.16 : 0.2 }));
   }
