@@ -4,15 +4,17 @@ import { chatMensagens, configuracao } from "@/db/schema";
 import { obterPrevisao, type Previsao } from "@/lib/tempo";
 import { notificarMensagemChat } from "@/lib/chat-push";
 import { geminiViaComposio } from "@/lib/composio";
+import { verificarEPostarBoletimClima } from "@/lib/clima-boletim";
 
 /**
  * Leitura inteligente do clima → mensagem no chat (SOMENTE servidor).
  *
- * O cron (/api/cron, a cada minuto) chama `verificarEPostarAlertaClima()`
- * depois da varredura da fila. Quando o alerta do porto é relevante (chuva
- * ou vento, ou boletim da APPA com tempo ruim), o servidor posta UMA mensagem
- * no chat dos motoristas como "🌦️ Clima no Porto" (motorista_id = 0 = sistema)
- * e, nos casos mais sérios, manda Push para todos os aparelhos.
+ * O cron (/api/cron, a cada minuto) chama `verificarClima()` depois da
+ * varredura da fila. Quando o alerta do porto é relevante (chuva ou vento, ou
+ * boletim da APPA com tempo ruim), o servidor posta UMA mensagem no chat dos
+ * motoristas como "🌦️ Clima no Porto" (motorista_id = 0 = sistema) e manda
+ * Push para todos os aparelhos. Sem alerta, quem fala é o boletim de previsão
+ * do turno (`src/lib/clima-boletim.ts`, "🌤️ Previsão do Porto").
  *
  * Antispam:
  *   - Só posta quando o nível MUDA ou a cada 3 h (lembrete) em alerta ativo.
@@ -108,13 +110,15 @@ async function textoInteligente(p: Previsao, nivel: string): Promise<string> {
  * Verifica o clima e posta no chat se houver alerta relevante novo.
  * Nunca joga erro para cima: o cron não pode quebrar por causa do clima.
  */
-export async function verificarEPostarAlertaClima(): Promise<{
+export async function verificarEPostarAlertaClima(
+  opcoes: { forcar?: boolean; previsao?: Previsao } = {},
+): Promise<{
   postou: boolean;
   nivel: string;
   motivo: string;
 }> {
   try {
-    const p = await obterPrevisao();
+    const p = opcoes.previsao ?? (await obterPrevisao());
     const nivel = p.alerta.nivel;
     const temBoletimRuim = p.boletim.some((b) => b.tempoRuim);
     const relevante = NIVEL_SEVERO.has(nivel) || temBoletimRuim;
@@ -128,7 +132,7 @@ export async function verificarEPostarAlertaClima(): Promise<{
     const ultimo = await lerUltimo().catch(() => null);
     const mudou = !ultimo || ultimo.nivel !== nivel;
     const passouTempo = !ultimo || Date.now() - ultimo.em > LEMBRETE_MS;
-    if (!mudou && !passouTempo) {
+    if (!mudou && !passouTempo && !opcoes.forcar) {
       return { postou: false, nivel, motivo: "já avisado" };
     }
 
@@ -155,4 +159,33 @@ export async function verificarEPostarAlertaClima(): Promise<{
   } catch {
     return { postou: false, nivel: "?", motivo: "falha ao ler o clima" };
   }
+}
+
+/**
+ * Um único ponto de entrada do clima para o cron: tenta primeiro o ALERTA
+ * (chuva/vento) e, quando o tempo está tranquilo, publica o BOLETIM de
+ * previsão do turno (00h, 06h, 12h e 18h — 24 h por dia). Nunca joga erro
+ * para cima.
+ */
+export async function verificarClima(
+  opcoes: { forcar?: boolean } = {},
+): Promise<{ postou: boolean; nivel: string; motivo: string; tipo: "alerta" | "boletim" | "nenhum" }> {
+  // Uma leitura só (com cache de 10 min) para os dois agentes.
+  let previsao: Previsao | undefined;
+  try {
+    previsao = await obterPrevisao();
+  } catch {
+    /* os agentes tentam ler de novo se precisarem */
+  }
+
+  const alerta = await verificarEPostarAlertaClima({ previsao, forcar: opcoes.forcar });
+  if (alerta.postou) return { ...alerta, tipo: "alerta" };
+  // Tempo ruim: o alerta já leva a previsão do dia, sem boletim junto.
+  if (alerta.motivo === "já avisado") {
+    return { postou: false, nivel: alerta.nivel, motivo: "alerta ativo", tipo: "nenhum" };
+  }
+
+  const boletim = await verificarEPostarBoletimClima({ previsao, forcar: opcoes.forcar });
+  if (boletim.postou) return { postou: true, nivel: alerta.nivel, motivo: boletim.motivo, tipo: "boletim" };
+  return { postou: false, nivel: alerta.nivel, motivo: boletim.motivo || alerta.motivo, tipo: "nenhum" };
 }
