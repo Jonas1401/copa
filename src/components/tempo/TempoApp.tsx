@@ -22,8 +22,6 @@ import {
   X,
 } from "lucide-react";
 import type { Dia, Hora, Previsao } from "@/lib/tempo";
-import CartaoRadarPrevisao from "@/components/tempo/CartaoRadarPrevisao";
-import type { StatusRadarClima } from "@/lib/clima-monitor";
 import { IconeGrande, IconeLinha } from "@/components/tempo/IconeTempo";
 
 const SIMPORT_PAINEL = "https://weather-appa.app.simport.com.br/forecast";
@@ -158,14 +156,7 @@ function Faixa({
   );
 }
 
-export default function TempoApp({
-  inicial,
-  radar,
-}: {
-  inicial: Previsao | null;
-  /** Situação do radar da previsão já lida no servidor (opcional). */
-  radar?: StatusRadarClima | null;
-}) {
+export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
   const [p, setP] = useState<Previsao | null>(inicial);
   const [carregando, setCarregando] = useState(!inicial);
   const [erro, setErro] = useState("");
@@ -451,11 +442,9 @@ export default function TempoApp({
             </>
           )}
 
-          {/* Radar da previsão: aparece sempre (mesmo se a tela não conseguiu
-              carregar a previsão agora) porque o monitoramento roda no servidor. */}
-          <div className="pt-3">
-            <CartaoRadarPrevisao inicial={radar} />
-          </div>
+          {/* O cartão *Radar da previsão* saiu daqui: o diagnóstico do
+              monitoramento agora é exclusivo da área do administrador (/admin).
+              O radar continua rodando no servidor e avisando no chat. */}
         </div>
       </main>
     </div>

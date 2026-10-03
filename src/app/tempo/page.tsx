@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import TempoApp from "@/components/tempo/TempoApp";
-import { statusRadarClima, type StatusRadarClima } from "@/lib/clima-monitor";
 import { obterPrevisao, type Previsao } from "@/lib/tempo";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +16,5 @@ export default async function TempoPage() {
     obterPrevisao().catch(() => null),
     new Promise<null>((r) => setTimeout(() => r(null), 2500)),
   ]);
-  // Situação do radar da previsão (monitoramento constante no servidor).
-  const radar = await Promise.race<StatusRadarClima | null>([
-    statusRadarClima().catch(() => null),
-    new Promise<null>((r) => setTimeout(() => r(null), 2000)),
-  ]);
-  return <TempoApp inicial={inicial} radar={radar} />;
+  return <TempoApp inicial={inicial} />;
 }

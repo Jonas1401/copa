@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import CartaoNotificacoesAdmin from "@/components/admin/CartaoNotificacoesAdmin";
 import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
+import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
 import {
   BellRing,
   Bot,
@@ -759,6 +760,9 @@ export default function AdminApp() {
               </span>
               <span aria-hidden className="text-xl text-ciano">→</span>
             </Link>
+
+            {/* situação do radar da previsão (monitoramento constante no servidor) */}
+            <CartaoRadarPrevisaoAdmin />
 
             <p className="mt-4 flex items-start gap-2 rounded-[16px] border border-verde/35 bg-verde/[0.07] px-3.5 py-2.5 text-[13px] leading-snug text-gelo/85">
               <ShieldCheck size={18} className="mt-0.5 shrink-0 text-verde" />

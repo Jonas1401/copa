@@ -11,12 +11,16 @@ export const maxDuration = 60;
  *
  *   GET /api/tempo/radar            → situação do radar (ligado, última leitura,
  *                                     última mudança avisada e fontes em uso)
- *   POST /api/tempo/radar?forcar=1  → roda um ciclo agora (somente administrador)
+ *   POST /api/tempo/radar?forcar=1  → roda um ciclo agora
  *
- * O ciclo de verdade roda no `/api/cron` a cada minuto; este POST serve para o
- * administrador conferir na hora que o monitoramento está vivo, sem esperar.
+ * As duas rotas são restritas ao administrador: o cartão *Radar da previsão*
+ * vive só na área do administrador (`/admin`). O ciclo de verdade roda no
+ * `/api/cron` a cada minuto; este POST serve para o administrador conferir na
+ * hora que o monitoramento está vivo, sem esperar.
  */
 export async function GET() {
+  const sessao = await exigirAdmin();
+  if (sessao instanceof NextResponse) return sessao;
   try {
     await garantirTabelas();
     return NextResponse.json(await statusRadarClima());
