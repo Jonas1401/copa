@@ -6,11 +6,11 @@ import { LOGO } from "@/lib/logo";
 
 /**
  * Imagem padrão do topo: o arquivo do repositório, usado EXATAMENTE como está —
- * `public/images/porto-noite.webp` (WebP), sem gerar, recortar, tratar ou
+ * `public/images/inicio/tempo-topo.webp` (WebP), sem gerar, recortar, tratar ou
  * reempacotar nada. O `?v=` é só o carimbo do conteúdo, para o celular não
  * reaproveitar uma versão antiga guardada no cache.
  */
-export const BANNER_PADRAO = "/images/porto-noite.webp?v=porto-noite-1";
+export const BANNER_PADRAO = "/images/inicio/tempo-topo.webp?v=1";
 const LADO_MAX = 1600;
 
 type Estado = "parado" | "processando" | "ok" | "erro";
@@ -143,11 +143,11 @@ export default function BannerCaminhao({
 
   return (
     <div className="relative -mx-3 -mt-3">
-      {/* moldura da foto: mesma proporção do arquivo (1536×1024) */}
-      <div className="relative aspect-[1536/1024] w-full">
+      {/* Mantém a proporção original do logo e das fotos personalizadas. */}
+      <div className={`relative w-full ${src === BANNER_PADRAO ? "aspect-[1536/1071]" : "aspect-[1536/1024]"}`}>
         {/* camada da foto: nítida de cima até a base, só os últimos 5% em degradê */}
         <div aria-hidden className="imagem-nitida pointer-events-none absolute inset-0 overflow-hidden">
-          {/* foto: caminhão à direita, sem deformar (recorte inteligente + object-cover) */}
+          {/* Logo centralizado; fotos personalizadas mantêm o enquadramento original. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={src}
@@ -157,7 +157,7 @@ export default function BannerCaminhao({
             fetchPriority="high"
             decoding="async"
             onError={() => setFalhou(true)}
-            className="banner-entra absolute inset-0 h-full w-full object-cover object-[68%_46%]"
+            className={`banner-entra absolute inset-0 h-full w-full ${src === BANNER_PADRAO ? "object-contain object-center" : "object-cover object-[68%_46%]"}`}
           />
           {/* integração com o fundo azul: só a base da foto (5%) se dissolve no #002b6b */}
           <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,#002b6b_100%)]" />
