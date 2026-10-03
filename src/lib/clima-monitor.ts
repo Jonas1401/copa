@@ -7,13 +7,35 @@ import {
   climaAgoraComposio,
   composioConfigurado,
   geminiViaComposio,
-  painelSimportComposio,
   type ClimaComposio,
 } from "@/lib/composio";
+import {
+  ALERTA_GRAVE,
+  ROTULO_METODO,
+  condicaoDoPainel,
+  gravidadeDoPainel,
+  horaDaChuvaForte,
+  inicioDaChuva,
+  lerPainelAppa,
+  normalizarPainelAppa,
+  parsearPainelLivre,
+  parsearPainelSimport,
+  type DadosPainelAppa,
+  type MetodoLeituraAppa,
+  type PainelSimport,
+  type TentativaLeituraAppa,
+} from "@/lib/appa-painel";
 import { GRAVIDADE, obterPrevisao, type Previsao } from "@/lib/tempo";
 
 /**
- * RADAR DA PREVISÃO — monitor constante do tempo via Composio (SÓ servidor).
+ * Reexportados do leitor do painel (`src/lib/appa-painel-texto.ts`), onde os
+ * parsers puros moram desde a leitura com fallback automático.
+ */
+export { normalizarPainelAppa, parsearPainelLivre, parsearPainelSimport };
+export type { DadosPainelAppa, MetodoLeituraAppa, PainelSimport, TentativaLeituraAppa };
+
+/**
+ * RADAR DA PREVISÃO — monitor constante do tempo com FALLBACK (SÓ servidor).
  *
  * O `/api/cron` (a cada minuto) chama `verificarMudancasPrevisao()`. O radar
  * lê a previsão do porto de novo a cada `CLIMA_MONITOR_MIN` minutos (padrão 5)
@@ -22,9 +44,13 @@ import { GRAVIDADE, obterPrevisao, type Previsao } from "@/lib/tempo";
  *   1. a API estruturada do SIMPORT® — Dashboard Meteoceanográfico da APPA
  *      (modelo WRF hora a hora, estação do porto, boletim e Open-Meteo), a
  *      mesma que alimenta a tela "Tempo";
- *   2. o PAINEL PÚBLICO (https://weather-appa.app.simport.com.br/) lido PELO
- *      COMPOSIO a cada `CLIMA_MONITOR_PAINEL_MIN` minutos (padrão 30): boletim
- *      do dia, tabelas de chuva e vento das próximas 24 h e tábua de marés.
+ *   2. o PAINEL PÚBLICO (https://weather-appa.app.simport.com.br/) a cada
+ *      `CLIMA_MONITOR_PAINEL_MIN` minutos (padrão 5), lido com FALLBACK
+ *      AUTOMÁTICO por `lerPainelAppa` (`src/lib/appa-painel.ts`): API/JSON →
+ *      HTTP + HTML → navegador headless (Playwright) → captura de tela + OCR →
+ *      Composio. Se um método não consegue ler, o próximo entra sozinho — o
+ *      Composio é um método ADICIONAL, nunca o único responsável, e cada
+ *      tentativa fica registrada no log de diagnóstico do painel.
  *
  * Cada leitura vira um "instantâneo" (números + textos normalizados) que é
  * comparado com o instantâneo do último aviso. Achou diferença acima do
@@ -35,8 +61,13 @@ import { GRAVIDADE, obterPrevisao, type Previsao } from "@/lib/tempo";
  *     com os números reais — se a IA falhar, vale o texto pronto das regras;
  *   - dispara Web Push para todos os aparelhos: a notificação chega MESMO COM
  *     O APLICATIVO FECHADO (quem exibe é o Service Worker) e, ao tocar, abre o
- *     chat; em mudança grave (chuva forte, rajada ≥ 40 km/h ou boletim da APPA
- *     com tempo ruim) o aviso fica na tela até o motorista tocar.
+ *     chat; em mudança grave (chuva forte, tempestade/vendaval, rajada
+ *     ≥ 40 km/h ou boletim/alerta da APPA com tempo ruim) o aviso fica na tela
+ *     até o motorista tocar.
+ *
+ * O que entra na comparação (entre outros): começo e intensidade da chuva,
+ * chuva forte, tempestade, vento/rajada, condição do tempo, boletim da APPA,
+ * ALERTA NOVO no painel e a tábua de marés.
  *
  * Antispam (o radar fala só quando vale a pena):
  *   - 1ª leitura apenas registra o instantâneo, sem avisar nada antigo;
@@ -61,8 +92,10 @@ const CHAVE_INSTANTANEO = "clima_monitor_instantaneo";
 const CHAVE_ULTIMA = "clima_monitor_ultima";
 const CHAVE_PAINEL = "clima_monitor_painel";
 const CHAVE_SEMEADO = "clima_monitor_semeado";
-/** Último erro ao ler o painel da Simport pelo Composio (diagnóstico). */
+/** Último erro ao ler o painel da APPA — só quando TODOS os métodos falharam. */
 const CHAVE_PAINEL_ERRO = "clima_monitor_painel_erro";
+/** Log de diagnóstico (uma linha por método tentado) da última leitura do painel. */
+const CHAVE_PAINEL_DIAG = "clima_monitor_painel_diag";
 /** Último erro ao ler a medição do tempo pelo Composio (diagnóstico). */
 const CHAVE_COMPOSIO_ERRO = "clima_monitor_composio_erro";
 
@@ -111,30 +144,13 @@ export function configRadar(ambiente: Record<string, string | undefined> = proce
     ativo: !DESLIGADO.has(String(ambiente.CLIMA_MONITOR_ATIVO ?? "1").trim().toLowerCase()),
     sensibilidade: sens === "baixa" || sens === "alta" ? sens : "media",
     intervaloMs: numero(ambiente.CLIMA_MONITOR_MIN, 5) * 60_000,
-    painelMs: numero(ambiente.CLIMA_MONITOR_PAINEL_MIN, 30) * 60_000,
+    painelMs: numero(ambiente.CLIMA_MONITOR_PAINEL_MIN, 5) * 60_000,
     avisoMinMs: numero(ambiente.CLIMA_MONITOR_AVISO_MIN, 20) * 60_000,
     maxPorHora: numero(ambiente.CLIMA_MONITOR_MAX_HORA, 3),
   };
 }
 
 /* ------------------------------------------------------------- tipos */
-export type PainelSimport = {
-  boletim: { dia: string; texto: string }[];
-  chuva: { hora: string; mm: number; prob: number }[];
-  vento: { hora: string; nos: number; direcao: string }[];
-  mares: { hora: string; altura: number; tipo: "alta" | "baixa" }[];
-  nascerSol: string | null;
-  porSol: string | null;
-  agora: {
-    temperatura: number | null;
-    sensacao: number | null;
-    umidade: number | null;
-    ventoNos: number | null;
-    direcao: string | null;
-    pressao: number | null;
-  };
-};
-
 /** Fotografia comparável da previsão (só o que pode mudar e interessa). */
 export type InstantaneoClima = {
   em: number;
@@ -153,8 +169,28 @@ export type InstantaneoClima = {
   amanha: { max: number; min: number; chance: number; mm: number } | null;
   /** Boletim meteorológico da APPA por dia (fonte: API ou painel). */
   boletim: { fonte: "api" | "painel"; ruim: boolean; porDia: Record<string, string> } | null;
-  /** Painel público lido pelo Composio. */
-  painel: { chuvaProb24h: number; chuvaMm24h: number; ventoNosMax: number; mares: string; sol: string } | null;
+  /**
+   * Painel público da APPA lido pelo radar (API/JSON, HTML, navegador, OCR ou
+   * Composio — quem conseguir). `alertas`, `condicao` e `gravidade` entram na
+   * detecção de mudança; `leitura` é o FORMATO ÚNICO que o app consome.
+   */
+  painel: {
+    chuvaProb24h: number;
+    chuvaMm24h: number;
+    ventoNosMax: number;
+    mares: string;
+    sol: string;
+    alertas: string[];
+    condicao: string;
+    gravidade: number;
+    /** Horário em que a chuva começa (null = sem chuva prevista). */
+    inicioChuva: string | null;
+    /** Horário do pico de chuva forte (null = sem chuva forte). */
+    chuvaForteHora: string | null;
+    /** Método que fez esta leitura (diagnóstico; não entra na comparação). */
+    metodo?: MetodoLeituraAppa | null;
+    leitura?: DadosPainelAppa | null;
+  } | null;
   /** Medição no porto (estação da APPA ou OpenWeather pelo Composio). */
   agora: {
     fonte: string;
@@ -186,6 +222,7 @@ export type TipoMudanca =
   | "temperatura"
   | "condicao"
   | "boletim"
+  | "alerta"
   | "mare"
   | "sol"
   | "medicao";
@@ -217,182 +254,14 @@ export type ResultadoRadar = {
   mudancas: string[];
 };
 
-/* ------------------------------------------- leitura do painel (Composio) */
-const RE_HORA = /^\d{1,2}:\d{2}$/;
-const RE_DIRECAO =
-  /^(N|NNE|NNO|NE|ENE|E|ESE|SE|SSE|S|SSO|SSW|SO|SW|WSW|OSO|OSW|W|O|ONO|WNW|NW|NNW|L)$/i;
-const num = (s: string) => {
-  const n = Number(String(s).replace(",", ".").replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(n) ? n : Number.NaN;
-};
-const r1 = (n: number) => Math.round(n * 10) / 10;
-
+/* ---------------------------------------- leitura do painel (com fallback) */
 /**
- * Converte o texto (markdown) que o Composio devolve do painel da Simport em
- * dados comparáveis. O painel separa cada célula em uma linha e às vezes cola
- * tudo ("02:001.2mAlta"), então a leitura é por seção e tolerante a layout.
+ * O painel da APPA é lido por `lerPainelAppa` (`src/lib/appa-painel.ts`), que
+ * tenta API/JSON → HTTP + HTML → navegador headless → OCR → Composio, nessa
+ * ordem, e devolve SEMPRE o mesmo formato normalizado (`DadosPainelAppa`).
+ * Aqui ficam só o cache, os diagnósticos e a ligação com o banco.
  */
-export function parsearPainelSimport(bruto: string): PainelSimport | null {
-  if (!bruto || bruto.trim().length < 60) return null;
-  const linhas = bruto
-    .split(/\r?\n/)
-    .map((l) => l.replace(/[#*_`>|]/g, " ").replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  if (linhas.length < 5) return null;
-
-  const acha = (re: RegExp) => linhas.findIndex((l) => re.test(l));
-  const fimDaSecao = (inicio: number, ...marcos: number[]) => {
-    const proximos = marcos.filter((m) => m > inicio);
-    return proximos.length ? Math.min(...proximos) : linhas.length;
-  };
-
-  const iChuva = acha(/previs[ãa]o de chuvas/i);
-  const iVento = acha(/previs[ãa]o de ventos/i);
-  const iMares = acha(/previs[ãa]o de mar[ée]s/i);
-  const iLua = acha(/fases da lua/i);
-  const iMapa = acha(/mapa de localiza/i);
-  const iDiaVento = acha(/dire[çc][ãa]o do vento durante o dia/i);
-
-  /* ------------------------------------------ tabela de chuva (24 h) */
-  const chuva: PainelSimport["chuva"] = [];
-  if (iChuva >= 0) {
-    const ate = fimDaSecao(iChuva, iVento, iMares, iLua, iMapa);
-    for (let i = iChuva + 1; i < ate; i++) {
-      if (!RE_HORA.test(linhas[i])) continue;
-      let mm = Number.NaN;
-      let prob = Number.NaN;
-      for (let j = i + 1; j < Math.min(i + 5, ate); j++) {
-        if (RE_HORA.test(linhas[j])) break;
-        const m = linhas[j].match(/([\d.,]+)\s*mm/i);
-        if (m && Number.isNaN(mm)) mm = num(m[1]);
-        const p = linhas[j].match(/(\d+)\s*%/);
-        if (p && Number.isNaN(prob)) prob = Number(p[1]);
-      }
-      if (Number.isFinite(mm) || Number.isFinite(prob)) {
-        chuva.push({ hora: linhas[i], mm: Number.isFinite(mm) ? mm : 0, prob: Number.isFinite(prob) ? prob : 0 });
-      }
-    }
-  }
-
-  /* ------------------------------------------ tabela de vento (24 h) */
-  const vento: PainelSimport["vento"] = [];
-  if (iVento >= 0) {
-    const ate = fimDaSecao(iVento, iDiaVento, iMares, iLua, iMapa);
-    for (let i = iVento + 1; i < ate; i++) {
-      if (!RE_HORA.test(linhas[i])) continue;
-      let nos = Number.NaN;
-      let direcao = "";
-      for (let j = i + 1; j < Math.min(i + 4, ate); j++) {
-        if (RE_HORA.test(linhas[j])) break;
-        const n = linhas[j].match(/([\d.,]+)\s*n[óo]s/i);
-        if (n && Number.isNaN(nos)) nos = num(n[1]);
-        const d = linhas[j].trim().match(RE_DIRECAO);
-        if (d && !direcao) direcao = d[1].toUpperCase();
-      }
-      if (Number.isFinite(nos)) vento.push({ hora: linhas[i], nos, direcao });
-    }
-  }
-
-  /* ------------------------------------------------------ marés */
-  const mares: PainelSimport["mares"] = [];
-  if (iMares >= 0) {
-    const ate = fimDaSecao(iMares, iLua, iMapa);
-    for (let i = iMares + 1; i < ate; i++) {
-      // Formato colado do painel: "02:001.2mAlta".
-      const cola = linhas[i].match(/(\d{1,2}:\d{2})\s*([\d.,]+)\s*m\s*(alta|baixa)/i);
-      if (cola) {
-        mares.push({
-          hora: cola[1],
-          altura: num(cola[2]),
-          tipo: cola[3].toLowerCase() === "alta" ? "alta" : "baixa",
-        });
-        continue;
-      }
-      if (!RE_HORA.test(linhas[i])) continue;
-      let altura = Number.NaN;
-      let tipo = "";
-      for (let j = i + 1; j < Math.min(i + 4, ate); j++) {
-        if (RE_HORA.test(linhas[j])) break;
-        const a = linhas[j].match(/([\d.,]+)\s*m\b/i);
-        if (a && Number.isNaN(altura)) altura = num(a[1]);
-        const t = linhas[j].match(/\b(alta|baixa)\b/i);
-        if (t && !tipo) tipo = t[1].toLowerCase();
-      }
-      if (Number.isFinite(altura) && tipo) {
-        mares.push({ hora: linhas[i], altura, tipo: tipo === "alta" ? "alta" : "baixa" });
-      }
-    }
-  }
-
-  /* ------------------------------------- nascer/pôr do sol e boletim */
-  const horaPerto = (re: RegExp) => {
-    const i = acha(re);
-    if (i < 0) return null;
-    const naLinha = linhas[i].match(/(\d{1,2}:\d{2})/);
-    if (naLinha) return naLinha[1];
-    for (let j = i + 1; j < Math.min(i + 3, linhas.length); j++) {
-      if (RE_HORA.test(linhas[j])) return linhas[j];
-    }
-    return null;
-  };
-  const nascerSol = horaPerto(/nascer do sol/i);
-  const porSol = horaPerto(/p[ôo]r do sol/i);
-
-  const boletim: PainelSimport["boletim"] = [];
-  const reBoletim =
-    /^(seg|ter|qua|qui|sex|s[áa]b|sab|dom)[a-zçã]*\.?\s*\((\d{1,2}\/\d{1,2})\)\s*:?\s*(.*)$/i;
-  for (let i = 0; i < linhas.length; i++) {
-    const m = linhas[i].match(reBoletim);
-    if (!m) continue;
-    const texto = (m[3] ?? "").trim() || (linhas[i + 1] ?? "").trim();
-    if (texto.length > 15) boletim.push({ dia: `${m[2]}`, texto });
-  }
-
-  /* --------------------------------------- medições do topo do painel */
-  const valorPerto = (rotulo: RegExp, extrai: RegExp): number | null => {
-    const i = acha(rotulo);
-    if (i < 0) return null;
-    for (const c of [linhas[i], linhas[i - 1], linhas[i + 1], linhas[i - 2], linhas[i + 2]]) {
-      const m = c?.match(extrai);
-      if (m) {
-        const n = num(m[1]);
-        if (Number.isFinite(n)) return n;
-      }
-    }
-    return null;
-  };
-  const linhaGraus = linhas.slice(0, 20).find((l) => /^-?[\d.,]+\s*°\s*C$/.test(l));
-  const temperatura = linhaGraus ? num(linhaGraus) : null;
-  // Vento atual: o primeiro "nós" antes da tabela de previsão de ventos.
-  const iVentoAtual = linhas.findIndex(
-    (l, i) => (iVento < 0 || i < iVento) && /[\d.,]+\s*n[óo]s/i.test(l),
-  );
-  const ventoAtual =
-    iVentoAtual >= 0 ? num((linhas[iVentoAtual].match(/([\d.,]+)\s*n[óo]s/i) ?? [])[1] ?? "") : null;
-  const direcaoAtual =
-    iVentoAtual >= 0
-      ? (linhas
-          .slice(iVentoAtual + 1, iVentoAtual + 3)
-          .find((l) => RE_DIRECAO.test(l.trim())) ?? null)
-      : null;
-
-  return {
-    boletim,
-    chuva,
-    vento,
-    mares,
-    nascerSol,
-    porSol,
-    agora: {
-      temperatura: Number.isFinite(temperatura ?? Number.NaN) ? temperatura : null,
-      sensacao: valorPerto(/sensa[çc][ãa]o t[ée]rmica/i, /(-?[\d.,]+)\s*°?\s*C/i),
-      umidade: valorPerto(/^umidade\b|umidade\s*:/i, /([\d.,]+)\s*%/),
-      ventoNos: Number.isFinite(ventoAtual ?? Number.NaN) ? ventoAtual : null,
-      direcao: direcaoAtual ? direcaoAtual.toUpperCase() : null,
-      pressao: valorPerto(/^press[ãa]o\b|press[ãa]o\s*:/i, /([\d.,]+)/),
-    },
-  };
-}
+const r1 = (n: number) => Math.round(n * 10) / 10;
 
 /* ------------------------------------------------------- instantâneo */
 const FUSO = "America/Sao_Paulo";
@@ -430,6 +299,8 @@ export function montarInstantaneo(
   painel: PainelSimport | null,
   em: number = Date.now(),
   cc: ClimaComposio | null = null,
+  /** Método que leu o painel nesta rodada (aparece no diagnóstico). */
+  metodoPainel: MetodoLeituraAppa | null = null,
 ): InstantaneoClima {
   const tem24 = p ? resumoHoras(p, 24) : null;
   const tem6 = p ? resumoHoras(p, 6) : null;
@@ -492,9 +363,11 @@ export function montarInstantaneo(
       : temPainel
         ? { fonte: "painel", ruim: false, porDia: porDiaPainel }
         : null,
-    painel:
-      painel && (painel.chuva.length || painel.vento.length || painel.mares.length)
-        ? {
+    painel: painel
+      ? (() => {
+          const alertas = painel.alertas ?? [];
+          const leitura = normalizarPainelAppa(painel, { metodo: metodoPainel, agora: em });
+          return {
             chuvaProb24h: Math.max(0, ...painel.chuva.map((c) => c.prob)),
             chuvaMm24h: r1(painel.chuva.reduce((s, c) => s + c.mm, 0)),
             ventoNosMax: r1(Math.max(0, ...painel.vento.map((v) => v.nos))),
@@ -502,8 +375,16 @@ export function montarInstantaneo(
               .map((m) => `${m.hora} ${r1(m.altura).toString().replace(".", ",")}m ${m.tipo}`)
               .join("; "),
             sol: [painel.nascerSol, painel.porSol].filter(Boolean).join("/") || "-",
-          }
-        : null,
+            alertas,
+            condicao: condicaoDoPainel(painel, alertas),
+            gravidade: gravidadeDoPainel(painel, alertas),
+            inicioChuva: inicioDaChuva(painel),
+            chuvaForteHora: horaDaChuvaForte(painel),
+            metodo: metodoPainel,
+            leitura,
+          };
+        })()
+      : null,
     agora,
     composioAgora: cc
       ? {
@@ -728,6 +609,82 @@ export function detectarMudancas(
         peso: 90,
       });
     }
+
+    /* ------------------------- alertas e condição do painel da APPA */
+    // Alerta meteorológico NOVO no painel (tempestade, chuva forte, vendaval,
+    // ressaca…) vira aviso — e sai como grave quando é tempo ruim de verdade.
+    const alertasAntes = new Set((antes.painel.alertas ?? []).map(normalizarTexto));
+    for (const alerta of agora.painel.alertas ?? []) {
+      const chave = normalizarTexto(alerta);
+      if (!chave || alertasAntes.has(chave)) continue;
+      achadas.push({
+        tipo: "alerta",
+        origem: "painel",
+        rotulo: "Novo alerta no painel da APPA",
+        antes: "sem esse alerta",
+        agora: alerta.slice(0, 200),
+        frase: `novo alerta meteorológico no painel da APPA: ${alerta.slice(0, 180)}`,
+        grave: ALERTA_GRAVE.test(alerta),
+        assinatura: `alerta:${curtas8(chave)}`,
+        peso: 3,
+      });
+    }
+
+    // Horário da chuva no painel: "começa às 14h" → "começa às 20h" é mudança
+    // de previsão de verdade (e não repete enquanto o horário não mudar).
+    const inicioA = antes.painel.inicioChuva ?? null;
+    const inicioB = agora.painel.inicioChuva ?? null;
+    if (inicioA !== inicioB && (inicioA || inicioB)) {
+      achadas.push({
+        tipo: "chuva",
+        origem: "painel",
+        rotulo: "Horário da chuva no painel da APPA",
+        antes: inicioA ?? "sem chuva prevista",
+        agora: inicioB ?? "sem chuva prevista",
+        frase: inicioB
+          ? `a chuva no painel da APPA mudou de horário (${inicioA ?? "sem previsão"} → ${inicioB})`
+          : `o painel da APPA tirou a chuva da previsão (era ${inicioA})`,
+        grave: false,
+        assinatura: `painelHoraChuva:${inicioA ?? "-"}>${inicioB ?? "-"}`,
+        peso: 63,
+      });
+    }
+    // Pico de chuva forte marcado no painel (novo ou em outro horário).
+    const forteA = antes.painel.chuvaForteHora ?? null;
+    const forteB = agora.painel.chuvaForteHora ?? null;
+    if (forteA !== forteB && forteB) {
+      achadas.push({
+        tipo: "chuva",
+        origem: "painel",
+        rotulo: "Chuva forte no painel da APPA",
+        antes: forteA ? `chuva forte às ${forteA}` : "sem chuva forte",
+        agora: `chuva forte às ${forteB}`,
+        frase: `o painel da APPA marca chuva forte para as ${forteB}`,
+        grave: true,
+        assinatura: `painelChuvaForte:${forteB}`,
+        peso: 8,
+      });
+    }
+
+    // Condição do painel (sem chuva → chuva → chuva forte → tempestade).
+    const gPainelA = antes.painel.gravidade ?? 0;
+    const gPainelB = agora.painel.gravidade ?? 0;
+    if (
+      Math.abs(gPainelB - gPainelA) >= Math.max(1, l.gravidade) &&
+      (antes.painel.condicao ?? "") !== (agora.painel.condicao ?? "")
+    ) {
+      achadas.push({
+        tipo: "condicao",
+        origem: "painel",
+        rotulo: "Condição do tempo no painel da APPA",
+        antes: antes.painel.condicao || "sem previsão",
+        agora: agora.painel.condicao || "sem previsão",
+        frase: `a condição no painel da APPA mudou de ${(antes.painel.condicao || "sem previsão").toLowerCase()} para ${(agora.painel.condicao || "sem previsão").toLowerCase()}`,
+        grave: gPainelB >= 6 && gPainelA < 6,
+        assinatura: `painelCondicao:${gPainelA}>${gPainelB}`,
+        peso: 28,
+      });
+    }
   }
 
   /* ------------------------------- medição independente PELO COMPOSIO */
@@ -800,7 +757,7 @@ export function textoMudancaPadrao(mudancas: Mudanca[], p: Previsao | null): str
     ? "🌧️"
     : mudancas.some((m) => m.tipo === "vento")
       ? "💨"
-      : mudancas.some((m) => m.tipo === "boletim")
+      : mudancas.some((m) => m.tipo === "alerta" || m.tipo === "boletim")
         ? "📣"
         : "🔄";
   const partes = [`${emoji} A previsão do porto mudou: ${principais.join("; ")}.`];
@@ -953,30 +910,98 @@ export function resetarCacheComposio() {
 }
 
 /**
- * Painel da Simport PELO COMPOSIO, com cache próprio (padrão: 30 min) para não
- * gastar chamadas de API à toa. Se o Composio estiver desconfigurado ou fora
- * do ar, devolve a última leitura guardada — o radar segue com a API.
+ * Painel da APPA com FALLBACK AUTOMÁTICO, cacheado por `cfg.painelMs`
+ * (padrão: 5 min, o mesmo passo do radar). A leitura em si é do
+ * `lerPainelAppa` — API/JSON → HTTP + HTML → navegador headless → OCR →
+ * Composio — e aqui só se guarda o resultado:
+ *
+ *   - `clima_monitor_painel`      última leitura BOA (dados + método usado);
+ *   - `clima_monitor_painel_diag` log de diagnóstico da última rodada
+ *                                 (tentativa por tentativa, com o motivo);
+ *   - `clima_monitor_painel_erro` erro SOMENTE quando todos os métodos
+ *                                 falharam (nada de "não lido pelo Composio"
+ *                                 quando outro método leu).
+ *
+ * Se todos falharem, devolve a última leitura guardada — o radar segue com a
+ * API estruturada da Simport e com a medição do Composio.
  */
-export async function lerPainel(cfg: ConfigRadar, forcar = false): Promise<PainelSimport | null> {
+export async function lerPainelComMetodo(
+  cfg: ConfigRadar,
+  forcar = false,
+  opcoes: { previsao?: Previsao | null } = {},
+): Promise<{ painel: PainelSimport | null; metodo: MetodoLeituraAppa | null; leitura: DadosPainelAppa | null }> {
   const guardado = instantaneoValidoPainel(await lerConfig(CHAVE_PAINEL).catch(() => null));
-  if (!forcar && guardado && Date.now() - guardado.em < cfg.painelMs) return guardado.dados;
-  if (!(await composioConfigurado().catch(() => false))) {
-    await gravarDiagnostico(CHAVE_PAINEL_ERRO, "COMPOSIO_API_KEY não configurada").catch(() => null);
-    return guardado?.dados ?? null;
+  if (!forcar && guardado?.em && Date.now() - guardado.em < cfg.painelMs) {
+    return { painel: guardado.dados, metodo: guardado.metodo ?? null, leitura: guardado.normalizado ?? null };
   }
-  try {
-    const dados = parsearPainelSimport(await painelSimportComposio());
-    if (!dados) {
-      await gravarDiagnostico(CHAVE_PAINEL_ERRO, "o Composio não devolveu o texto do painel").catch(() => null);
-      return guardado?.dados ?? null;
-    }
-    await gravarConfig(CHAVE_PAINEL, JSON.stringify({ em: Date.now(), dados }));
+
+  const r = await lerPainelAppa({ previsao: opcoes.previsao }).catch((e) => {
+    // lerPainelAppa não joga erro: isto é só cinto de segurança.
+    return {
+      ok: false as const,
+      metodo: null,
+      normalizado: null,
+      painel: null,
+      tentativas: [] as TentativaLeituraAppa[],
+      erro: e instanceof Error ? e.message : String(e),
+      texto: "",
+    };
+  });
+
+  const diag = {
+    em: new Date().toISOString(),
+    ok: r.ok,
+    metodo: r.metodo,
+    metodoRotulo: r.metodo ? ROTULO_METODO[r.metodo] : null,
+    erro: r.erro,
+    tentativas: r.tentativas,
+    resumo: resumoLeituraExibicao(r.normalizado, r.metodo),
+  };
+  await gravarConfig(CHAVE_PAINEL_DIAG, JSON.stringify(diag).slice(0, 6000)).catch(() => null);
+
+  if (r.ok && r.painel) {
+    await gravarConfig(
+      CHAVE_PAINEL,
+      JSON.stringify({
+        em: Date.now(),
+        dados: r.painel,
+        metodo: r.metodo,
+        normalizado: r.normalizado,
+        tentativas: r.tentativas,
+      }),
+    ).catch(() => null);
     await gravarDiagnostico(CHAVE_PAINEL_ERRO, null).catch(() => null);
-    return dados;
-  } catch (e) {
-    await gravarDiagnostico(CHAVE_PAINEL_ERRO, e instanceof Error ? e.message : String(e)).catch(() => null);
-    return guardado?.dados ?? null;
+    return { painel: r.painel, metodo: r.metodo, leitura: r.normalizado };
   }
+
+  // TODOS os métodos falharam: aí sim registra o erro (com os motivos).
+  await gravarDiagnostico(CHAVE_PAINEL_ERRO, r.erro ?? "painel da APPA não lido").catch(() => null);
+  return {
+    painel: guardado?.dados ?? null,
+    metodo: guardado?.metodo ?? null,
+    leitura: guardado?.normalizado ?? null,
+  };
+}
+
+/**
+ * Mesma leitura, devolvendo só o painel (compatibilidade). Quem precisa saber
+ * QUAL método leu (o cartão do administrador, o instantâneo do radar) usa
+ * `lerPainelComMetodo`.
+ */
+export async function lerPainel(
+  cfg: ConfigRadar,
+  forcar = false,
+  opcoes: { previsao?: Previsao | null } = {},
+): Promise<PainelSimport | null> {
+  return (await lerPainelComMetodo(cfg, forcar, opcoes)).painel;
+}
+
+/** Texto curto do que a leitura trouxe (usado no diagnóstico guardado). */
+function resumoLeituraExibicao(d: DadosPainelAppa | null, metodo: MetodoLeituraAppa | null): string {
+  if (!d || !metodo) return "sem leitura";
+  const partes = [d.chuva, d.vento, `temp. ${d.temperatura}`];
+  if (d.alertas.length) partes.push(`${d.alertas.length} alerta(s)`);
+  return `${ROTULO_METODO[metodo]}: ${partes.join(" · ")}`.slice(0, 240);
 }
 
 /** Guarda (ou limpa) o motivo da última falha de uma fonte do radar. */
@@ -988,11 +1013,46 @@ async function gravarDiagnostico(chave: string, motivo: string | null) {
   await gravarConfig(chave, motivo.slice(0, 200));
 }
 
-function instantaneoValidoPainel(bruto: string | null): { em: number; dados: PainelSimport } | null {
+/** Última leitura BOA do painel guardada no banco (com o método que a fez). */
+function instantaneoValidoPainel(bruto: string | null): {
+  em: number;
+  dados: PainelSimport;
+  metodo?: MetodoLeituraAppa | null;
+  normalizado?: DadosPainelAppa | null;
+  tentativas?: TentativaLeituraAppa[];
+} | null {
   if (!bruto) return null;
   try {
-    const j = JSON.parse(bruto) as { em: number; dados: PainelSimport };
+    const j = JSON.parse(bruto) as {
+      em: number;
+      dados: PainelSimport;
+      metodo?: MetodoLeituraAppa | null;
+      normalizado?: DadosPainelAppa | null;
+      tentativas?: TentativaLeituraAppa[];
+    };
     if (typeof j?.em !== "number" || !j?.dados) return null;
+    return j;
+  } catch {
+    return null;
+  }
+}
+
+/** Log de diagnóstico da última rodada de leitura do painel. */
+type DiagnosticoPainel = {
+  em: string;
+  ok: boolean;
+  metodo: MetodoLeituraAppa | null;
+  metodoRotulo: string | null;
+  erro: string | null;
+  tentativas: TentativaLeituraAppa[];
+  resumo: string;
+};
+
+function diagnosticoValido(bruto: string | null): DiagnosticoPainel | null {
+  if (!bruto) return null;
+  try {
+    const j = JSON.parse(bruto) as DiagnosticoPainel;
+    if (!j || typeof j !== "object" || !Array.isArray(j.tentativas)) return null;
     return j;
   } catch {
     return null;
@@ -1050,13 +1110,14 @@ export async function verificarMudancasPrevisao(
     await gravarConfig(CHAVE_ULTIMA, String(Date.now()));
 
     const p = await lerPrevisao(opcoes.previsao, opcoes.suave);
-    const painel = await lerPainel(cfg, opcoes.forcar);
+    const painelLido = await lerPainelComMetodo(cfg, opcoes.forcar, { previsao: p });
+    const painel = painelLido.painel;
     // Segunda opinião: medição do tempo atual PELO COMPOSIO (OpenWeather).
     const cc = await lerComposioAgora(opcoes.forcar);
     if (!p && !painel && !cc) {
       return { rodou: true, postou: false, motivo: "fontes do tempo indisponíveis", mudancas: [] };
     }
-    const atual = montarInstantaneo(p, painel, Date.now(), cc);
+    const atual = montarInstantaneo(p, painel, Date.now(), cc, painelLido.metodo);
     if (!atual.api && !atual.painel && !atual.boletim && !atual.agora && !atual.composioAgora) {
       return { rodou: true, postou: false, motivo: "leitura incompleta", mudancas: [] };
     }
@@ -1205,8 +1266,23 @@ export type StatusRadarClima = {
   mudancas24h: number;
   fontes: { simport: boolean; estacao: boolean; painel: boolean; composio: boolean };
   composio: boolean;
-  /** Leitura do painel da APPA pelo Composio: quando foi e qual foi o erro. */
-  painel: { em: string | null; erro: string | null };
+  /**
+   * Painel da APPA: `conectado` = alguma leitura deu certo (por QUALQUER
+   * método). O erro só aparece quando TODOS os métodos falharam.
+   */
+  painel: {
+    conectado: boolean;
+    em: string | null;
+    metodo: MetodoLeituraAppa | null;
+    metodoRotulo: string | null;
+    erro: string | null;
+    /** Log de diagnóstico: uma linha por método tentado. */
+    tentativas: TentativaLeituraAppa[];
+    /** Última leitura no FORMATO ÚNICO (`DadosPainelAppa`). */
+    leitura: DadosPainelAppa | null;
+    /** Resumo em uma frase (chuva, vento, temperatura). */
+    resumo: string | null;
+  };
   /** Último erro ao ler a medição do tempo pelo Composio (null = tudo certo). */
   composioErro: string | null;
 };
@@ -1224,28 +1300,45 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
     mudancas24h: 0,
     fontes: { simport: false, estacao: false, painel: false, composio: false },
     composio: false,
-    painel: { em: null, erro: null },
+    painel: {
+      conectado: false,
+      em: null,
+      metodo: null,
+      metodoRotulo: null,
+      erro: null,
+      tentativas: [],
+      leitura: null,
+      resumo: null,
+    },
     composioErro: null,
   };
   try {
-    const [ultima, instantaneo, [mudanca], [total], composio, painelBruto, erroPainel, erroComposio] = await Promise.all([
-      lerConfig(CHAVE_ULTIMA),
-      lerInstantaneo(),
-      db
-        .select({ em: climaMudancas.criadoEm, resumo: climaMudancas.resumo, grave: climaMudancas.grave })
-        .from(climaMudancas)
-        .orderBy(desc(climaMudancas.id))
-        .limit(1),
-      db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(climaMudancas)
-        .where(sql`${climaMudancas.criadoEm} > now() - interval '24 hours'`),
-      composioConfigurado().catch(() => false),
-      lerConfig(CHAVE_PAINEL),
-      lerConfig(CHAVE_PAINEL_ERRO),
-      lerConfig(CHAVE_COMPOSIO_ERRO),
-    ]);
-    const painelEm = instantaneoValidoPainel(painelBruto)?.em ?? null;
+    const [ultima, instantaneo, [mudanca], [total], composio, painelBruto, erroPainel, diagBruto, erroComposio] =
+      await Promise.all([
+        lerConfig(CHAVE_ULTIMA),
+        lerInstantaneo(),
+        db
+          .select({ em: climaMudancas.criadoEm, resumo: climaMudancas.resumo, grave: climaMudancas.grave })
+          .from(climaMudancas)
+          .orderBy(desc(climaMudancas.id))
+          .limit(1),
+        db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(climaMudancas)
+          .where(sql`${climaMudancas.criadoEm} > now() - interval '24 hours'`),
+        composioConfigurado().catch(() => false),
+        lerConfig(CHAVE_PAINEL),
+        lerConfig(CHAVE_PAINEL_ERRO),
+        lerConfig(CHAVE_PAINEL_DIAG),
+        lerConfig(CHAVE_COMPOSIO_ERRO),
+      ]);
+    const guardado = instantaneoValidoPainel(painelBruto);
+    const diag = diagnosticoValido(diagBruto);
+    // Conectado = houve leitura por ALGUM método e nenhuma falha total depois.
+    // (Sem `metodo` é porque a leitura é anterior a esta versão; vale a leitura.)
+    const metodo = diag?.metodo ?? guardado?.metodo ?? null;
+    const conectado = Boolean(!erroPainel && ((diag?.ok ?? false) || Boolean(guardado?.dados)));
+    const resumo = diag?.resumo ?? null;
     return {
       ...padrao,
       ultimaVerificacao: ultima ? new Date(Number(ultima)).toISOString() : null,
@@ -1260,7 +1353,17 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
         composio: Boolean(instantaneo?.fontes.composio),
       },
       composio,
-      painel: { em: painelEm ? new Date(painelEm).toISOString() : null, erro: erroPainel ?? null },
+      painel: {
+        conectado,
+        em: guardado?.em ? new Date(guardado.em).toISOString() : null,
+        metodo,
+        metodoRotulo: metodo ? ROTULO_METODO[metodo] : null,
+        // Só quando TODOS os métodos falharam (nada de culpar o Composio).
+        erro: erroPainel ?? null,
+        tentativas: diag?.tentativas ?? guardado?.tentativas ?? [],
+        leitura: diag?.ok === false && !guardado?.normalizado ? null : (guardado?.normalizado ?? null),
+        resumo,
+      },
       composioErro: erroComposio ?? null,
     };
   } catch {

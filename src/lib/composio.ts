@@ -1,4 +1,5 @@
 import { obterSegredo, semSegredos } from "@/lib/admin/segredos";
+import { PAINEL_APPA_URL } from "@/lib/appa-painel-texto";
 
 /**
  * Cliente do Composio — SOMENTE servidor.
@@ -371,25 +372,31 @@ export async function lerPaginas(urls: string[], maxCaracteres = 20000) {
 /**
  * Endereço público do SIMPORT® — Dashboard Meteoceanográfico da APPA, o mesmo
  * que o motorista abre no navegador (https://weather-appa.app.simport.com.br/).
- * Pode ser trocado por variável de ambiente (ex.: /forecast).
+ * Pode ser trocado por variável de ambiente (`SIMPORT_PAINEL_URL`). O endereço
+ * vive em `src/lib/appa-painel-texto.ts`, junto com o resto da leitura do
+ * painel, e é reexportado aqui para quem já importava deste arquivo.
  */
-export const SIMPORT_PAINEL_URL =
-  process.env.SIMPORT_PAINEL_URL?.trim() || "https://weather-appa.app.simport.com.br/";
+export { PAINEL_APPA_URL as SIMPORT_PAINEL_URL } from "@/lib/appa-painel-texto";
 
 /**
  * Lê o painel da Simport PELO COMPOSIO (COMPOSIO_SEARCH_FETCH_URL_CONTENT) e
- * devolve o texto da página (markdown). É por aqui que o radar da previsão
- * (`src/lib/clima-monitor.ts`) acompanha constantemente o boletim da APPA, as
- * tabelas de chuva e vento das próximas 24 h e as marés — e compara com a
- * leitura anterior para avisar qualquer mudança no chat.
+ * devolve o texto da página (markdown).
+ *
+ * É o método ADICIONAL da leitura do painel — o radar tenta antes, nesta
+ * ordem: API/JSON embutido, HTTP + HTML, navegador headless e captura de tela
+ * com OCR (`src/lib/appa-painel.ts`). Quando o Composio devolve `results`
+ * vazio, texto vazio, erro ou timeout, o próximo método entra automaticamente
+ * e o radar NÃO para.
  *
  * Sem COMPOSIO_API_KEY (ou com o Composio fora do ar) a função joga erro: o
- * radar segue trabalhando com a API estruturada da Simport/Open-Meteo.
+ * radar segue trabalhando com os métodos diretos e com a API estruturada da
+ * Simport/Open-Meteo.
  */
 export async function painelSimportComposio(maxCaracteres = 14000): Promise<string> {
-  // Alguns painéis só devolvem conteúdo na rota interna (/forecast); tenta as
-  // duas antes de desistir, para o radar não ficar sem o painel à toa.
-  const enderecos = [...new Set([SIMPORT_PAINEL_URL, SIMPORT_PAINEL_URL.replace(/\/$/, "") + "/forecast"])];
+  // É o MÉTODO ADICIONAL da leitura do painel (o radar tenta antes API/JSON,
+  // HTTP + HTML, navegador headless e OCR). Alguns painéis só devolvem
+  // conteúdo na rota interna (/forecast); tenta as duas antes de desistir.
+  const enderecos = [...new Set([PAINEL_APPA_URL, PAINEL_APPA_URL.replace(/\/$/, "") + "/forecast"])];
   let ultimoErro: unknown = null;
   for (const endereco of enderecos) {
     try {
