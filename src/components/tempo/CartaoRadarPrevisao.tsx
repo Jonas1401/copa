@@ -157,6 +157,7 @@ export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar
           <dd className="text-white">
             {[
               s.fontes.simport ? "SIMPORT (API)" : null,
+              s.fontes.composio ? "Composio (tempo atual)" : null,
               s.fontes.painel ? "Painel da APPA (Composio)" : null,
               s.fontes.estacao ? "Estação do porto" : null,
             ]

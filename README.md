@@ -179,11 +179,19 @@ O radar tem **dois caminhos** para não parar:
    (`https://weather-appa.app.simport.com.br/`): modelo WRF hora a hora,
    estação do porto, boletim e Open-Meteo para os dias seguintes. Relida a
    cada **5 minutos** (`CLIMA_MONITOR_MIN`).
+1. **Medição do tempo atual PELO COMPOSIO** (ferramenta `WEATHERMAP_WEATHER` /
+   OpenWeather): é a **segunda opinião** do radar, com cache de 10 min — cobre
+   o tempo atual mesmo quando a estação da APPA e o WRF caem.
 2. **Painel público lido PELO COMPOSIO** a cada **30 minutos**
    (`CLIMA_MONITOR_PAINEL_MIN`) com a ferramenta
    `COMPOSIO_SEARCH_FETCH_URL_CONTENT` — é o Composio que busca a página da
    APPA e devolve o texto: boletim do dia, tabelas de chuva e vento das
    próximas 24 h e tábua de marés (`parsearPainelSimport`).
+   **Atenção:** essa ferramenta usa a Exa, que **não roda JavaScript**; o
+   painel da APPA é renderizado no navegador, então ela pode devolver vazio
+   (é o que acontece hoje em produção). O radar não depende disso: segue com a
+   API da Simport e com a medição do Composio, e o cartão da tela Tempo mostra
+   o motivo quando a página não vem.
 
 Cada leitura vira um **instantâneo** comparável (números + textos
 normalizados). Quando a comparação com o instantâneo do **último aviso** passa
