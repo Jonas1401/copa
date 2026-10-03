@@ -17,7 +17,7 @@ import sharp from "sharp";
  *   ./node_modules/.bin/tsx --test tests/badge.test.ts
  */
 
-const BADGE = "public/icons/copalinks-badge-72.png";
+const BADGE = "public/icons/copalinks-badge-72-4.png";
 
 test("badge da notificação é branco sobre transparente, em 72x72", async () => {
   const { data, info } = await sharp(BADGE)
