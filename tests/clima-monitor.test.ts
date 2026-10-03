@@ -439,6 +439,21 @@ test("radar: texto do aviso usa só dados reais e cabe numa notificação", () =
   assert.match(textoMudancaPadrao(soVento, null), /💨/);
 });
 
+test("composio: extrai o texto da resposta e descreve quando vem vazio", async () => {
+  const { descreverResposta, extrairTexto } = await import("../src/lib/composio");
+  // Formatos diferentes que a mesma ferramenta pode devolver.
+  assert.equal(extrairTexto({ text: "conteúdo" }), "conteúdo");
+  assert.equal(extrairTexto({ content: "outro" }), "outro");
+  assert.equal(extrairTexto({ markdown: "# t" }), "# t");
+  assert.equal(extrairTexto({ url: "x", data: { text: "aninhado" } }), "aninhado");
+  assert.equal(extrairTexto({ url: "x", text: "  " }), "");
+  assert.equal(extrairTexto(null), "");
+  // Resumo usado no diagnóstico do painel (sem segredo nenhum).
+  assert.match(descreverResposta({ data: { results: [] } }), /results vazio/);
+  assert.match(descreverResposta({ data: { results: [{ url: "x", text: "" }] } }), /results\[0\]/);
+  assert.match(descreverResposta(undefined), /resposta vazia/);
+});
+
 test("radar: a assinatura vale por bloco de 3 h (a mesma mudança pode voltar)", () => {
   const antes = instantaneo({ chance: 10 });
   const depois = instantaneo({ chance: 80 }, Date.now() + 60_000);
