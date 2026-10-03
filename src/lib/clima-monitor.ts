@@ -63,6 +63,8 @@ const CHAVE_PAINEL = "clima_monitor_painel";
 const CHAVE_SEMEADO = "clima_monitor_semeado";
 /** Último erro ao ler o painel da Simport pelo Composio (diagnóstico). */
 const CHAVE_PAINEL_ERRO = "clima_monitor_painel_erro";
+/** Último erro ao ler a medição do tempo pelo Composio (diagnóstico). */
+const CHAVE_COMPOSIO_ERRO = "clima_monitor_composio_erro";
 
 /* -------------------------------------------------------- configuração */
 export type Sensibilidade = "baixa" | "media" | "alta";
@@ -928,7 +930,19 @@ export async function lerComposioAgora(forcar = false): Promise<ClimaComposio | 
   if (!forcar && cacheComposio && Date.now() - cacheComposio.em < VIDA_CACHE_COMPOSIO) {
     return cacheComposio.dados;
   }
-  const dados = await climaAgoraComposio().catch(() => null);
+  if (!(await composioConfigurado().catch(() => false))) {
+    await gravarDiagnostico(CHAVE_COMPOSIO_ERRO, "COMPOSIO_API_KEY não configurada").catch(() => null);
+    cacheComposio = { em: Date.now(), dados: null };
+    return null;
+  }
+  let dados: ClimaComposio | null = null;
+  try {
+    dados = await climaAgoraComposio();
+  } catch (e) {
+    await gravarDiagnostico(CHAVE_COMPOSIO_ERRO, e instanceof Error ? e.message : String(e)).catch(() => null);
+    dados = null;
+  }
+  if (dados) await gravarDiagnostico(CHAVE_COMPOSIO_ERRO, null).catch(() => null);
   cacheComposio = { em: Date.now(), dados };
   return dados;
 }
@@ -947,31 +961,31 @@ export async function lerPainel(cfg: ConfigRadar, forcar = false): Promise<Paine
   const guardado = instantaneoValidoPainel(await lerConfig(CHAVE_PAINEL).catch(() => null));
   if (!forcar && guardado && Date.now() - guardado.em < cfg.painelMs) return guardado.dados;
   if (!(await composioConfigurado().catch(() => false))) {
-    await gravarPainelErro("COMPOSIO_API_KEY não configurada").catch(() => null);
+    await gravarDiagnostico(CHAVE_PAINEL_ERRO, "COMPOSIO_API_KEY não configurada").catch(() => null);
     return guardado?.dados ?? null;
   }
   try {
     const dados = parsearPainelSimport(await painelSimportComposio());
     if (!dados) {
-      await gravarPainelErro("o Composio não devolveu o texto do painel").catch(() => null);
+      await gravarDiagnostico(CHAVE_PAINEL_ERRO, "o Composio não devolveu o texto do painel").catch(() => null);
       return guardado?.dados ?? null;
     }
     await gravarConfig(CHAVE_PAINEL, JSON.stringify({ em: Date.now(), dados }));
-    await gravarPainelErro(null).catch(() => null);
+    await gravarDiagnostico(CHAVE_PAINEL_ERRO, null).catch(() => null);
     return dados;
   } catch (e) {
-    await gravarPainelErro(e instanceof Error ? e.message : String(e)).catch(() => null);
+    await gravarDiagnostico(CHAVE_PAINEL_ERRO, e instanceof Error ? e.message : String(e)).catch(() => null);
     return guardado?.dados ?? null;
   }
 }
 
-/** Guarda (ou limpa) o motivo da última falha na leitura do painel. */
-async function gravarPainelErro(motivo: string | null) {
+/** Guarda (ou limpa) o motivo da última falha de uma fonte do radar. */
+async function gravarDiagnostico(chave: string, motivo: string | null) {
   if (!motivo) {
-    await db.delete(configuracao).where(eq(configuracao.chave, CHAVE_PAINEL_ERRO));
+    await db.delete(configuracao).where(eq(configuracao.chave, chave));
     return;
   }
-  await gravarConfig(CHAVE_PAINEL_ERRO, motivo.slice(0, 200));
+  await gravarConfig(chave, motivo.slice(0, 200));
 }
 
 function instantaneoValidoPainel(bruto: string | null): { em: number; dados: PainelSimport } | null {
@@ -1193,6 +1207,8 @@ export type StatusRadarClima = {
   composio: boolean;
   /** Leitura do painel da APPA pelo Composio: quando foi e qual foi o erro. */
   painel: { em: string | null; erro: string | null };
+  /** Último erro ao ler a medição do tempo pelo Composio (null = tudo certo). */
+  composioErro: string | null;
 };
 
 /** Estado do radar para a tela Tempo e para o painel do administrador. */
@@ -1209,9 +1225,10 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
     fontes: { simport: false, estacao: false, painel: false, composio: false },
     composio: false,
     painel: { em: null, erro: null },
+    composioErro: null,
   };
   try {
-    const [ultima, instantaneo, [mudanca], [total], composio, painelBruto, erroPainel] = await Promise.all([
+    const [ultima, instantaneo, [mudanca], [total], composio, painelBruto, erroPainel, erroComposio] = await Promise.all([
       lerConfig(CHAVE_ULTIMA),
       lerInstantaneo(),
       db
@@ -1226,6 +1243,7 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
       composioConfigurado().catch(() => false),
       lerConfig(CHAVE_PAINEL),
       lerConfig(CHAVE_PAINEL_ERRO),
+      lerConfig(CHAVE_COMPOSIO_ERRO),
     ]);
     const painelEm = instantaneoValidoPainel(painelBruto)?.em ?? null;
     return {
@@ -1243,6 +1261,7 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
       },
       composio,
       painel: { em: painelEm ? new Date(painelEm).toISOString() : null, erro: erroPainel ?? null },
+      composioErro: erroComposio ?? null,
     };
   } catch {
     return padrao;
