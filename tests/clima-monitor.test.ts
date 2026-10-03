@@ -8,7 +8,9 @@ import {
   montarInstantaneo,
   normalizarTexto,
   parsearPainelSimport,
+  resetarTickRadar,
   textoMudancaPadrao,
+  tickRadar,
   type InstantaneoClima,
   type PainelSimport,
 } from "../src/lib/clima-monitor";
@@ -464,7 +466,7 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
   const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
   const { inArray } = await import("drizzle-orm");
   const { garantirTabelas } = await import("../src/lib/estado");
-  const { verificarMudancasPrevisao, NOME_RADAR, statusRadarClima } = await import("../src/lib/clima-monitor");
+  const { verificarMudancasPrevisao, NOME_RADAR, statusRadarClima, tickRadar, resetarTickRadar } = await import("../src/lib/clima-monitor");
   const webpush = (await import("web-push")).default;
 
   const chaves = webpush.generateVAPIDKeys();
@@ -620,6 +622,20 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     assert.equal(s.fontes.composio, false);
     assert.ok(s.composio, "Composio configurado (chave de teste)");
     assert.ok(s.ultimaMudanca?.resumo);
+
+    // 6b) Batida leve do caminho do app aberto: a 1ª roda o ciclo, as seguintes
+    // saem de graça (só uma comparação de horário, sem banco e sem rede).
+    resetarTickRadar();
+    const batida1 = await tickRadar();
+    assert.ok(batida1, "a 1ª batida roda o ciclo do radar");
+    assert.equal(batida1?.postou, false, "sem mudança nova (o cenário não mudou)");
+    assert.equal(await tickRadar(), null, "a 2ª batida no mesmo minuto sai de graça");
+    // Radar desligado: a batida não faz nada.
+    process.env.CLIMA_MONITOR_ATIVO = "0";
+    assert.equal(await tickRadar(), null);
+    delete process.env.CLIMA_MONITOR_ATIVO;
+    resetarTickRadar();
+    assert.ok(await tickRadar(), "volta a rodar com o radar ligado");
 
     // 7) CLIMA_MONITOR_ATIVO=0 desliga o radar sem quebrar o cron.
     process.env.CLIMA_MONITOR_ATIVO = "0";
