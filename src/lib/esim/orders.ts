@@ -261,7 +261,9 @@ export async function provisionarPedidoPago(orderId: number) {
       }).where(eq(esimOrders.id, orderId));
       return status;
     });
-    await processarWebhooksNexaPendentes(orderCode);
+    // The provider order is durably linked now. A callback processing failure must
+    // leave its receipt pending, not turn a successful create into a duplicate retry.
+    await processarWebhooksNexaPendentes(orderCode).catch(() => undefined);
     return { status: nextStatus, orderCode };
   } catch (error) {
     return falhaProvisionamento(orderId, error, "order/create");

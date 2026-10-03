@@ -92,7 +92,7 @@ Toda consulta da área operacional é protegida por `exigirAdmin()`. Ainda não 
 ```bash
 npm run typecheck
 npm run lint
-./node_modules/.bin/tsx --test tests/esim-integration.test.ts
+./node_modules/.bin/tsx --test tests/esim-*.test.ts
 ```
 
 O teste da integração verifica caminhos oficiais, bloqueio de rede no modo TESTE, autenticação/idempotência com `fetch` mockado, mapeamento de catálogo, HMAC, statuses e margem. Não havia `DATABASE_URL`, gateway, credenciais ou sandbox NexaEsim neste ambiente; portanto nenhum pagamento real, perfil real, callback real ou eSIM instalável foi criado/testado.

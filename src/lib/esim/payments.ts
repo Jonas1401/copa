@@ -112,7 +112,7 @@ export async function processarEventoPagamento(rawBody: string, rawEvent: unknow
     }
 
     await tx.update(esimPayments).set({
-      gateway: "configured-gateway-adapter",
+      gateway: "normalized-contract-no-vendor-adapter",
       gatewayPaymentId: event.paymentId,
       method: event.method ?? row.payment.method,
       status: paymentStatus,
