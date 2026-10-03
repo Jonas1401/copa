@@ -28,6 +28,7 @@ export type StatusRadar = {
   fontes: { simport: boolean; estacao: boolean; painel: boolean; composio: boolean };
   composio: boolean;
   painel: { em: string | null; erro: string | null };
+  composioErro: string | null;
 };
 
 const SENSIBILIDADE: Record<StatusRadar["sensibilidade"], string> = {
@@ -191,8 +192,14 @@ export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar
       )}
       {s.composio && s.painel.erro && (
         <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
-          O Composio não conseguiu ler o painel da APPA: {s.painel.erro} (o radar segue com a API
-          da Simport).
+          O Composio não conseguiu ler o painel da APPA: {s.painel.erro}. O radar segue com a API da
+          Simport e com a medição do Composio.
+        </p>
+      )}
+      {s.composio && s.composioErro && (
+        <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
+          O Composio não devolveu a medição do tempo agora: {s.composioErro}. O radar segue com a
+          estação da APPA.
         </p>
       )}
 
