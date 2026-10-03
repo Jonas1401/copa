@@ -27,6 +27,7 @@ export type StatusRadar = {
   mudancas24h: number;
   fontes: { simport: boolean; estacao: boolean; painel: boolean; composio: boolean };
   composio: boolean;
+  painel: { em: string | null; erro: string | null };
 };
 
 const SENSIBILIDADE: Record<StatusRadar["sensibilidade"], string> = {
@@ -167,12 +168,30 @@ export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar
           <dt className="shrink-0 text-gelo/70">Avisos em 24 h</dt>
           <dd className="text-white">{s.mudancas24h}</dd>
         </div>
+        <div className="flex gap-2">
+          <dt className="shrink-0 text-gelo/70">Painel APPA</dt>
+          <dd className="min-w-0 text-white">
+            {s.painel.em ? (
+              <>
+                lido pelo Composio em <span className="text-gelo/70">{horaMin(s.painel.em)}</span>
+              </>
+            ) : (
+              "ainda não lido pelo Composio"
+            )}
+          </dd>
+        </div>
       </dl>
 
       {!s.composio && (
         <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
           Cadastre a chave do Composio em <b>/admin → Integrações</b> para o radar ler também o
           painel completo da APPA (boletim, marés e tabelas de chuva e vento).
+        </p>
+      )}
+      {s.composio && s.painel.erro && (
+        <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
+          O Composio não conseguiu ler o painel da APPA: {s.painel.erro} (o radar segue com a API
+          da Simport).
         </p>
       )}
 

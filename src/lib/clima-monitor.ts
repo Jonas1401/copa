@@ -55,6 +55,8 @@ const CHAVE_INSTANTANEO = "clima_monitor_instantaneo";
 const CHAVE_ULTIMA = "clima_monitor_ultima";
 const CHAVE_PAINEL = "clima_monitor_painel";
 const CHAVE_SEMEADO = "clima_monitor_semeado";
+/** Último erro ao ler o painel da Simport pelo Composio (diagnóstico). */
+const CHAVE_PAINEL_ERRO = "clima_monitor_painel_erro";
 
 /* -------------------------------------------------------- configuração */
 export type Sensibilidade = "baixa" | "media" | "alta";
@@ -832,15 +834,32 @@ async function lerPrevisao(passada: Previsao | undefined, suave = false): Promis
 export async function lerPainel(cfg: ConfigRadar, forcar = false): Promise<PainelSimport | null> {
   const guardado = instantaneoValidoPainel(await lerConfig(CHAVE_PAINEL).catch(() => null));
   if (!forcar && guardado && Date.now() - guardado.em < cfg.painelMs) return guardado.dados;
-  if (!(await composioConfigurado().catch(() => false))) return guardado?.dados ?? null;
-  try {
-    const dados = parsearPainelSimport(await painelSimportComposio());
-    if (!dados) return guardado?.dados ?? null;
-    await gravarConfig(CHAVE_PAINEL, JSON.stringify({ em: Date.now(), dados }));
-    return dados;
-  } catch {
+  if (!(await composioConfigurado().catch(() => false))) {
+    await gravarPainelErro("COMPOSIO_API_KEY não configurada").catch(() => null);
     return guardado?.dados ?? null;
   }
+  try {
+    const dados = parsearPainelSimport(await painelSimportComposio());
+    if (!dados) {
+      await gravarPainelErro("o Composio não devolveu o texto do painel").catch(() => null);
+      return guardado?.dados ?? null;
+    }
+    await gravarConfig(CHAVE_PAINEL, JSON.stringify({ em: Date.now(), dados }));
+    await gravarPainelErro(null).catch(() => null);
+    return dados;
+  } catch (e) {
+    await gravarPainelErro(e instanceof Error ? e.message : String(e)).catch(() => null);
+    return guardado?.dados ?? null;
+  }
+}
+
+/** Guarda (ou limpa) o motivo da última falha na leitura do painel. */
+async function gravarPainelErro(motivo: string | null) {
+  if (!motivo) {
+    await db.delete(configuracao).where(eq(configuracao.chave, CHAVE_PAINEL_ERRO));
+    return;
+  }
+  await gravarConfig(CHAVE_PAINEL_ERRO, motivo.slice(0, 200));
 }
 
 function instantaneoValidoPainel(bruto: string | null): { em: number; dados: PainelSimport } | null {
@@ -1058,6 +1077,8 @@ export type StatusRadarClima = {
   mudancas24h: number;
   fontes: { simport: boolean; estacao: boolean; painel: boolean; composio: boolean };
   composio: boolean;
+  /** Leitura do painel da APPA pelo Composio: quando foi e qual foi o erro. */
+  painel: { em: string | null; erro: string | null };
 };
 
 /** Estado do radar para a tela Tempo e para o painel do administrador. */
@@ -1073,9 +1094,10 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
     mudancas24h: 0,
     fontes: { simport: false, estacao: false, painel: false, composio: false },
     composio: false,
+    painel: { em: null, erro: null },
   };
   try {
-    const [ultima, instantaneo, [mudanca], [total], composio] = await Promise.all([
+    const [ultima, instantaneo, [mudanca], [total], composio, painelBruto, erroPainel] = await Promise.all([
       lerConfig(CHAVE_ULTIMA),
       lerInstantaneo(),
       db
@@ -1088,7 +1110,10 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
         .from(climaMudancas)
         .where(sql`${climaMudancas.criadoEm} > now() - interval '24 hours'`),
       composioConfigurado().catch(() => false),
+      lerConfig(CHAVE_PAINEL),
+      lerConfig(CHAVE_PAINEL_ERRO),
     ]);
+    const painelEm = instantaneoValidoPainel(painelBruto)?.em ?? null;
     return {
       ...padrao,
       ultimaVerificacao: ultima ? new Date(Number(ultima)).toISOString() : null,
@@ -1103,6 +1128,7 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
         composio: Boolean(instantaneo?.fontes.composio),
       },
       composio,
+      painel: { em: painelEm ? new Date(painelEm).toISOString() : null, erro: erroPainel ?? null },
     };
   } catch {
     return padrao;
