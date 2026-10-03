@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Radar, RefreshCw } from "lucide-react";
 
 /**
- * Situação do RADAR DA PREVISÃO (monitoramento constante do tempo).
+ * Situação do RADAR DA PREVISÃO (monitoramento constante do tempo) — agora
+ * exclusivo da ÁREA DO ADMINISTRADOR (`/admin`). A tela pública do Tempo não
+ * mostra mais este cartão: o motorista continua recebendo os avisos no chat e
+ * como notificação, mas o diagnóstico fica só com quem administra.
  *
  * O radar roda no servidor (`/api/cron`, a cada minuto): relê o SIMPORT®/APPA
  * pela API e o painel público PELO COMPOSIO, compara com a última leitura e
@@ -13,8 +16,8 @@ import { Radar, RefreshCw } from "lucide-react";
  *
  * Este cartão só mostra o estado (não escreve nada): se está ligado, de quanto
  * em quanto tempo lê, quando foi a última leitura, a última mudança avisada e
- * quais fontes estão no ar. O botão "Verificar agora" aparece para o
- * administrador e roda um ciclo imediato.
+ * quais fontes estão no ar. Só aparece depois do login, então o botão
+ * "Verificar agora" fica sempre disponível (`POST /api/tempo/radar`).
  */
 
 export type StatusRadar = {
@@ -37,6 +40,18 @@ const SENSIBILIDADE: Record<StatusRadar["sensibilidade"], string> = {
   alta: "qualquer mudança",
 };
 
+/** Token da sessão do administrador (o mesmo usado pelo restante do painel). */
+const CHAVE_TOKEN = "copalinks-admin-sessao";
+
+function cabecalhoAdmin(): Record<string, string> {
+  try {
+    const t = localStorage.getItem(CHAVE_TOKEN) || sessionStorage.getItem(CHAVE_TOKEN);
+    return t ? { authorization: `Bearer ${t}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 function horaMin(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("pt-BR", {
@@ -48,16 +63,20 @@ function horaMin(iso: string) {
   });
 }
 
-export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar | null } = {}) {
+export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: StatusRadar | null } = {}) {
   const [s, setS] = useState<StatusRadar | null>(inicial ?? null);
-  const [admin, setAdmin] = useState(false);
   const [rodando, setRodando] = useState(false);
   const [aviso, setAviso] = useState("");
 
   const buscar = useCallback(async () => {
     try {
-      const r = await fetch("/api/tempo/radar", { cache: "no-store" });
+      const r = await fetch("/api/tempo/radar", {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: cabecalhoAdmin(),
+      });
       if (r.ok) setS((await r.json()) as StatusRadar);
+      else if (r.status === 401) setS(null);
     } catch {
       /* sem rede: o cartão simplesmente não aparece */
     }
@@ -71,23 +90,21 @@ export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar
     return () => clearInterval(t);
   }, [inicial, buscar]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const r = await fetch("/api/admin/sessao", { cache: "no-store" });
-        if (r.ok) setAdmin(Boolean((await r.json())?.logado));
-      } catch {
-        /* mantém sem o botão */
-      }
-    })();
-  }, []);
-
   async function verificarAgora() {
     setRodando(true);
     setAviso("");
     try {
-      const r = await fetch("/api/tempo/radar", { method: "POST" });
+      const r = await fetch("/api/tempo/radar", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: cabecalhoAdmin(),
+      });
       const d = await r.json().catch(() => ({}));
+      if (r.status === 401) {
+        setAviso("Sessão expirada. Entre novamente no painel para rodar o radar.");
+        return;
+      }
       setAviso(
         r.ok
           ? d.postou
@@ -95,7 +112,8 @@ export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar
             : (d.motivo ?? "Ciclo rodado.")
           : (d.erro ?? "Não foi possível rodar o radar."),
       );
-      await buscar();
+      if (d.status) setS(d.status as StatusRadar);
+      else await buscar();
     } catch {
       setAviso("Não foi possível rodar o radar.");
     } finally {
@@ -107,10 +125,10 @@ export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar
 
   const ligado = s.ativo;
   return (
-    <section className="rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-3">
+    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
       <div className="mb-2.5 flex items-center justify-between gap-2 px-0.5">
         <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
-          <Radar size={26} strokeWidth={2.2} /> Radar da previsão
+          <Radar size={22} strokeWidth={2.2} /> Radar da previsão
         </h2>
         <span
           className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-bold ${
@@ -203,17 +221,15 @@ export default function CartaoRadarPrevisao({ inicial }: { inicial?: StatusRadar
         </p>
       )}
 
-      {admin && (
-        <button
-          type="button"
-          onClick={() => void verificarAgora()}
-          disabled={rodando}
-          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-4 py-2.5 font-display text-[14px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
-        >
-          <RefreshCw size={16} className={rodando ? "animate-spin" : ""} />
-          {rodando ? "Verificando…" : "Verificar agora (admin)"}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => void verificarAgora()}
+        disabled={rodando}
+        className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-4 py-2.5 font-display text-[14px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
+      >
+        <RefreshCw size={16} className={rodando ? "animate-spin" : ""} />
+        {rodando ? "Verificando…" : "Verificar agora"}
+      </button>
       {aviso && <p className="mt-2 px-0.5 text-[12.5px] text-[#8fd6ff]">{aviso}</p>}
     </section>
   );

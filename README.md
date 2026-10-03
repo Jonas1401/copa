@@ -16,7 +16,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
-| **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão e auditoria |
+| **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, exclusivo do administrador) |
 
 ## Tecnologia
 
@@ -223,9 +223,13 @@ Tudo é opcional e configurável por variável de ambiente (veja `.env.example`)
 `CLIMA_MONITOR_MAX_HORA`. Sem `COMPOSIO_API_KEY` o radar continua funcionando
 só com a API da Simport; com ela, lê também o painel inteiro.
 
-Na tela **Tempo** o cartão *Radar da previsão* mostra se está monitorando, a
-última leitura, a última mudança avisada e as fontes no ar; para o
-administrador há o botão **Verificar agora** (`POST /api/tempo/radar`). O painel
+O cartão *Radar da previsão* fica **somente na área do administrador**
+(`/admin`, logo abaixo do atalho do Monitor WhatsApp): mostra se está
+monitorando, a última leitura, a última mudança avisada, as fontes no ar e o
+diagnóstico do Composio, com o botão **Verificar agora**
+(`POST /api/tempo/radar`). A tela pública **Tempo** não exibe mais o cartão —
+o motorista continua recebendo os avisos no chat e por Push. As rotas
+`GET`/`POST /api/tempo/radar` exigem sessão de administrador. O painel
 `/admin → Integrações → Previsão do Tempo APPA` mostra o mesmo estado.
 
 Testes: `tsx --test tests/clima-monitor.test.ts` (puros: leitura do painel,
