@@ -167,7 +167,8 @@ O radar tem **dois caminhos** para não parar:
 
 - **`/api/cron`** (a cada minuto, Vercel ou Supabase pg_cron): é quem garante o
   aviso **com o aplicativo fechado**;
-- **`/api/atualizar`** (`tickRadar`): o app aberto chama essa rota a cada 5 s,
+- **`/api/estado` e `/api/atualizar`** (`tickRadar`): o app aberto chama essas
+  rotas o tempo todo,
   então o monitoramento continua vivo mesmo que o cron do provedor rode só uma
   vez por dia (plano Hobby) ou o job do Supabase esteja desligado. A batida
   custa uma comparação de horário na maior parte das vezes e, quando o
