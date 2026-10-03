@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import CartaoExpansivelAdmin from "@/components/admin/CartaoExpansivelAdmin";
 import CartaoNotificacoesAdmin from "@/components/admin/CartaoNotificacoesAdmin";
 import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
@@ -17,6 +18,7 @@ import {
   History,
   KeyRound,
   LogOut,
+  MessageCircle,
   Plug,
   RefreshCw,
   Save,
@@ -281,19 +283,27 @@ function CardIntegracao({
   const final4Principal = it.campos.find((c) => c.secreto && c.info.configurado)?.info.final4;
 
   return (
-    <section className={`rounded-[22px] border-[1.5px] bg-[linear-gradient(180deg,rgba(13,40,92,0.9),rgba(8,24,60,0.94))] p-4 ${st.borda}`}>
-      <header className="flex items-start gap-3">
+    <CartaoExpansivelAdmin
+      className={`rounded-[22px] border-[1.5px] bg-[linear-gradient(180deg,rgba(13,40,92,0.9),rgba(8,24,60,0.94))] p-4 ${st.borda}`}
+      contentClassName="mt-3"
+      uppercase={false}
+      icon={
         <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-[14px] text-white ${COR_ICONE[it.id]}`}>
           <Icone size={24} strokeWidth={2.2} />
         </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="font-display text-[18px] leading-tight font-extrabold text-white">{it.nome}</h2>
-          <p className="mt-0.5 text-[13px] leading-snug text-gelo/75">{it.descricao}</p>
-        </div>
-      </header>
-
+      }
+      title={it.nome}
+      summary={
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>{it.descricao}</span>
+          <span className={`inline-flex items-center gap-1.5 font-bold ${st.texto}`}>
+            <span className={`h-2 w-2 rounded-full ${st.ponto}`} /> {st.rotulo}
+          </span>
+        </span>
+      }
+    >
       {/* resumo: chave mascarada + status */}
-      <div className="mt-3 grid gap-1.5 rounded-[14px] border border-[#2a5bb0]/50 bg-[#06122b]/70 px-3.5 py-2.5 text-[13.5px]">
+      <div className="grid gap-1.5 rounded-[14px] border border-[#2a5bb0]/50 bg-[#06122b]/70 px-3.5 py-2.5 text-[13.5px]">
         {it.campos.some((c) => c.secreto) && (
           <div className="flex items-center justify-between gap-2">
             <span className="text-gelo/70">API Key</span>
@@ -369,7 +379,7 @@ function CardIntegracao({
         )}
       </div>
       {carregandoEste && <span className="sr-only">Processando…</span>}
-    </section>
+    </CartaoExpansivelAdmin>
   );
 }
 
@@ -565,20 +575,15 @@ function TrocarSenha({
   }
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        aria-expanded={aberto}
-        className="flex w-full items-center justify-between gap-3 text-left"
-      >
-        <span className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
-          <KeyRound size={22} /> Trocar senha
-        </span>
-        <span className="text-[13px] text-gelo/70">{aberto ? "Fechar" : "Abrir"}</span>
-      </button>
+    <CartaoExpansivelAdmin
+      title="Trocar senha"
+      icon={<KeyRound size={22} className="text-[#38b6ff]" />}
+      summary="Atualize a senha de acesso do administrador."
+      aberto={aberto}
+      onAbertoChange={setAberto}
+    >
       {aberto && (
-        <form onSubmit={salvar} className="mt-3 grid gap-2.5 sm:grid-cols-3">
+        <form onSubmit={salvar} className="grid gap-2.5 sm:grid-cols-3">
           <input className={inputBase} type="password" placeholder="Senha atual" value={atual} onChange={(e) => setAtual(e.target.value)} autoComplete="current-password" aria-label="Senha atual" />
           <input className={inputBase} type="password" placeholder="Nova senha (mín. 8)" value={nova} onChange={(e) => setNova(e.target.value)} autoComplete="new-password" aria-label="Nova senha" />
           <input className={inputBase} type="password" placeholder="Repita a nova senha" value={nova2} onChange={(e) => setNova2(e.target.value)} autoComplete="new-password" aria-label="Repita a nova senha" />
@@ -587,7 +592,7 @@ function TrocarSenha({
           </button>
         </form>
       )}
-    </section>
+    </CartaoExpansivelAdmin>
   );
 }
 
@@ -753,21 +758,33 @@ export default function AdminApp() {
             {/* nome e pontos de todos os motoristas (só o administrador vê) */}
             <CartaoMotoristasAdmin api={api} onSessaoExpirada={sair401} />
 
-            <Link href="/monitor" className="mt-4 flex items-center justify-between gap-3 rounded-[20px] border border-ciano/45 bg-[#0b2146] p-4 transition-colors hover:border-ciano">
-              <span>
-                <span className="block font-display text-base font-bold text-white">Monitor WhatsApp</span>
-                <span className="mt-1 block text-xs text-gelo/70">Parear Android monitor, acompanhar códigos e notificações FCM</span>
-              </span>
-              <span aria-hidden className="text-xl text-ciano">→</span>
-            </Link>
+            <CartaoExpansivelAdmin
+              title="Monitor WhatsApp"
+              icon={<MessageCircle size={22} className="text-ciano" />}
+              summary="Acompanhe o pareamento do Android, os códigos e as notificações FCM."
+              className="mt-4 rounded-[20px] border border-ciano/45 bg-[#0b2146] p-4 transition-colors hover:border-ciano"
+            >
+              <p className="text-[13.5px] leading-snug text-gelo/80">
+                Gerencie o aparelho conectado e acompanhe as mensagens de monitoramento do WhatsApp.
+              </p>
+              <Link href="/monitor" className="mt-3 inline-flex items-center gap-2 rounded-full border border-ciano/55 px-4 py-2.5 font-display text-[14px] font-bold text-ciano uppercase hover:bg-ciano/10">
+                Abrir Monitor WhatsApp <span aria-hidden>→</span>
+              </Link>
+            </CartaoExpansivelAdmin>
 
             {/* situação do radar da previsão (monitoramento constante no servidor) */}
             <CartaoRadarPrevisaoAdmin />
 
-            <p className="mt-4 flex items-start gap-2 rounded-[16px] border border-verde/35 bg-verde/[0.07] px-3.5 py-2.5 text-[13px] leading-snug text-gelo/85">
-              <ShieldCheck size={18} className="mt-0.5 shrink-0 text-verde" />
-              As chaves ficam cifradas no servidor e nunca voltam para a tela: depois de salvas, só os 4 últimos caracteres aparecem. Os testes rodam no servidor.
-            </p>
+            <CartaoExpansivelAdmin
+              title="Segurança das chaves"
+              icon={<ShieldCheck size={20} className="text-verde" />}
+              summary="As chaves ficam cifradas no servidor e não voltam para a tela."
+              className="mt-4 rounded-[16px] border border-verde/35 bg-verde/[0.07] p-4"
+            >
+              <p className="text-[13px] leading-snug text-gelo/85">
+                Depois de salvas, só os 4 últimos caracteres aparecem. Os testes rodam no servidor.
+              </p>
+            </CartaoExpansivelAdmin>
 
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               {itens.length === 0 && <p className="text-[15px] text-gelo/70">Carregando integrações…</p>}
@@ -780,12 +797,12 @@ export default function AdminApp() {
 
             <TrocarSenha onAviso={setAviso} onSessaoExpirada={sair401} />
 
-            <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
-              <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
-                <History size={22} /> Auditoria
-              </h2>
-              <p className="mt-0.5 text-[12.5px] text-gelo/60">Quem alterou o quê e quando. Valores de chave nunca são registrados.</p>
-              <ul className="barra-rolagem mt-3 max-h-[380px] divide-y divide-[#2a5bb0]/35 overflow-y-auto">
+            <CartaoExpansivelAdmin
+              title="Auditoria"
+              icon={<History size={22} className="text-[#38b6ff]" />}
+              summary="Veja quem alterou o quê e quando. Valores de chave nunca são registrados."
+            >
+              <ul className="barra-rolagem max-h-[380px] divide-y divide-[#2a5bb0]/35 overflow-y-auto">
                 {registros.length === 0 && <li className="py-3 text-[14px] text-gelo/60">Nenhum registro ainda.</li>}
                 {registros.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5 text-[13.5px]">
@@ -799,7 +816,7 @@ export default function AdminApp() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </CartaoExpansivelAdmin>
           </>
         )}
       </main>

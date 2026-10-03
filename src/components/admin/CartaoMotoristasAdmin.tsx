@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, BellOff, Megaphone, RefreshCw, Search, Trash2, Users } from "lucide-react";
+import CartaoExpansivelAdmin from "@/components/admin/CartaoExpansivelAdmin";
 import type { PontoDTO } from "@/lib/estado";
 
 type MotoristaAdmin = {
@@ -221,19 +222,17 @@ export default function CartaoMotoristasAdmin({
   const comAvisos = lista?.filter((m) => m.avisos > 0).length ?? 0;
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
-            <Users size={22} /> Motoristas
-          </h2>
-          <p className="mt-0.5 text-[12.5px] text-gelo/60">
-            {lista
-              ? `${lista.length} motorista${lista.length === 1 ? "" : "s"} · ${comPonto} com ponto · ${comAvisos} com avisos no celular` +
-                (ultimaLeitura ? ` · posições da leitura das ${hora(ultimaLeitura)}` : "")
-              : "Nome e pontos de todos os motoristas. Só o administrador vê esta lista."}
-          </p>
-        </div>
+    <CartaoExpansivelAdmin
+      title="Motoristas"
+      icon={<Users size={22} className="text-[#38b6ff]" />}
+      summary={
+        lista
+          ? `${lista.length} motorista${lista.length === 1 ? "" : "s"} · ${comPonto} com ponto · ${comAvisos} com avisos no celular` +
+            (ultimaLeitura ? ` · posições da leitura das ${hora(ultimaLeitura)}` : "")
+          : "Lista de nomes e pontos de todos os motoristas. Só o administrador vê esta lista."
+      }
+    >
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={() => void carregar()}
@@ -318,6 +317,6 @@ export default function CartaoMotoristasAdmin({
           </div>
         </div>
       )}
-    </section>
+    </CartaoExpansivelAdmin>
   );
 }
