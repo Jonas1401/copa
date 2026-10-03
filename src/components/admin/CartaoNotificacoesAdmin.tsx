@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Bell, BellRing, RotateCw, TriangleAlert } from "lucide-react";
+import CartaoExpansivelAdmin from "@/components/admin/CartaoExpansivelAdmin";
 import TesteAppFechado from "@/components/notificacoes/TesteAppFechado";
 
 /**
@@ -154,16 +155,19 @@ export default function CartaoNotificacoesAdmin() {
   }
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
-      <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-white uppercase">
-        <BellRing size={22} className="text-ouro" /> Notificações
-      </h2>
-      <p className="mt-1 text-[14px] leading-relaxed text-gelo/80">
-        {assinada === null
+    <CartaoExpansivelAdmin
+      title="Notificações"
+      icon={<BellRing size={22} className="text-ouro" />}
+      summary={
+        assinada === null
           ? "Verificando este aparelho…"
           : assinada
             ? "Este aparelho está recebendo os avisos."
-            : "Ative para receber aviso quando um número for chamado."}
+            : "Ative para receber avisos quando um número for chamado."
+      }
+    >
+      <p className="text-[14px] leading-relaxed text-gelo/80">
+        Configure e teste os avisos gerais do painel neste aparelho.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2.5">
@@ -196,6 +200,6 @@ export default function CartaoNotificacoesAdmin() {
       )}
 
       <TesteAppFechado obterAssinatura={obterAssinatura} />
-    </section>
+    </CartaoExpansivelAdmin>
   );
 }
