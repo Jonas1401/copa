@@ -161,8 +161,18 @@ chat + Push, incluindo o alerta tomando o lugar do boletim.
 ## Radar da previsão: monitoramento constante (Composio + SIMPORT®)
 
 Além do boletim por turno, o CopaLinks **não para de olhar o tempo**. É o
-**📡 Radar da Previsão** (`src/lib/clima-monitor.ts`), chamado pelo `/api/cron`
-a cada minuto:
+**📡 Radar da Previsão** (`src/lib/clima-monitor.ts`):
+
+O radar tem **dois caminhos** para não parar:
+
+- **`/api/cron`** (a cada minuto, Vercel ou Supabase pg_cron): é quem garante o
+  aviso **com o aplicativo fechado**;
+- **`/api/atualizar`** (`tickRadar`): o app aberto chama essa rota a cada 5 s,
+  então o monitoramento continua vivo mesmo que o cron do provedor rode só uma
+  vez por dia (plano Hobby) ou o job do Supabase esteja desligado. A batida
+  custa uma comparação de horário na maior parte das vezes e, quando o
+  intervalo vence, roda um ciclo *suave* (usa o cache de 10 min da previsão em
+  vez de forçar a leitura) — nunca atrasa nem quebra a resposta da fila.
 
 1. **API estruturada do SIMPORT®** — Dashboard Meteoceanográfico da APPA
    (`https://weather-appa.app.simport.com.br/`): modelo WRF hora a hora,

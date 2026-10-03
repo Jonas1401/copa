@@ -808,16 +808,17 @@ export function assinaturaDoDia(m: Mudanca, agora: Date = new Date()) {
 /* ---------------------------------------------------------- leituras */
 /**
  * Previsão fresca para comparar. Reaproveita a que o cron já leu quando ela
- * tem menos de 1 minuto; senão força uma leitura nova (o cache de 10 min da
- * tela não pode segurar o radar).
+ * tem menos de 1 minuto; senão lê a APPA de novo. No modo `suave` (caminho do
+ * app aberto) vale o cache de 10 min da tela, para não segurar a resposta; no
+ * caminho do cron a leitura é forçada (o radar não pode esperar o cache).
  */
-async function lerPrevisao(passada: Previsao | undefined): Promise<Previsao | null> {
+async function lerPrevisao(passada: Previsao | undefined, suave = false): Promise<Previsao | null> {
   if (passada) {
     const idade = Date.now() - new Date(passada.atualizadoEm).getTime();
     if (Number.isFinite(idade) && idade < 60_000) return passada;
   }
   try {
-    return await obterPrevisao(true);
+    return await obterPrevisao(!suave);
   } catch {
     return passada ?? null;
   }
@@ -885,7 +886,13 @@ async function limiteDeAvisos(cfg: ConfigRadar): Promise<string | null> {
  * Nunca joga erro para cima — o cron não pode quebrar por causa do clima.
  */
 export async function verificarMudancasPrevisao(
-  opcoes: { forcar?: boolean; previsao?: Previsao; registrarSomente?: boolean } = {},
+  opcoes: {
+    forcar?: boolean;
+    previsao?: Previsao;
+    registrarSomente?: boolean;
+    /** Usa o cache de 10 min em vez de forçar a leitura (caminho do app aberto). */
+    suave?: boolean;
+  } = {},
 ): Promise<ResultadoRadar> {
   const cfg = configRadar();
   if (!cfg.ativo) return { rodou: false, postou: false, motivo: "radar desligado", mudancas: [] };
@@ -897,7 +904,7 @@ export async function verificarMudancasPrevisao(
     // Reserva o ciclo antes de ler: dois cron juntos não leem nem avisam duas vezes.
     await gravarConfig(CHAVE_ULTIMA, String(Date.now()));
 
-    const p = await lerPrevisao(opcoes.previsao);
+    const p = await lerPrevisao(opcoes.previsao, opcoes.suave);
     const painel = await lerPainel(cfg, opcoes.forcar);
     if (!p && !painel) {
       return { rodou: true, postou: false, motivo: "fontes do tempo indisponíveis", mudancas: [] };
@@ -1001,6 +1008,43 @@ export async function verificarMudancasPrevisao(
       mudancas: [],
     };
   }
+}
+
+/* --------------------------------------------- batida leve (app aberto) */
+
+/** Guarda em memória: evita encostar no banco a cada pedido do aplicativo. */
+let ultimaBatida = 0;
+/** Intervalo mínimo entre batidas no mesmo processo (ms). */
+const BATIDA_MS = 60_000;
+
+/**
+ * Batida do radar pelo caminho que o app ABERTO já chama o tempo todo
+ * (`/api/atualizar`): assim o monitoramento continua vivo mesmo quando o
+ * `/api/cron` do provedor não roda a cada minuto (plano Hobby, job do Supabase
+ * desligado etc.). Com o app fechado, quem garante o aviso é o cron.
+ *
+ * Custo normal: uma comparação de horário (nada de banco, nada de rede). A
+ * cada 60 s no máximo ela consulta o intervalo no banco e, se já passaram os
+ * `CLIMA_MONITOR_MIN` minutos desde a última leitura, roda um ciclo `suave`
+ * (usa o cache de 10 min da previsão em vez de forçar a leitura).
+ * Nunca joga erro para cima e nunca atrasa a resposta do aplicativo.
+ */
+export async function tickRadar(): Promise<ResultadoRadar | null> {
+  const cfg = configRadar();
+  if (!cfg.ativo) return null;
+  const agora = Date.now();
+  if (agora - ultimaBatida < BATIDA_MS) return null;
+  ultimaBatida = agora;
+  try {
+    return await verificarMudancasPrevisao({ suave: true });
+  } catch {
+    return null;
+  }
+}
+
+/** Zera a guarda da batida (usado nos testes). */
+export function resetarTickRadar() {
+  ultimaBatida = 0;
 }
 
 /* ----------------------------------------------------------- status (UI) */
