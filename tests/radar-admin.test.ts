@@ -62,3 +62,50 @@ test("as rotas do radar exigem sessão de administrador", () => {
   const post = rota.slice(inicioPost);
   assert.ok(post.includes("exigirAdmin"), "POST /api/tempo/radar sem exigirAdmin");
 });
+
+test("todos os cards da área do administrador iniciam fechados e abrem ao clicar", () => {
+  const motoristas = ler("src/components/admin/CartaoMotoristasAdmin.tsx");
+  assert.ok(
+    motoristas.includes("const [aberto, setAberto] = useState(false)") &&
+      motoristas.includes("aria-expanded={aberto}") &&
+      motoristas.includes("{aberto && ("),
+    "CartaoMotoristasAdmin deve iniciar fechado e abrir a lista de motoristas ao clicar",
+  );
+
+  const radar = ler("src/components/admin/CartaoRadarPrevisaoAdmin.tsx");
+  assert.ok(
+    radar.includes("const [aberto, setAberto] = useState(false)") &&
+      radar.includes("aria-expanded={aberto}") &&
+      radar.includes("{aberto && ("),
+    "CartaoRadarPrevisaoAdmin deve iniciar fechado e abrir as informações ao clicar",
+  );
+
+  const notificacoes = ler("src/components/admin/CartaoNotificacoesAdmin.tsx");
+  assert.ok(
+    notificacoes.includes("const [aberto, setAberto] = useState(false)") &&
+      notificacoes.includes("aria-expanded={aberto}") &&
+      notificacoes.includes("{aberto && ("),
+    "CartaoNotificacoesAdmin deve iniciar fechado e abrir as informações ao clicar",
+  );
+
+  const admin = ler("src/components/admin/AdminApp.tsx");
+  assert.ok(
+    admin.includes("const [monitorAberto, setMonitorAberto] = useState(false)") &&
+      admin.includes("aria-expanded={monitorAberto}") &&
+      admin.includes("{monitorAberto && ("),
+    "Card Monitor WhatsApp no AdminApp deve iniciar fechado e abrir ao clicar",
+  );
+  assert.ok(
+    admin.includes("const [auditoriaAberta, setAuditoriaAberta] = useState(false)") &&
+      admin.includes("aria-expanded={auditoriaAberta}") &&
+      admin.includes("{auditoriaAberta && ("),
+    "Card Auditoria no AdminApp deve iniciar fechado e abrir ao clicar",
+  );
+  // CardIntegracao e TrocarSenha também têm const [aberto, setAberto] = useState(false)
+  const ocorrenciasAbertoAdmin = admin.match(/const \[aberto, setAberto\] = useState\(false\)/g) ?? [];
+  assert.equal(
+    ocorrenciasAbertoAdmin.length,
+    2,
+    "CardIntegracao e TrocarSenha em AdminApp devem iniciar fechados",
+  );
+});

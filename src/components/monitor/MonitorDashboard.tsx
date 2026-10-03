@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Bell, CheckCircle2, Clock3, RefreshCw, ShieldCheck, Smartphone, Wifi, WifiOff } from "lucide-react";
+import { ArrowLeft, Bell, CheckCircle2, ChevronDown, ChevronUp, Clock3, RefreshCw, ShieldCheck, Smartphone, Wifi, WifiOff } from "lucide-react";
 import { NOME_GRUPO_MONITORADO } from "@/lib/monitor-group-name";
 import FiltroGrupoCard from "@/components/monitor/FiltroGrupoCard";
 import WhatsAppSemApkCard from "@/components/monitor/WhatsAppSemApkCard";
@@ -31,6 +31,10 @@ export default function MonitorDashboard() {
   const [semAcesso, setSemAcesso] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
+  const [resumoAberto, setResumoAberto] = useState(false);
+  const [parearAberto, setParearAberto] = useState(false);
+  const [aparelhosAberto, setAparelhosAberto] = useState(false);
+  const [eventosAberto, setEventosAberto] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -98,14 +102,6 @@ export default function MonitorDashboard() {
           </button>
         </div>
 
-        {!semAcesso && resumo && (
-          <div className="mt-5 rounded-[18px] border border-ciano/45 bg-[#0b2146] px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ciano">Grupo permitido no Android monitor</p>
-            <p className="mt-1 break-words font-display text-lg font-bold text-white">{NOME_GRUPO_MONITORADO}</p>
-            <p className="mt-1 text-xs text-[#b8c9e5]">Somente notificações confirmadas deste grupo; outros grupos e conversas individuais são ignorados.</p>
-          </div>
-        )}
-
         {semAcesso ? (
           <section className="mt-8 rounded-3xl border border-amber-500/50 bg-[#1d1d31] p-6">
             <h2 className="font-display text-lg font-bold">Acesso restrito</h2>
@@ -115,57 +111,152 @@ export default function MonitorDashboard() {
         ) : (
           <>
             {erro && <p role="alert" className="mt-5 rounded-xl border border-red-400/40 bg-red-950/40 px-4 py-3 text-red-100">{erro}</p>}
-            <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              {[
-                { icon: Wifi, titulo: "Aparelhos monitor", valor: resumo?.monitorCount ?? "—" },
-                { icon: Bell, titulo: "Celulares receptores", valor: resumo?.receptorCount ?? "—" },
-                { icon: ShieldCheck, titulo: "Códigos ativos", valor: resumo?.codigoCount ?? "—" },
-              ].map((x) => <div key={x.titulo} className="rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-5">
-                <x.icon className="text-ciano" size={22} /><p className="mt-4 text-3xl font-bold">{x.valor}</p>
-                <p className="mt-1 text-sm text-[#b8c9e5]">{x.titulo}</p>
-              </div>)}
-            </div>
 
-            <section className="mt-6 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-5">
-              <div className="flex items-center gap-2 font-display text-lg font-bold"><Smartphone size={21} className="text-ciano" /> Parear Android monitor</div>
-              <p className="mt-2 text-sm leading-relaxed text-[#b8c9e5]">Instale o app Android Monitor em um aparelho sob sua responsabilidade, conceda acesso a notificações nas Configurações do Android e digite o código gerado aqui. O código dura 10 minutos e só funciona uma vez.</p>
-              <p className="mt-3 text-sm">Firebase: <strong className={resumo?.firebaseConfigurado ? "text-verde" : "text-ambar"}>{resumo?.firebaseConfigurado ? "configurado" : "ainda não configurado"}</strong></p>
-              <button type="button" disabled={ocupado} onClick={() => void gerarCodigo()}
-                className="mt-4 rounded-full bg-ouro px-6 py-3 font-display text-sm font-bold text-[#281e00] disabled:opacity-50">{ocupado ? "Aguarde…" : "Gerar código do monitor"}</button>
-              {codigo && <div className="mt-4 rounded-xl border border-[#37c9ce]/50 bg-[#06162f] p-4" role="status">
-                <p className="text-sm text-[#b8c9e5]">Mostrado uma única vez; digite no Android Monitor:</p>
-                <p className="mt-2 break-all font-mono text-xl font-bold tracking-[0.16em] text-ciano">{codigo.codigo}</p>
-                <p className="mt-2 text-xs text-[#b8c9e5]">Vence em {hora(codigo.expiraEm)}. Não compartilhe em grupos.</p>
-              </div>}
+            <section className="mt-6 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+              <button
+                type="button"
+                onClick={() => setResumoAberto((v) => !v)}
+                aria-expanded={resumoAberto}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
+                    <ShieldCheck size={20} className="text-ciano" /> Resumo e grupo monitorado
+                  </h2>
+                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                    {resumo ? `${resumo.monitorCount} monitor · ${resumo.receptorCount} receptores · ${resumo.codigoCount} códigos ativos` : "Situação do grupo e contadores do monitor"}
+                  </p>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                  {resumoAberto ? "Fechar" : "Abrir"}
+                  {resumoAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+              {resumoAberto && (
+                <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
+                  <div className="rounded-[18px] border border-ciano/45 bg-[#071a35] px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ciano">Grupo permitido no Android monitor</p>
+                    <p className="mt-1 break-words font-display text-lg font-bold text-white">{NOME_GRUPO_MONITORADO}</p>
+                    <p className="mt-1 text-xs text-[#b8c9e5]">Somente notificações confirmadas deste grupo; outros grupos e conversas individuais são ignorados.</p>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    {[
+                      { icon: Wifi, titulo: "Aparelhos monitor", valor: resumo?.monitorCount ?? "—" },
+                      { icon: Bell, titulo: "Celulares receptores", valor: resumo?.receptorCount ?? "—" },
+                      { icon: ShieldCheck, titulo: "Códigos ativos", valor: resumo?.codigoCount ?? "—" },
+                    ].map((x) => <div key={x.titulo} className="rounded-[18px] border border-[#2c518d] bg-[#071a35] p-4">
+                      <x.icon className="text-ciano" size={22} /><p className="mt-3 text-2xl font-bold">{x.valor}</p>
+                      <p className="mt-1 text-sm text-[#b8c9e5]">{x.titulo}</p>
+                    </div>)}
+                  </div>
+                </div>
+              )}
             </section>
 
-            <section className="mt-6 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-5">
-              <h2 className="font-display text-lg font-bold">Aparelhos pareados</h2>
-              <div className="mt-3 space-y-2">
-                {resumo?.devices?.length ? resumo.devices.map((d) => <div key={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-[#2c518d]/65 bg-[#071a35] p-3 text-sm">
-                  {d.ativo ? <CheckCircle2 size={18} className="text-verde" /> : <WifiOff size={18} className="text-gelo/45" />}
-                  <span className="min-w-0 flex-1"><b>{d.nome || "Android CopaLinks"}</b> <span className="text-[#b8c9e5]">· {d.tipo === "MONITOR" ? "monitor" : "receptor"}{d.ativo ? " · ativo" : " · revogado"}</span></span>
-                  <span className="text-xs text-[#b8c9e5]">{d.ultimoContatoEm ? `Visto ${hora(d.ultimoContatoEm)}` : "Sem contato"}</span>
-                  {!!d.ativo && <button type="button" disabled={ocupado} onClick={() => void desativar(d.id)} className="rounded-full border border-red-400/40 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/40">Revogar</button>}
-                </div>) : <p className="text-sm text-[#b8c9e5]">Nenhum Android pareado ainda.</p>}
-              </div>
+            <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+              <button
+                type="button"
+                onClick={() => setParearAberto((v) => !v)}
+                aria-expanded={parearAberto}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
+                    <Smartphone size={21} className="text-ciano" /> Parear Android monitor
+                  </h2>
+                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                    Gerar código de uso único para o app Android Monitor
+                  </p>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                  {parearAberto ? "Fechar" : "Abrir"}
+                  {parearAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+              {parearAberto && (
+                <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
+                  <p className="text-sm leading-relaxed text-[#b8c9e5]">Instale o app Android Monitor em um aparelho sob sua responsabilidade, conceda acesso a notificações nas Configurações do Android e digite o código gerado aqui. O código dura 10 minutos e só funciona uma vez.</p>
+                  <p className="mt-3 text-sm">Firebase: <strong className={resumo?.firebaseConfigurado ? "text-verde" : "text-ambar"}>{resumo?.firebaseConfigurado ? "configurado" : "ainda não configurado"}</strong></p>
+                  <button type="button" disabled={ocupado} onClick={() => void gerarCodigo()}
+                    className="mt-4 rounded-full bg-ouro px-6 py-3 font-display text-sm font-bold text-[#281e00] disabled:opacity-50">{ocupado ? "Aguarde…" : "Gerar código do monitor"}</button>
+                  {codigo && <div className="mt-4 rounded-xl border border-[#37c9ce]/50 bg-[#06162f] p-4" role="status">
+                    <p className="text-sm text-[#b8c9e5]">Mostrado uma única vez; digite no Android Monitor:</p>
+                    <p className="mt-2 break-all font-mono text-xl font-bold tracking-[0.16em] text-ciano">{codigo.codigo}</p>
+                    <p className="mt-2 text-xs text-[#b8c9e5]">Vence em {hora(codigo.expiraEm)}. Não compartilhe em grupos.</p>
+                  </div>}
+                </div>
+              )}
+            </section>
+
+            <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+              <button
+                type="button"
+                onClick={() => setAparelhosAberto((v) => !v)}
+                aria-expanded={aparelhosAberto}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
+                    <Wifi size={20} className="text-ciano" /> Aparelhos pareados
+                  </h2>
+                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                    {resumo?.devices?.length ? `${resumo.devices.length} aparelho(s) registrado(s)` : "Nenhum Android pareado ainda"}
+                  </p>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                  {aparelhosAberto ? "Fechar" : "Abrir"}
+                  {aparelhosAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+              {aparelhosAberto && (
+                <div className="mt-3 space-y-2 border-t border-[#2c518d]/50 pt-3">
+                  {resumo?.devices?.length ? resumo.devices.map((d) => <div key={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-[#2c518d]/65 bg-[#071a35] p-3 text-sm">
+                    {d.ativo ? <CheckCircle2 size={18} className="text-verde" /> : <WifiOff size={18} className="text-gelo/45" />}
+                    <span className="min-w-0 flex-1"><b>{d.nome || "Android CopaLinks"}</b> <span className="text-[#b8c9e5]">· {d.tipo === "MONITOR" ? "monitor" : "receptor"}{d.ativo ? " · ativo" : " · revogado"}</span></span>
+                    <span className="text-xs text-[#b8c9e5]">{d.ultimoContatoEm ? `Visto ${hora(d.ultimoContatoEm)}` : "Sem contato"}</span>
+                    {!!d.ativo && <button type="button" disabled={ocupado} onClick={() => void desativar(d.id)} className="rounded-full border border-red-400/40 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/40">Revogar</button>}
+                  </div>) : <p className="text-sm text-[#b8c9e5]">Nenhum Android pareado ainda.</p>}
+                </div>
+              )}
             </section>
 
             <WhatsAppSemApkCard cabecalho={cabecalho} />
 
             <FiltroGrupoCard cabecalho={cabecalho} />
 
-            <section className="mt-6 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-5">
-              <h2 className="font-display text-lg font-bold">Eventos recentes</h2>
-              <p className="mt-1 text-xs text-[#b8c9e5]">Só códigos ou a contagem de códigos (filtro do grupo), sem o texto das mensagens. &quot;Aceitos&quot; conta o FCM do receptor Android; os avisos do filtro do grupo saem pelo Web Push do app.</p>
-              <div className="mt-4 space-y-2">
-                {resumo?.eventos?.length ? resumo.eventos.map((e) => <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-[#2c518d]/65 bg-[#071a35] p-3 text-sm">
-                  <Clock3 size={17} className="text-ciano" /> <span className="text-xs text-[#b8c9e5]">{hora(e.criadoEm)}</span>
-                  <span className="font-mono font-bold text-white">{e.codigos.join(", ")}</span>
-                  <span className="ml-auto text-xs text-verde">{e.aceitas} aceitos</span>
-                  {e.falhas > 0 && <span className="text-xs text-red-200">{e.falhas} falhas</span>}
-                </div>) : <p className="text-sm text-[#b8c9e5]">Nenhum evento recebido. Confira se há monitor pareado, permissão de notificações e códigos ativos.</p>}
-              </div>
+            <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+              <button
+                type="button"
+                onClick={() => setEventosAberto((v) => !v)}
+                aria-expanded={eventosAberto}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
+                    <Clock3 size={20} className="text-ciano" /> Eventos recentes
+                  </h2>
+                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                    {resumo?.eventos?.length ? `${resumo.eventos.length} evento(s) recente(s)` : "Histórico de códigos e entregas do monitor"}
+                  </p>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                  {eventosAberto ? "Fechar" : "Abrir"}
+                  {eventosAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+              {eventosAberto && (
+                <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
+                  <p className="text-xs text-[#b8c9e5]">Só códigos ou a contagem de códigos (filtro do grupo), sem o texto das mensagens. &quot;Aceitos&quot; conta o FCM do receptor Android; os avisos do filtro do grupo saem pelo Web Push do app.</p>
+                  <div className="mt-4 space-y-2">
+                    {resumo?.eventos?.length ? resumo.eventos.map((e) => <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-[#2c518d]/65 bg-[#071a35] p-3 text-sm">
+                      <Clock3 size={17} className="text-ciano" /> <span className="text-xs text-[#b8c9e5]">{hora(e.criadoEm)}</span>
+                      <span className="font-mono font-bold text-white">{e.codigos.join(", ")}</span>
+                      <span className="ml-auto text-xs text-verde">{e.aceitas} aceitos</span>
+                      {e.falhas > 0 && <span className="text-xs text-red-200">{e.falhas} falhas</span>}
+                    </div>) : <p className="text-sm text-[#b8c9e5]">Nenhum evento recebido. Confira se há monitor pareado, permissão de notificações e códigos ativos.</p>}
+                  </div>
+                </div>
+              )}
             </section>
           </>
         )}

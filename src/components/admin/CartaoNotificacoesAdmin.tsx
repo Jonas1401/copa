@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bell, BellRing, RotateCw, TriangleAlert } from "lucide-react";
+import { Bell, BellRing, ChevronDown, ChevronUp, RotateCw, TriangleAlert } from "lucide-react";
 import TesteAppFechado from "@/components/notificacoes/TesteAppFechado";
 
 /**
@@ -28,6 +28,7 @@ const temSuporte = () =>
   "PushManager" in window;
 
 export default function CartaoNotificacoesAdmin() {
+  const [aberto, setAberto] = useState(false);
   const [assinada, setAssinada] = useState<boolean | null>(null);
   const [ativando, setAtivando] = useState(false);
   const [testando, setTestando] = useState(false);
@@ -155,47 +156,64 @@ export default function CartaoNotificacoesAdmin() {
 
   return (
     <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
-      <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-white uppercase">
-        <BellRing size={22} className="text-ouro" /> Notificações
-      </h2>
-      <p className="mt-1 text-[14px] leading-relaxed text-gelo/80">
-        {assinada === null
-          ? "Verificando este aparelho…"
-          : assinada
-            ? "Este aparelho está recebendo os avisos."
-            : "Ative para receber aviso quando um número for chamado."}
-      </p>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-white uppercase">
+            <BellRing size={22} className="text-ouro" /> Notificações
+          </h2>
+          <p className="mt-0.5 text-[12.5px] text-gelo/60">
+            {assinada === null
+              ? "Verificando este aparelho…"
+              : assinada
+                ? "Este aparelho está recebendo os avisos."
+                : "Ative para receber aviso quando um número for chamado."}
+          </p>
+        </div>
+        <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
+          {aberto ? "Fechar" : "Abrir"}
+          {aberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </span>
+      </button>
 
-      <div className="mt-4 flex flex-wrap gap-2.5">
-        <button
-          type="button"
-          onClick={() => void ativar()}
-          disabled={ativando || testando}
-          className="ouro flex items-center gap-2 rounded-full px-5 py-3 font-display text-[15px] font-extrabold uppercase disabled:opacity-60"
-        >
-          <Bell size={16} /> {ativando ? "Ativando…" : "Ativar notificações"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void testarAgora()}
-          disabled={ativando || testando}
-          className="pill flex items-center gap-2 px-5 py-3 font-display text-[15px] font-bold text-ciano uppercase hover:border-ciano/60 disabled:opacity-60"
-        >
-          <RotateCw size={15} className={testando ? "animate-spin" : ""} />
-          {testando ? "Enviando…" : "Testar notificação"}
-        </button>
-      </div>
+      {aberto && (
+        <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+          <div className="flex flex-wrap gap-2.5">
+            <button
+              type="button"
+              onClick={() => void ativar()}
+              disabled={ativando || testando}
+              className="ouro flex items-center gap-2 rounded-full px-5 py-3 font-display text-[15px] font-extrabold uppercase disabled:opacity-60"
+            >
+              <Bell size={16} /> {ativando ? "Ativando…" : "Ativar notificações"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void testarAgora()}
+              disabled={ativando || testando}
+              className="pill flex items-center gap-2 px-5 py-3 font-display text-[15px] font-bold text-ciano uppercase hover:border-ciano/60 disabled:opacity-60"
+            >
+              <RotateCw size={15} className={testando ? "animate-spin" : ""} />
+              {testando ? "Enviando…" : "Testar notificação"}
+            </button>
+          </div>
 
-      {msg && (
-        <p
-          className={`mt-3 flex gap-2 rounded-2xl border border-gelo/12 bg-black/30 px-4 py-3 text-[14px] leading-relaxed ${msgErro ? "text-[#ff9c9c]" : "text-ciano"}`}
-        >
-          {msgErro && <TriangleAlert size={16} className="mt-0.5 shrink-0" />}
-          <span>{msg}</span>
-        </p>
+          {msg && (
+            <p
+              className={`mt-3 flex gap-2 rounded-2xl border border-gelo/12 bg-black/30 px-4 py-3 text-[14px] leading-relaxed ${msgErro ? "text-[#ff9c9c]" : "text-ciano"}`}
+            >
+              {msgErro && <TriangleAlert size={16} className="mt-0.5 shrink-0" />}
+              <span>{msg}</span>
+            </p>
+          )}
+
+          <TesteAppFechado obterAssinatura={obterAssinatura} />
+        </div>
       )}
-
-      <TesteAppFechado obterAssinatura={obterAssinatura} />
     </section>
   );
 }
