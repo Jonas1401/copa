@@ -288,12 +288,14 @@ const instantaneo = (
 
 /* ------------------------------------------------------------ puros */
 
-test("radar: configuração padrão (5 min, painel 30 min, sensibilidade média)", () => {
+test("radar: configuração padrão (5 min, painel 5 min, sensibilidade média)", () => {
   const c = configRadar({} as Record<string, string>);
   assert.equal(c.ativo, true);
   assert.equal(c.sensibilidade, "media");
   assert.equal(c.intervaloMs, 5 * 60_000);
-  assert.equal(c.painelMs, 30 * 60_000);
+  // O painel da APPA é relido no MESMO passo do radar (5 min), com fallback
+  // automático entre API/JSON, HTML, navegador headless, OCR e Composio.
+  assert.equal(c.painelMs, 5 * 60_000);
   assert.equal(c.avisoMinMs, 20 * 60_000);
   assert.equal(c.maxPorHora, 3);
 
@@ -383,6 +385,83 @@ test("radar: mudança no painel lido pelo Composio também vira aviso", () => {
   assert.ok(m.every((x) => x.origem === "painel"));
   assert.ok(m.some((x) => x.tipo === "chuva"));
   assert.ok(m.some((x) => x.tipo === "vento"));
+});
+
+test("radar: painel da APPA entrega o formato único (e o método que leu)", () => {
+  const p = parsearPainelSimport(PAINEL);
+  assert.ok(p);
+  const i = montarInstantaneo(null, p, Date.now(), null, "ocr");
+  assert.equal(i.painel?.metodo, "ocr");
+  assert.equal(i.painel?.leitura?.fonte, "APPA");
+  assert.equal(i.painel?.leitura?.status, "sucesso");
+  assert.equal(i.painel?.leitura?.metodo_leitura, "ocr");
+  assert.ok(typeof i.painel?.leitura?.chuva === "string" && i.painel.leitura.chuva.length > 10);
+  assert.ok(typeof i.painel?.leitura?.vento === "string");
+  assert.ok(i.painel?.condicao && i.painel.condicao.length > 3);
+  assert.ok((i.painel?.gravidade ?? 0) >= 4);
+  assert.ok(Array.isArray(i.painel?.alertas));
+});
+
+test("radar: novo alerta meteorológico no painel vira aviso (grave no tempo ruim)", () => {
+  const base = parsearPainelSimport(PAINEL);
+  assert.ok(base);
+  const semAlerta = { ...base, alertas: [] };
+  const antes = montarInstantaneo(null, semAlerta, Date.now(), null, "api");
+  const depois = montarInstantaneo(
+    null,
+    { ...base, alertas: ["Tempestade com rajadas de vento no porto a partir das 13h"] },
+    Date.now() + 60_000,
+    null,
+    "playwright",
+  );
+  const m = detectarMudancas(antes, depois, "media");
+  const alerta = m.find((x) => x.tipo === "alerta");
+  assert.ok(alerta, "alerta novo detectado");
+  assert.equal(alerta.origem, "painel");
+  assert.equal(alerta.grave, true, "tempestade é grave (notificação fica na tela)");
+  assert.match(alerta.assinatura, /^alerta:/);
+  assert.match(alerta.frase, /alerta meteorológico/i);
+  // O mesmo alerta na leitura seguinte não repete nada.
+  assert.equal(detectarMudancas(depois, depois, "alta").filter((x) => x.tipo === "alerta").length, 0);
+});
+
+test("radar: a condição do painel (chuva → chuva forte) também avisa", () => {
+  const base = parsearPainelSimport(PAINEL);
+  assert.ok(base);
+  const leve = { ...base, alertas: [], chuva: [{ hora: "14:00", mm: 0.2, prob: 30 }] };
+  const forte = { ...base, alertas: [], chuva: [{ hora: "14:00", mm: 6.4, prob: 92 }] };
+  const antes = montarInstantaneo(null, leve, Date.now(), null, "html");
+  const depois = montarInstantaneo(null, forte, Date.now() + 60_000, null, "html");
+  const m = detectarMudancas(antes, depois, "media");
+  const condicao = m.find((x) => x.tipo === "condicao");
+  assert.ok(condicao, "mudança de condição detectada no painel");
+  assert.equal(condicao.origem, "painel");
+  assert.equal(condicao.grave, true);
+  assert.match(condicao.assinatura, /^painelCondicao:/);
+  assert.ok(m.some((x) => x.tipo === "chuva"), "chuva forte também aparece");
+});
+
+test("radar: mudança do horário da chuva no painel também avisa", () => {
+  const base = parsearPainelSimport(PAINEL);
+  assert.ok(base);
+  const comChuva = (hora: string) => ({
+    ...base,
+    alertas: [],
+    chuva: [{ hora, mm: 1.2, prob: 80 }],
+  });
+  const antes = montarInstantaneo(null, comChuva("14:00"), Date.now(), null, "api");
+  const depois = montarInstantaneo(null, comChuva("20:00"), Date.now() + 60_000, null, "api");
+  assert.equal(antes.painel?.inicioChuva, "14:00");
+  assert.equal(depois.painel?.inicioChuva, "20:00");
+  const m = detectarMudancas(antes, depois, "media");
+  const horario = m.find((x) => x.assinatura.startsWith("painelHoraChuva:"));
+  assert.ok(horario, "mudança de horário da chuva detectada");
+  assert.equal(horario.origem, "painel");
+  assert.match(horario.frase, /14:00/);
+  assert.match(horario.frase, /20:00/);
+  // O mesmo horário nas duas leituras não gera aviso.
+  const igual = montarInstantaneo(null, comChuva("20:00"), Date.now() + 120_000, null, "api");
+  assert.equal(detectarMudancas(depois, igual, "alta").filter((x) => x.tipo === "chuva").length, 0);
 });
 
 test("radar: boletim da APPA novo ou revisado entra no aviso", () => {
@@ -657,6 +736,16 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     assert.equal(s.fontes.composio, false);
     assert.ok(s.composio, "Composio configurado (chave de teste)");
     assert.ok(s.ultimaMudanca?.resumo);
+    // 6a) Painel da APPA: leitura feita por ALGUM método, com o log das
+    //     tentativas — nada de "ainda não lido pelo Composio".
+    assert.equal(s.painel.conectado, true, "painel APPA conectado");
+    assert.equal(s.painel.erro, null, "sem erro quando algum método leu");
+    assert.ok(s.painel.metodo, "método de leitura informado");
+    assert.ok(s.painel.metodoRotulo && s.painel.metodoRotulo.length > 3);
+    assert.ok(s.painel.em, "quando foi a última leitura boa");
+    assert.equal(s.painel.leitura?.fonte, "APPA");
+    assert.equal(s.painel.leitura?.status, "sucesso");
+    assert.ok(s.painel.tentativas.length > 0, "log de diagnóstico com as tentativas");
 
     // 6b) Batida leve do caminho do app aberto: a 1ª roda o ciclo, as seguintes
     // saem de graça (só uma comparação de horário, sem banco e sem rede).

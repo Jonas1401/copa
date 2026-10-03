@@ -10,7 +10,7 @@ const ler = (p: string) => readFileSync(p, "utf8");
  *
  * A tela pública **Tempo** (que o motorista abre) não mostra mais o cartão:
  * o monitoramento continua rodando no servidor e os avisos continuam chegando
- * no chat e por notificação, mas o diagnóstico (Composio, painel da APPA,
+ * no chat e por notificação, mas o diagnóstico (painel da APPA com fallback,
  * "Verificar agora") ficou só com quem administra.
  *
  * Este teste trava a regra: se alguém trouxer o cartão de volta para a tela do

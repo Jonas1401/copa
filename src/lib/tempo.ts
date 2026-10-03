@@ -11,11 +11,11 @@
  * Tudo roda só no servidor: o token da Simport nunca vai para o navegador.
  */
 
-const SIMPORT_DADOS = "https://appa.cs.simport.com.br/api/v2/data";
-const SIMPORT_BOLETIM = "https://wfa.app.simport.com.br/api/calendar";
-// O painel público da Simport envia este token a qualquer visitante; mesmo
-// assim ele fica só no servidor e pode ser trocado por variável de ambiente.
-const SIMPORT_TOKEN = process.env.SIMPORT_AUTH_TOKEN || "2CA5-BFD8-0F1C-597F";
+import {
+  APPA_BOLETIM_API as SIMPORT_BOLETIM,
+  APPA_DADOS_API as SIMPORT_DADOS,
+  APPA_TOKEN as SIMPORT_TOKEN,
+} from "@/lib/appa-painel-texto";
 
 const LOCAL = { cidade: "Paranaguá", uf: "PR", lat: -25.5161, lon: -48.5225 };
 const FUSO = "America/Sao_Paulo";

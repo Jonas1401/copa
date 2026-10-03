@@ -10,6 +10,7 @@ import {
   semSegredos,
   type InfoSegredo,
 } from "@/lib/admin/segredos";
+import { ROTULO_METODO, lerPainelAppa } from "@/lib/appa-painel";
 import { composioConfigurado, ErroComposio, geminiViaComposio, testarComposio } from "@/lib/composio";
 import { statusRadarClima } from "@/lib/clima-monitor";
 import { chavePublica, notificarTeste, vapidConfigurado } from "@/lib/push";
@@ -54,7 +55,8 @@ export const INTEGRACOES: Definicao[] = [
   {
     id: "clima",
     nome: "Previsão do Tempo APPA",
-    descricao: "Consulta os dados meteorológicos utilizados pelo CopaLinks.",
+    descricao:
+      "Testa a previsão e o painel da APPA/SIMPORT com a leitura de fallback (API → HTML → navegador → OCR → Composio).",
     campos: [],
     obrigatorios: [],
     podeSalvar: false,
@@ -342,8 +344,15 @@ export async function testar(id: IdIntegracao, opcoes: { endpointAparelho?: stri
       const t0 = Date.now();
       const p = await obterPrevisao(true);
       ok = p.fontes.simport;
+      // Aproveita o mesmo teste para conferir o painel da APPA (com fallback):
+      // a tela mostra qual método leu e o erro SÓ se todos falharem.
+      const painel = await lerPainelAppa({ previsao: p }).catch(() => null);
+      const rotuloPainel = painel?.ok && painel.metodo ? ROTULO_METODO[painel.metodo] : null;
+      const fimPainel = rotuloPainel
+        ? `Painel APPA: lido por ${rotuloPainel}.`
+        : "Painel APPA: nenhum método conseguiu ler agora.";
       msg = ok
-        ? `Conectado · previsão APPA ${p.horas.length}h${p.fontes.estacao ? " + estação do porto" : ""} (${Date.now() - t0} ms). Agora: ${p.agora.temperatura}°C, ${p.agora.descricao.toLowerCase()}.`
+        ? `Conectado · previsão APPA ${p.horas.length}h${p.fontes.estacao ? " + estação do porto" : ""} (${Date.now() - t0} ms). Agora: ${p.agora.temperatura}°C, ${p.agora.descricao.toLowerCase()}. ${fimPainel}`
         : "A SIMPORT não respondeu. Usando só a Open-Meteo como reserva.";
     } else if (id === "ia") {
       const r = await testarIA();

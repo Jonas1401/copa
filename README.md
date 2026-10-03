@@ -16,7 +16,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
-| **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, exclusivo do administrador) |
+| **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) |
 
 ## Tecnologia
 
@@ -31,7 +31,8 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 - **Leitura do site monitorado**: `intranet.copadubo.com.br/ponto/` (3 quadros,
   6 tabelas), com reserva via **Composio**
 - Clima: **APPA/SIMPORT** + Open-Meteo, com reserva via Composio; o **Radar da
-  previsão** monitora o tempo o dia todo (painel da APPA lido pelo Composio)
+  previsão** monitora o tempo o dia todo (painel da APPA lido com **fallback
+  automático**: API/JSON → HTML → navegador headless → OCR → Composio)
 
 ## Motoristas e pontos
 
@@ -158,7 +159,7 @@ Teste: `TEST_DATABASE_URL=... tsx --test tests/clima-boletim.test.ts` (banco
 `fila_push_test_*`): turnos de 6 h, texto do boletim e o fluxo completo
 chat + Push, incluindo o alerta tomando o lugar do boletim.
 
-## Radar da previsão: monitoramento constante (Composio + SIMPORT®)
+## Radar da previsão: monitoramento constante (painel da APPA com fallback + SIMPORT®)
 
 Além do boletim por turno, o CopaLinks **não para de olhar o tempo**. É o
 **📡 Radar da Previsão** (`src/lib/clima-monitor.ts`):
@@ -182,16 +183,33 @@ O radar tem **dois caminhos** para não parar:
 1. **Medição do tempo atual PELO COMPOSIO** (ferramenta `WEATHERMAP_WEATHER` /
    OpenWeather): é a **segunda opinião** do radar, com cache de 10 min — cobre
    o tempo atual mesmo quando a estação da APPA e o WRF caem.
-2. **Painel público lido PELO COMPOSIO** a cada **30 minutos**
-   (`CLIMA_MONITOR_PAINEL_MIN`) com a ferramenta
-   `COMPOSIO_SEARCH_FETCH_URL_CONTENT` — é o Composio que busca a página da
-   APPA e devolve o texto: boletim do dia, tabelas de chuva e vento das
-   próximas 24 h e tábua de marés (`parsearPainelSimport`).
-   **Atenção:** essa ferramenta usa a Exa, que **não roda JavaScript**; o
-   painel da APPA é renderizado no navegador, então ela pode devolver vazio
-   (é o que acontece hoje em produção). O radar não depende disso: segue com a
-   API da Simport e com a medição do Composio, e o cartão da tela Tempo mostra
-   o motivo quando a página não vem.
+2. **Painel público da APPA** a cada **5 minutos**
+   (`CLIMA_MONITOR_PAINEL_MIN`) com **fallback automático**
+   (`src/lib/appa-painel.ts` → `lerPainelAppa`). Cada método devolve o mesmo
+   formato normalizado (`DadosPainelAppa`: chuva, chuva forte, tempestade,
+   vento, temperatura, umidade, pressão, previsão por hora, alertas, além de
+   `metodo_leitura`). A ordem tentada é:
+
+   1. **API/JSON** — dados JSON embutidos na página (`__NEXT_DATA__`,
+      `<script type="application/json">`), endpoints internos (`/api/...`,
+      `*.json`) e a API estruturada da APPA/SIMPORT (WRF + estação + boletim),
+      a mesma que alimenta a tela **Tempo**;
+   2. **HTTP + HTML** — a página é baixada pelo **backend** (nunca pelo
+      navegador do motorista) e as tabelas/cards/textos são lidos do HTML;
+   3. **navegador headless** — Playwright/Puppeteer (ou navegador remoto por
+      `APPA_CDP_URL`): abre a página, espera o JavaScript e os componentes
+      dinâmicos, rola a tela e lê o texto renderizado. A página **não** é
+      considerada vazia antes dessa espera;
+   4. **captura de tela + OCR** — screenshot da página e OCR (tesseract.js ou
+      serviço externo em `APPA_OCR_URL`) para painel desenhado em canvas;
+   5. **Composio** — `COMPOSIO_SEARCH_FETCH_URL_CONTENT` como método
+      **adicional**; quando devolve `results` vazio, texto vazio, erro ou
+      timeout, o radar simplesmente já vem dos métodos anteriores.
+
+   Se um método não consegue ler, o próximo entra sozinho — o usuário nunca
+   fica só com "Painel APPA ainda não lido pelo Composio". O erro só aparece
+   quando **todos** falham, com o motivo de cada tentativa (log
+   `[radar-appa] método N/5 …` e o cartão do administrador).
 
 Cada leitura vira um **instantâneo** comparável (números + textos
 normalizados). Quando a comparação com o instantâneo do **último aviso** passa
@@ -205,10 +223,11 @@ do limite da sensibilidade, o radar:
   chat. Em mudança grave (chuva forte, rajada ≥ 40 km/h ou boletim da APPA com
   tempo ruim) o aviso fica na tela até o motorista tocar.
 
-**O que é comparado:** chance e volume de chuva (6 h e 24 h), vento e rajada
-máximos, condição do tempo, máxima/mínima de hoje e de amanhã, boletim da APPA
-(texto e alerta de tempo ruim), tabelas do painel (chuva, vento em nós), marés
-e horários do sol.
+**O que é comparado:** início e intensidade da chuva (6 h e 24 h), chuva forte,
+tempestade, vento e rajada máximos, condição do tempo (na API e no painel),
+máxima/mínima de hoje e de amanhã, boletim da APPA (texto e alerta de tempo
+ruim), **alerta meteorológico novo no painel**, tabelas do painel (chuva, vento
+em nós), marés e horários do sol.
 
 **Antispam:** a 1ª leitura só registra (nada de aviso antigo); a comparação é
 sempre contra o último aviso, então uma mudança lenta é avisada uma vez só;
@@ -220,20 +239,32 @@ avança a referência; quem silenciou o chat não recebe.
 Tudo é opcional e configurável por variável de ambiente (veja `.env.example`):
 `CLIMA_MONITOR_ATIVO`, `CLIMA_MONITOR_MIN`, `CLIMA_MONITOR_PAINEL_MIN`,
 `CLIMA_MONITOR_SENSIBILIDADE` (baixa/média/alta), `CLIMA_MONITOR_AVISO_MIN` e
-`CLIMA_MONITOR_MAX_HORA`. Sem `COMPOSIO_API_KEY` o radar continua funcionando
-só com a API da Simport; com ela, lê também o painel inteiro.
+`CLIMA_MONITOR_MAX_HORA`. A leitura do painel aceita `SIMPORT_PAINEL_URL`
+(endereço do painel), `APPA_DADOS_API`/`APPA_BOLETIM_API`/`SIMPORT_AUTH_TOKEN`
+(API estruturada), `APPA_NAVEGADOR_MODULO`/`APPA_CDP_URL` (navegador headless e
+navegador remoto), `APPA_LEITURA_TIMEOUT_MS`/`APPA_NAVEGADOR_TIMEOUT_MS` e
+`APPA_OCR_URL`/`APPA_OCR_IDIOMA` (OCR). Sem `COMPOSIO_API_KEY` o radar continua
+funcionando com os métodos diretos (API, HTML, navegador e OCR).
 
 O cartão *Radar da previsão* fica **somente na área do administrador**
 (`/admin`, logo abaixo do atalho do Monitor WhatsApp): mostra se está
 monitorando, a última leitura, a última mudança avisada, as fontes no ar e o
-diagnóstico do Composio, com o botão **Verificar agora**
-(`POST /api/tempo/radar`). A tela pública **Tempo** não exibe mais o cartão —
+**Painel APPA: conectado · leitura realizada**, com o **método de leitura**
+(API/endpoint de dados, HTTP + HTML, navegador automático, OCR ou Composio), a
+última leitura normalizada (chuva, chuva forte, tempestade, vento, temperatura,
+umidade, pressão e alertas) e o **log de diagnóstico** com uma linha por método
+tentado. O erro só aparece quando todos os métodos falham, com o botão
+**Verificar agora** (`POST /api/tempo/radar`; `?painel=1` roda só a leitura do
+painel e devolve as tentativas). A tela pública **Tempo** não exibe mais o cartão —
 o motorista continua recebendo os avisos no chat e por Push. As rotas
 `GET`/`POST /api/tempo/radar` exigem sessão de administrador. O painel
 `/admin → Integrações → Previsão do Tempo APPA` mostra o mesmo estado.
 
-Testes: `tsx --test tests/clima-monitor.test.ts` (puros: leitura do painel,
-comparação, sensibilidade e texto) e o trecho de ponta a ponta no banco
+Testes: `tsx --test tests/appa-painel.test.ts` (puros, com rede e navegador
+simulados: HTML → texto, JSON embutido, endpoints, normalização e a ORDEM do
+fallback, inclusive o caso "todos falharam") e `tsx --test
+tests/clima-monitor.test.ts` (puros: leitura do painel, comparação,
+sensibilidade, alerta e texto) mais o trecho de ponta a ponta no banco
 `fila_push_test_*` (radar → chat → Push).
 
 ## Filtro do grupo SEM APK (pelo servidor)
@@ -440,7 +471,8 @@ Não comite `.env` nem cole a `DATABASE_URL` no chat.
 | `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
-| `CLIMA_MONITOR_*` | não | radar da previsão: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (painel da APPA pelo Composio), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
+| `CLIMA_MONITOR_*` | não | radar da previsão: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (releitura do painel da APPA), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
+| `APPA_*` / `SIMPORT_*` | não | leitura do painel da APPA com fallback: `SIMPORT_PAINEL_URL`, `APPA_DADOS_API`, `APPA_BOLETIM_API`, `SIMPORT_AUTH_TOKEN`, `APPA_NAVEGADOR_MODULO`, `APPA_CDP_URL`, `APPA_LEITURA_TIMEOUT_MS`, `APPA_NAVEGADOR_TIMEOUT_MS`, `APPA_OCR_URL`, `APPA_OCR_IDIOMA` |
 
 Segredos opcionais (Composio, WhatsApp, IA) podem ser cadastrados no `/admin`:
 ficam **cifrados no banco** e nunca são enviados ao navegador. As chaves do
