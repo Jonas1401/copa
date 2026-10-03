@@ -72,6 +72,19 @@ export const naviosAvisos = pgTable("navios_avisos", {
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Mudanças na previsão do tempo avisadas pelo RADAR (src/lib/clima-monitor.ts):
+// uma linha por mudança publicada no chat. A assinatura ("<data>:<chave>:<de>><para>")
+// é única, então a mesma mudança não é avisada duas vezes no mesmo dia, e o
+// histórico serve de limite de avisos por hora (retenção: 30 dias).
+export const climaMudancas = pgTable("clima_mudancas", {
+  id: serial("id").primaryKey(),
+  assinatura: text("assinatura").notNull().unique(),
+  resumo: text("resumo").notNull(),
+  grave: integer("grave").default(0).notNull(),
+  mensagemId: integer("mensagem_id"),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("clima_mudancas_criado_em_idx").on(t.criadoEm)]);
+
 // Regras de segurança do Porto enviadas depois que o ponto sai para o
 // trabalho. Uma linha por saída (motorista + horário da saída).
 export const regrasEnvios = pgTable("regras_envios", {

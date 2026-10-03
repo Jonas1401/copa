@@ -11,6 +11,7 @@ import {
   type InfoSegredo,
 } from "@/lib/admin/segredos";
 import { composioConfigurado, ErroComposio, geminiViaComposio, testarComposio } from "@/lib/composio";
+import { statusRadarClima } from "@/lib/clima-monitor";
 import { chavePublica, notificarTeste, vapidConfigurado } from "@/lib/push";
 import { obterPrevisao } from "@/lib/tempo";
 
@@ -172,6 +173,30 @@ export async function listarEstados(): Promise<EstadoIntegracao[]> {
     if (d.id === "clima") {
       detalhes.push({ rotulo: "Fonte", valor: "weather-appa.app.simport.com.br" });
       detalhes.push({ rotulo: "Uso", valor: "Tela de tempo e chip do clima da tela inicial" });
+      // Radar da previsão: o mesmo painel lido pelo Composio, de 5 em 5 min.
+      const radar = await statusRadarClima().catch(() => null);
+      if (radar) {
+        detalhes.push({
+          rotulo: "Radar da previsão",
+          valor: radar.ativo
+            ? `Monitorando a cada ${radar.intervaloMin} min (painel pelo Composio a cada ${radar.painelMin} min)`
+            : "Desligado (CLIMA_MONITOR_ATIVO=0)",
+        });
+        detalhes.push({
+          rotulo: "Última leitura do radar",
+          valor: radar.ultimaVerificacao
+            ? new Date(radar.ultimaVerificacao).toLocaleString("pt-BR", {
+                timeZone: "America/Sao_Paulo",
+                dateStyle: "short",
+                timeStyle: "short",
+              })
+            : "ainda não rodou",
+        });
+        detalhes.push({
+          rotulo: "Mudanças avisadas em 24 h",
+          valor: `${radar.mudancas24h}${radar.ultimaMudanca ? ` · última: ${radar.ultimaMudanca.resumo.slice(0, 70)}` : ""}`,
+        });
+      }
     }
     if (d.id === "notificacoes") {
       const pub = await chavePublica();
