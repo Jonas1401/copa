@@ -71,6 +71,16 @@ const FERTILIZANTE = new RegExp(
 
 export const ehFertilizante = (mercadoria: string) => FERTILIZANTE.test(mercadoria);
 
+/**
+ * Berço realmente definido pela APPA? ("", "-", "A DEFINIR", "?" = ainda não).
+ * Só avisamos atracação programada quando existe berço de verdade.
+ */
+export function bercoDefinido(berco: string | null | undefined): boolean {
+  const b = (berco ?? "").trim();
+  if (!b || /^[-?.]+$/.test(b) || /A\s*DEF|INDEF|N[ÃA]O\s*DEF/i.test(b)) return false;
+  return /\d/.test(b);
+}
+
 /** Porto pelo número do berço (APPA: 4xx = Antonina). */
 export const portoDoBerco = (berco: string): "Paranaguá" | "Antonina" => (/^4\d\d$/.test(berco.trim()) ? "Antonina" : "Paranaguá");
 

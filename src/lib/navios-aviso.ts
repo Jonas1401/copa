@@ -4,6 +4,7 @@ import { chatMensagens, configuracao, naviosAvisos } from "@/db/schema";
 import { notificarMensagemChat } from "@/lib/chat-push";
 import { geminiViaComposio } from "@/lib/composio";
 import {
+  bercoDefinido,
   ehFertilizante,
   fmtTon,
   lerLineup,
@@ -37,14 +38,21 @@ const MAX_POR_CICLO = 3;
 
 export type EventoNavio = {
   chave: string;
-  tipo: "programado" | "manobra" | "atracado";
+  tipo: "programado" | "manobra" | "atracado" | "saiu";
   navio: NavioLineup;
   manobra: Manobra | null;
 };
 
 const CONFIRMADA = /CONFIRMADA|PR[ÁA]TICO/i;
 
-/** Eventos atuais dos navios de fertilizantes (sem repetir o mesmo navio). */
+/**
+ * Eventos atuais dos navios de FERTILIZANTES (sem repetir o mesmo navio).
+ *
+ * Só entra no radar navio de fertilizante: qualquer outra carga é ignorada.
+ * O aviso de "programado" exige BERÇO DEFINIDO — navio sem berço ainda não é
+ * novidade útil para o motorista. A chave leva o berço, então uma mudança de
+ * berço do mesmo navio também vira novidade (avisada uma vez).
+ */
 export function eventosFertilizantes(lineup: NavioLineup[], manobras: Manobra[]): EventoNavio[] {
   const vistos = new Set<string>();
   const eventos: EventoNavio[] = [];
@@ -54,8 +62,12 @@ export function eventosFertilizantes(lineup: NavioLineup[], manobras: Manobra[])
     if (vistos.has(id)) continue;
     vistos.add(id);
     const m = manobraDo(n, manobras);
-    if (n.secao === "PROGRAMADOS") eventos.push({ chave: `P:${n.programacao}`, tipo: "programado", navio: n, manobra: m });
+    // Programado para atracar: só com berço definido pela APPA.
+    if (n.secao === "PROGRAMADOS" && bercoDefinido(n.berco)) {
+      eventos.push({ chave: `P:${n.programacao}:${n.berco.trim()}`, tipo: "programado", navio: n, manobra: m });
+    }
     if (n.secao === "ATRACADOS") eventos.push({ chave: `A:${n.programacao}`, tipo: "atracado", navio: n, manobra: m });
+    if (n.secao === "DESPACHADOS") eventos.push({ chave: `S:${n.programacao}`, tipo: "saiu", navio: n, manobra: m });
     if (n.secao !== "ATRACADOS" && n.secao !== "DESPACHADOS" && m && (m.codigo === "EA" || m.codigo === "AT") && CONFIRMADA.test(m.situacao)) {
       eventos.push({ chave: `M:${n.programacao}:${m.data} ${m.hora}`, tipo: "manobra", navio: n, manobra: m });
     }
@@ -67,10 +79,10 @@ function fatos(ev: EventoNavio, mares: Mare[]) {
   const n = ev.navio;
   const m = ev.manobra;
   return [
-    `Evento: ${ev.tipo === "programado" ? "programado para atracar (berço definido)" : ev.tipo === "manobra" ? "atracação confirmada pela praticagem" : "atracou"}`,
+    `Evento: ${ev.tipo === "programado" ? "programado para atracar (berço definido)" : ev.tipo === "manobra" ? "atracação confirmada pela praticagem" : ev.tipo === "saiu" ? "despachado (já desatracou e saiu do porto)" : "atracou"}`,
     `Navio: ${n.nome} (IMO ${n.imo || "?"}, DWT ${n.dwt || "?"})`,
     `Porto: ${n.porto} · Berço ${n.berco || "?"}`,
-    `Carga: ${n.mercadoria}${n.toneladas != null ? ` · ${fmtTon(n.toneladas)} previstas` : " · tonelagem não informada"}`,
+    `Carga: ${n.mercadoria}${n.toneladas != null ? ` · ${fmtTon(n.toneladas)} previstas` : " · tonelagem NÃO informada pela fonte (não cite nenhum número de toneladas)"}`,
     n.saldoToneladas != null && ev.tipo === "atracado" ? `Saldo a operar: ${fmtTon(n.saldoToneladas)}` : "",
     n.chegada ? `Chegada: ${n.chegada}` : n.eta ? `ETA: ${n.eta}` : "",
     n.etb ? `ETB: ${n.etb}` : "",
@@ -88,22 +100,49 @@ export function textoPadrao(ev: EventoNavio, mares: Mare[]) {
   const mare = mares.find((x) => x.tipo === "preamar");
   const dicaMare = mare ? ` Próxima preamar por volta das ${mare.hora.slice(11, 16)}.` : "";
   const m = ev.manobra;
+  if (ev.tipo === "saiu") {
+    return `⚓ O ${n.nome} já foi despachado e deixou ${n.porto}${n.berco ? `, berço ${n.berco}` : ""}. A descarga de ${n.mercadoria.toLowerCase()} desse navio encerrou.`;
+  }
   if (ev.tipo === "atracado") {
     return `⚓ O ${n.nome} já atracou em ${onde} com ${carga}.${n.saldoToneladas != null ? ` Faltam cerca de ${fmtTon(n.saldoToneladas)} para descarregar.` : ""} Bora que tem serviço, pessoal!`;
   }
   if (ev.tipo === "manobra" && m) {
     return `🚢 Atracação confirmada! O ${n.nome} entra para ${onde} em ${m.data} às ${m.hora}, trazendo ${carga}.${m.calado ? ` Calado de ${m.calado.toFixed(1)} m.` : ""}${dicaMare} Fiquem de olho na escala.`;
   }
-  return `🚢 Berço definido! O ${n.nome} está programado para atracar em ${onde} com ${carga}.${dicaMare} Assim que a praticagem confirmar o horário, eu aviso.`;
+  const etb = n.etb ? ` Previsão de atracação (ETB) ${n.etb}.` : "";
+  return `🚢 Berço definido! O ${n.nome} está programado para atracar em ${onde} com ${carga}.${etb}${dicaMare} Assim que a praticagem confirmar o horário, eu aviso.`;
 }
 
 const SISTEMA = `Você avisa os caminhoneiros do Porto de Paranaguá (PR), no chat do app CopaLinks, sobre navios de FERTILIZANTES.
 Regras:
 - Português do Brasil, tom humano e caloroso de colega do porto; 2 a 4 frases; no máximo 420 caracteres; comece com um emoji (🚢 ou ⚓).
-- Use SOMENTE os fatos fornecidos. Nunca invente tonelagem, horário, berço ou maré.
+- Use SOMENTE os fatos fornecidos. NUNCA invente, estime ou arredonde tonelagem, horário, berço, calado ou maré.
+- Se a tonelagem não foi informada, não escreva número nenhum de toneladas: diga apenas que a quantidade ainda não foi divulgada.
 - Diga o navio, o que ele traz (tipo de fertilizante e toneladas, se houver), porto e berço, e o que acontece agora.
 - Comente a maré de forma prática quando houver horário de manobra: diga se a manobra fica perto de uma preamar ou de uma baixa-mar, sem afirmar regras oficiais de calado da praticagem.
 - Sem título, sem hashtags, sem aspas.`;
+
+/**
+ * A IA não pode inventar tonelagem. Aqui conferimos cada número de toneladas
+ * citado no texto contra os valores reais da fonte (previsto e saldo):
+ * se aparecer um número que não veio do line-up — ou se a fonte não informou
+ * tonelagem nenhuma — o texto da IA é descartado e usamos o modelo pronto.
+ */
+const TONELADAS_NO_TEXTO = /(\d[\d.,]*)\s*(?:mil\s*)?(?:t\b|ton\b|tons?\b|toneladas?\b)/gi;
+
+export function tonelagemConfere(texto: string, navio: Pick<NavioLineup, "toneladas" | "saldoToneladas">): boolean {
+  const citados = [...texto.matchAll(TONELADAS_NO_TEXTO)].map((m) => {
+    const bruto = m[1].replace(/\./g, "").replace(",", ".");
+    const n = Number(bruto);
+    return Number.isFinite(n) ? (/mil\s*(?:t|ton)/i.test(m[0]) ? n * 1000 : n) : NaN;
+  });
+  if (!citados.length) return true;
+  const permitidos = [navio.toneladas, navio.saldoToneladas]
+    .filter((t): t is number => t != null)
+    .flatMap((t) => [Math.round(t), Math.round(t / 1000)]);
+  if (!permitidos.length) return false; // fonte sem tonelagem: nenhum número pode aparecer
+  return citados.every((c) => !Number.isNaN(c) && permitidos.some((p) => Math.abs(p - c) <= 1));
+}
 
 async function escreverAviso(ev: EventoNavio, mares: Mare[]) {
   const base = textoPadrao(ev, mares);
@@ -112,7 +151,9 @@ async function escreverAviso(ev: EventoNavio, mares: Mare[]) {
       rapido: true, reserva: false, maxTokens: 400, temperatura: 0.6, timeoutMs: 12000,
     });
     const limpo = texto.replace(/^["“”']+|["“”']+$/g, "").trim();
-    return limpo.length >= 30 ? limpo.slice(0, 480) : base;
+    if (limpo.length < 30) return base;
+    if (!tonelagemConfere(limpo, ev.navio)) return base; // IA inventou tonelagem
+    return limpo.slice(0, 480);
   } catch {
     return base;
   }
