@@ -3,7 +3,13 @@ import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { chatMensagens, climaMudancas, configuracao } from "@/db/schema";
 import { notificarMensagemChat } from "@/lib/chat-push";
-import { composioConfigurado, geminiViaComposio, painelSimportComposio } from "@/lib/composio";
+import {
+  climaAgoraComposio,
+  composioConfigurado,
+  geminiViaComposio,
+  painelSimportComposio,
+  type ClimaComposio,
+} from "@/lib/composio";
 import { GRAVIDADE, obterPrevisao, type Previsao } from "@/lib/tempo";
 
 /**
@@ -156,6 +162,20 @@ export type InstantaneoClima = {
     umidade: number;
     descricao: string;
   } | null;
+  /**
+   * Medição independente lida PELO COMPOSIO (ferramenta WEATHERMAP_WEATHER /
+   * OpenWeather). É a segunda opinião do radar: cobre o tempo atual mesmo
+   * quando a estação da APPA e o WRF falham.
+   */
+  composioAgora: {
+    temperatura: number;
+    sensacao: number;
+    vento: number;
+    rajada: number;
+    umidade: number;
+    gravidade: number;
+    descricao: string;
+  } | null;
 };
 
 export type TipoMudanca =
@@ -170,8 +190,12 @@ export type TipoMudanca =
 
 export type Mudanca = {
   tipo: TipoMudanca;
-  /** De onde veio o dado: api = WRF/estação · painel = página lida pelo Composio. */
-  origem: "api" | "painel" | "boletim" | "agora";
+  /**
+   * De onde veio o dado: api = WRF/estação · painel = página da APPA lida pelo
+   * Composio · composio = medição do Composio (OpenWeather) · agora = estação
+   * do porto · boletim = boletim da APPA.
+   */
+  origem: "api" | "painel" | "composio" | "boletim" | "agora";
   rotulo: string;
   antes: string;
   agora: string;
@@ -403,6 +427,7 @@ export function montarInstantaneo(
   p: Previsao | null,
   painel: PainelSimport | null,
   em: number = Date.now(),
+  cc: ClimaComposio | null = null,
 ): InstantaneoClima {
   const tem24 = p ? resumoHoras(p, 24) : null;
   const tem6 = p ? resumoHoras(p, 6) : null;
@@ -478,7 +503,30 @@ export function montarInstantaneo(
           }
         : null,
     agora,
+    composioAgora: cc
+      ? {
+          temperatura: Math.round(cc.temperatura),
+          sensacao: Math.round(cc.sensacao),
+          vento: Math.round(cc.ventoKmh),
+          rajada: Math.round(cc.rajadaKmh),
+          umidade: cc.umidade,
+          gravidade: gravidadeOpenWeather(cc.codigo),
+          descricao: cc.descricao || "sem descrição",
+        }
+      : null,
   };
+}
+
+/** Código OpenWeather (Composio) → gravidade, na mesma escala dos ícones do app. */
+export function gravidadeOpenWeather(codigo: number): number {
+  if (codigo >= 200 && codigo < 300) return 7; // trovoadas
+  if (codigo === 502 || codigo === 503 || codigo === 504 || codigo === 522) return 6;
+  if (codigo >= 300 && codigo < 400) return 4; // garoa
+  if (codigo >= 500 && codigo < 600) return 5; // chuva
+  if (codigo >= 700 && codigo < 800) return 3; // neblina
+  if (codigo === 800) return 0;
+  if (codigo === 801 || codigo === 802) return 1;
+  return 2;
 }
 
 /* ------------------------------------------------------ comparação */
@@ -680,6 +728,46 @@ export function detectarMudancas(
     }
   }
 
+  /* ------------------------------- medição independente PELO COMPOSIO */
+  if (antes.composioAgora && agora.composioAgora) {
+    const c = "composio" as const;
+    compararNumero({
+      tipo: "medicao", origem: c, chave: "composio.temp", rotulo: "Temperatura pelo Composio",
+      antes: antes.composioAgora.temperatura, agora: agora.composioAgora.temperatura,
+      delta: l.tempAgora, formato: fmtGrau, peso: 84,
+    });
+    compararNumero({
+      tipo: "vento", origem: c, chave: "composio.rajada", rotulo: "Rajada pelo Composio",
+      antes: antes.composioAgora.rajada, agora: agora.composioAgora.rajada,
+      delta: l.rajada, formato: fmtKm, peso: 24, grave: (a, b) => b >= 40 && a < 40,
+    });
+    compararNumero({
+      tipo: "vento", origem: c, chave: "composio.vento", rotulo: "Vento pelo Composio",
+      antes: antes.composioAgora.vento, agora: agora.composioAgora.vento,
+      delta: l.vento, formato: fmtKm, peso: 26,
+    });
+    compararNumero({
+      tipo: "chuva", origem: c, chave: "composio.umidade", rotulo: "Umidade pelo Composio",
+      antes: antes.composioAgora.umidade, agora: agora.composioAgora.umidade,
+      delta: 15, formato: (n) => `${Math.round(n)}%`, peso: 64,
+    });
+    const gA = antes.composioAgora.gravidade;
+    const gB = agora.composioAgora.gravidade;
+    if (Math.abs(gB - gA) >= Math.max(1, l.gravidade)) {
+      achadas.push({
+        tipo: "condicao",
+        origem: c,
+        rotulo: "Condição medida pelo Composio",
+        antes: antes.composioAgora.descricao,
+        agora: agora.composioAgora.descricao,
+        frase: `o Composio mudou a condição de ${antes.composioAgora.descricao.toLowerCase()} para ${agora.composioAgora.descricao.toLowerCase()}`,
+        grave: gB >= GRAVIDADE.chuva && gA < GRAVIDADE.chuva,
+        assinatura: `composioCondicao:${gA}>${gB}`,
+        peso: 32,
+      });
+    }
+  }
+
   /* ---------------------------------------------- medição no porto */
   if (antes.agora && agora.agora && antes.agora.fonte === agora.agora.fonte) {
     compararNumero({
@@ -694,9 +782,11 @@ export function detectarMudancas(
   }
 
   /* ------------------------------------------------- ordena e deduplica */
+  // Quando a API estruturada já contou a mesma história, o painel e o Composio
+  // não repetem: elas entram como segunda opinião quando a API está fora do ar.
   const tiposDaApi = new Set(achadas.filter((m) => m.origem === "api").map((m) => m.tipo));
   return achadas
-    .filter((m) => !(m.origem === "painel" && tiposDaApi.has(m.tipo)))
+    .filter((m) => !((m.origem === "painel" || m.origem === "composio") && tiposDaApi.has(m.tipo)))
     .sort((a, b) => Number(b.grave) - Number(a.grave) || a.peso - b.peso);
 }
 
@@ -827,6 +917,28 @@ async function lerPrevisao(passada: Previsao | undefined, suave = false): Promis
 }
 
 /**
+ * Medição atual PELO COMPOSIO (WEATHERMAP_WEATHER / OpenWeather), com cache em
+ * memória de 10 min. É a segunda opinião do radar: funciona mesmo quando a
+ * estação da APPA e o WRF estão fora do ar.
+ */
+let cacheComposio: { em: number; dados: ClimaComposio | null } | null = null;
+const VIDA_CACHE_COMPOSIO = 10 * 60_000;
+
+export async function lerComposioAgora(forcar = false): Promise<ClimaComposio | null> {
+  if (!forcar && cacheComposio && Date.now() - cacheComposio.em < VIDA_CACHE_COMPOSIO) {
+    return cacheComposio.dados;
+  }
+  const dados = await climaAgoraComposio().catch(() => null);
+  cacheComposio = { em: Date.now(), dados };
+  return dados;
+}
+
+/** Zera o cache da medição do Composio (usado nos testes). */
+export function resetarCacheComposio() {
+  cacheComposio = null;
+}
+
+/**
  * Painel da Simport PELO COMPOSIO, com cache próprio (padrão: 30 min) para não
  * gastar chamadas de API à toa. Se o Composio estiver desconfigurado ou fora
  * do ar, devolve a última leitura guardada — o radar segue com a API.
@@ -925,11 +1037,13 @@ export async function verificarMudancasPrevisao(
 
     const p = await lerPrevisao(opcoes.previsao, opcoes.suave);
     const painel = await lerPainel(cfg, opcoes.forcar);
-    if (!p && !painel) {
+    // Segunda opinião: medição do tempo atual PELO COMPOSIO (OpenWeather).
+    const cc = await lerComposioAgora(opcoes.forcar);
+    if (!p && !painel && !cc) {
       return { rodou: true, postou: false, motivo: "fontes do tempo indisponíveis", mudancas: [] };
     }
-    const atual = montarInstantaneo(p, painel);
-    if (!atual.api && !atual.painel && !atual.boletim && !atual.agora) {
+    const atual = montarInstantaneo(p, painel, Date.now(), cc);
+    if (!atual.api && !atual.painel && !atual.boletim && !atual.agora && !atual.composioAgora) {
       return { rodou: true, postou: false, motivo: "leitura incompleta", mudancas: [] };
     }
 

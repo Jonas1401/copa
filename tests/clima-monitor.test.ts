@@ -454,6 +454,26 @@ test("composio: extrai o texto da resposta e descreve quando vem vazio", async (
   assert.match(descreverResposta(undefined), /resposta vazia/);
 });
 
+test("radar: a medição PELO COMPOSIO (OpenWeather) também entra na comparação", () => {
+  const cc = {
+    temperatura: 21, sensacao: 21, umidade: 80, ventoKmh: 14, rajadaKmh: 24,
+    ventoGraus: 135, nuvens: 40, codigo: 802, descricao: "nuvens dispersas",
+    medidoEm: Math.floor(Date.now() / 1000),
+  };
+  const ccDepois = { ...cc, temperatura: 29, rajadaKmh: 62, umidade: 96, codigo: 501, descricao: "chuva moderada" };
+  const antes = montarInstantaneo(null, null, Date.now(), cc);
+  const depois = montarInstantaneo(null, null, Date.now() + 60_000, ccDepois);
+  assert.equal(antes.composioAgora?.temperatura, 21);
+  assert.equal(depois.composioAgora?.gravidade, 5, "código de chuva do OpenWeather");
+  const m = detectarMudancas(antes, depois, "media");
+  assert.ok(m.length >= 3, "temperatura, rajada e condição pelo Composio");
+  assert.ok(m.every((x) => x.origem === "composio"));
+  assert.ok(m.some((x) => x.rotulo.includes("Temperatura pelo Composio")));
+  assert.ok(m.some((x) => x.grave), "rajada e chuva entrando são graves");
+  // Sem o Composio nas duas leituras, nada muda.
+  assert.equal(detectarMudancas(montarInstantaneo(null, null), montarInstantaneo(null, null), "alta").length, 0);
+});
+
 test("radar: a assinatura vale por bloco de 3 h (a mesma mudança pode voltar)", () => {
   const antes = instantaneo({ chance: 10 });
   const depois = instantaneo({ chance: 80 }, Date.now() + 60_000);
