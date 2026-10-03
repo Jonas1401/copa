@@ -3,6 +3,7 @@ type Linha = Record<string, string>;
 const COLS: Record<string, string[]> = {
   ATRACADOS: ["Programação", "DUV", "Berço", "Embarcação", "IMO", "LOA", "DWT", "Bordo", "Sentido", "Agência", "Operador", "Mercadoria", "Atracação", "Chegada", "Janela Operacional", "Prancha (t/dia)", "Tons/Dia", "Previsto", "Realizado", "Saldo Operador", "Saldo Total"],
   PROGRAMADOS: ["Programação", "DUV", "Berço", "Embarcação", "IMO", "LOA", "Cal. Cheg.", "Cal. Saída", "DWT", "Bordo", "Sentido", "Agência", "Operador", "Mercadoria", "Chegada", "ETB", "Janela Operacional", "Prancha (t/dia)", "Previsto"],
+  DESPACHADOS: ["Programação", "DUV", "Berço", "Embarcação", "IMO", "LOA", "DWT", "Sentido", "Agência", "Operador", "Mercadoria", "Atracação", "Desatracação", "Previsto", "Realizado"],
   "AO LARGO": ["Programação", "DUV", "Berço", "Embarcação", "IMO", "LOA", "DWT", "Sentido", "Agência", "Operador", "Mercadoria", "ETA", "Chegada", "Janela Operacional", "Prancha (t/dia)", "Previsto", "Cal. Cheg.", "Cal. Saída"],
 };
 export function paginaAppa(secoes: Record<string, Linha[]>) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ehFertilizante, extremosDaMare, linhaNavio, parseLineupAppa, parseManobrasSinprapar, portoDoBerco, toneladasDe } from "../src/lib/navios";
-import { eventosFertilizantes, textoPadrao } from "../src/lib/navios-aviso";
+import { bercoDefinido, ehFertilizante, extremosDaMare, linhaNavio, parseLineupAppa, parseManobrasSinprapar, portoDoBerco, toneladasDe } from "../src/lib/navios";
+import { eventosFertilizantes, textoPadrao, tonelagemConfere } from "../src/lib/navios-aviso";
 import { paginaAppa, paginaSinprapar } from "./navios-fixture";
 
 test("fertilizantes: reconhece todos os tipos e ignora outras cargas", () => {
@@ -49,7 +49,37 @@ test("eventos: programado, manobra confirmada e atracado — só fertilizantes",
     { data: "01/10", hora: "05:00", navio: "JING LU HAI", manobra: "EA: AZ200", calado: "10,00", imo: "3", situacao: "A CONFIRMAR" },
   ]));
   const ev = eventosFertilizantes(lineup, man);
-  assert.deepEqual(ev.map((e) => e.chave).sort(), ["A:1", "M:2:01/10 02:00", "P:2"], "açúcar e manobra 'a confirmar' não avisam");
+  assert.deepEqual(ev.map((e) => e.chave).sort(), ["A:1", "M:2:01/10 02:00", "P:2:211"], "açúcar e manobra 'a confirmar' não avisam");
   const t = textoPadrao(ev.find((e) => e.tipo === "manobra")!, [{ hora: "2026-10-01T03:00", tipo: "preamar", alturaM: 0.7 }]);
   assert.match(t, /LEO\. K.*berço 211.*01\/10 às 02:00.*map \(70\.000 t\).*preamar.*03:00/);
+});
+
+test("programado só com berço definido; mudança de berço é nova novidade", () => {
+  for (const b of ["", " ", "-", "A DEFINIR", "?"]) assert.ok(!bercoDefinido(b), `berço "${b}"`);
+  for (const b of ["211", " 114 ", "4A"]) assert.ok(bercoDefinido(b), b);
+  const lineup = (berco: string) => parseLineupAppa(paginaAppa({
+    PROGRAMADOS: [{ "Programação": "2", "Berço": berco, "Embarcação": "LEO. K", IMO: "2", Mercadoria: "MAP", Previsto: "70.000,000 Tons." }],
+  }));
+  assert.deepEqual(eventosFertilizantes(lineup(""), []), [], "sem berço não avisa");
+  assert.deepEqual(eventosFertilizantes(lineup("211"), []).map((e) => e.chave), ["P:2:211"]);
+  assert.deepEqual(eventosFertilizantes(lineup("212"), []).map((e) => e.chave), ["P:2:212"], "mudou o berço, avisa de novo");
+});
+
+test("navio despachado de fertilizante também vira novidade", () => {
+  const lineup = parseLineupAppa(paginaAppa({
+    DESPACHADOS: [{ "Programação": "7", "Berço": "201", "Embarcação": "GRAN BRASIL", IMO: "7", Mercadoria: "UREIA" }],
+  }));
+  const ev = eventosFertilizantes(lineup, []);
+  assert.deepEqual(ev.map((e) => [e.tipo, e.chave]), [["saiu", "S:7"]]);
+  assert.match(textoPadrao(ev[0], []), /GRAN BRASIL.*despachado/);
+});
+
+test("nunca inventar toneladas: texto da IA com número fora da fonte é recusado", () => {
+  const comTon = { toneladas: 70000, saldoToneladas: null };
+  const semTon = { toneladas: null, saldoToneladas: null };
+  assert.ok(tonelagemConfere("🚢 Chega com 70.000 t de MAP no berço 211.", comTon));
+  assert.ok(tonelagemConfere("🚢 Chega com 70 mil toneladas de MAP.", comTon));
+  assert.ok(!tonelagemConfere("🚢 Chega com 45.000 toneladas de MAP.", comTon), "número inventado");
+  assert.ok(tonelagemConfere("🚢 A quantidade ainda não foi divulgada.", semTon));
+  assert.ok(!tonelagemConfere("🚢 Traz cerca de 50.000 t de ureia.", semTon), "fonte sem tonelagem");
 });

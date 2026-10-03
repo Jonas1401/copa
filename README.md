@@ -388,14 +388,21 @@ O `/api/cron` (a cada minuto; no máximo uma leitura a cada 5 min) lê o
 atracação, saldo) e as **manobras previstas do SINPRAPAR** (hora, calado,
 confirmada ou não) — `src/lib/navios.ts`. Para navios de **fertilizantes**
 (ureia, MAP, DAP, cloreto de potássio, sulfato de amônio, nitratos, NPK,
-superfosfatos, rocha fosfática…) o app avisa, uma vez cada:
-1. **programado para atracar** (berço definido);
+superfosfatos, rocha fosfática…) — **e somente para eles** — o app avisa, uma
+vez cada:
+1. **programado para atracar**, apenas quando a APPA já definiu o **berço**
+   (navio sem berço não gera aviso; se o berço mudar, sai um aviso novo);
 2. **atracação confirmada** pela praticagem (manobra EA/AT confirmada);
-3. **atracou**.
+3. **atracou**;
+4. **despachado** (desatracou e saiu do porto).
 
 O aviso é escrito pela IA (Gemini pelo Composio) em tom humano, com a análise
 da **maré** (Open-Meteo Marine, referência — não é a tábua oficial) e o
-calado; sem IA, usa um texto pronto. Sai no chat como **🚢 Navios no Porto** e
+calado; sem IA, usa um texto pronto. A IA **nunca inventa a tonelagem**: todo
+número de toneladas do texto é conferido contra o line-up (`tonelagemConfere`)
+e, se a fonte não informou a quantidade ou o número não bate, o aviso da IA é
+descartado e vai o texto pronto — que diz que a quantidade ainda não foi
+divulgada. Sai no chat como **🚢 Navios no Porto** e
 por Web Push (quem silenciou o chat não recebe) — `src/lib/navios-aviso.ts`,
 tabela `navios_avisos`. Na 1ª execução só registra o que já existe.
 
