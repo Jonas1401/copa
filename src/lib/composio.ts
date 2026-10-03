@@ -318,6 +318,33 @@ export async function lerPaginas(urls: string[], maxCaracteres = 20000) {
   });
 }
 
+/* ------------------------------------- painel SIMPORT® lido pelo Composio */
+
+/**
+ * Endereço público do SIMPORT® — Dashboard Meteoceanográfico da APPA, o mesmo
+ * que o motorista abre no navegador (https://weather-appa.app.simport.com.br/).
+ * Pode ser trocado por variável de ambiente (ex.: /forecast).
+ */
+export const SIMPORT_PAINEL_URL =
+  process.env.SIMPORT_PAINEL_URL?.trim() || "https://weather-appa.app.simport.com.br/";
+
+/**
+ * Lê o painel da Simport PELO COMPOSIO (COMPOSIO_SEARCH_FETCH_URL_CONTENT) e
+ * devolve o texto da página (markdown). É por aqui que o radar da previsão
+ * (`src/lib/clima-monitor.ts`) acompanha constantemente o boletim da APPA, as
+ * tabelas de chuva e vento das próximas 24 h e as marés — e compara com a
+ * leitura anterior para avisar qualquer mudança no chat.
+ *
+ * Sem COMPOSIO_API_KEY (ou com o Composio fora do ar) a função joga erro: o
+ * radar segue trabalhando com a API estruturada da Simport/Open-Meteo.
+ */
+export async function painelSimportComposio(maxCaracteres = 14000): Promise<string> {
+  const [pagina] = await lerPaginas([SIMPORT_PAINEL_URL], maxCaracteres);
+  const texto = (pagina?.texto ?? "").trim();
+  if (!texto) throw new ErroComposio("Composio não devolveu o painel da Simport.", 502);
+  return texto;
+}
+
 export type ClimaComposio = {
   temperatura: number; // °C
   sensacao: number;

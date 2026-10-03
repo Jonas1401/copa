@@ -169,7 +169,7 @@ export async function verificarEPostarAlertaClima(
  */
 export async function verificarClima(
   opcoes: { forcar?: boolean } = {},
-): Promise<{ postou: boolean; nivel: string; motivo: string; tipo: "alerta" | "boletim" | "nenhum" }> {
+): Promise<{ postou: boolean; nivel: string; motivo: string; tipo: "alerta" | "boletim" | "nenhum"; previsao?: Previsao }> {
   // Uma leitura só (com cache de 10 min) para os dois agentes.
   let previsao: Previsao | undefined;
   try {
@@ -179,13 +179,13 @@ export async function verificarClima(
   }
 
   const alerta = await verificarEPostarAlertaClima({ previsao, forcar: opcoes.forcar });
-  if (alerta.postou) return { ...alerta, tipo: "alerta" };
+  if (alerta.postou) return { ...alerta, tipo: "alerta", previsao };
   // Tempo ruim: o alerta já leva a previsão do dia, sem boletim junto.
   if (alerta.motivo === "já avisado") {
-    return { postou: false, nivel: alerta.nivel, motivo: "alerta ativo", tipo: "nenhum" };
+    return { postou: false, nivel: alerta.nivel, motivo: "alerta ativo", tipo: "nenhum", previsao };
   }
 
   const boletim = await verificarEPostarBoletimClima({ previsao, forcar: opcoes.forcar });
-  if (boletim.postou) return { postou: true, nivel: alerta.nivel, motivo: boletim.motivo, tipo: "boletim" };
-  return { postou: false, nivel: alerta.nivel, motivo: boletim.motivo || alerta.motivo, tipo: "nenhum" };
+  if (boletim.postou) return { postou: true, nivel: alerta.nivel, motivo: boletim.motivo, tipo: "boletim", previsao };
+  return { postou: false, nivel: alerta.nivel, motivo: boletim.motivo || alerta.motivo, tipo: "nenhum", previsao };
 }

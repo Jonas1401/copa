@@ -1,0 +1,636 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import {
+  LIMIARES,
+  assinaturaDoDia,
+  configRadar,
+  detectarMudancas,
+  montarInstantaneo,
+  normalizarTexto,
+  parsearPainelSimport,
+  textoMudancaPadrao,
+  type InstantaneoClima,
+  type PainelSimport,
+} from "../src/lib/clima-monitor";
+import type { Previsao } from "@/lib/tempo";
+
+/**
+ * RADAR DA PREVISÃO — monitoramento constante do tempo via Composio.
+ *
+ * Os primeiros testes são puros (configuração, leitura do painel da Simport,
+ * comparação de instantâneos e texto do aviso) e rodam sempre: não acessam a
+ * rede nem o banco.
+ *
+ * O teste de ponta a ponta (radar → chat → Push) roda SOMENTE num PostgreSQL
+ * local descartável fila_push_test_<sufixo>:
+ *   TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/fila_push_test_exemplo \
+ *   DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/fila_push_test_exemplo \
+ *   ./node_modules/.bin/tsx --test tests/clima-monitor.test.ts
+ * A Simport e o Composio são simulados (fetch substituído) e o Push nunca sai
+ * de verdade.
+ */
+const uri = process.env.TEST_DATABASE_URL;
+const local = (() => {
+  if (!uri || process.env.DATABASE_URL !== uri) return false;
+  try {
+    const u = new URL(uri);
+    return (u.hostname === "127.0.0.1" || u.hostname === "localhost") && u.pathname.startsWith("/fila_push_test_");
+  } catch {
+    return false;
+  }
+})();
+
+/* ------------------------------------------------------------- fixações */
+
+/** Texto (markdown) do painel SIMPORT® da APPA, no formato que o Composio devolve. */
+const PAINEL = `## 17°C
+
+Sensação térmica: 18°C
+
+0.0 nós
+
+SSE
+
+90%
+
+Umidade
+
+1016
+
+Pressão
+
+**Sex (02/10)**: Há possibilidade de chuva fraca durante a madrugada. No restante do dia, o céu permanece encoberto, com nova possibilidade de chuva fraca entre o final da tarde e a noite.
+
+**Sáb (03/10)**: O dia apresenta céu encoberto e previsão de chuvas fracas e intermitentes, especialmente durante a madrugada e a manhã. Os ventos apresentam direção variável, de SW/E, com intensidade fraca a moderada.
+
+## Previsões Detalhadas
+
+### Previsão de Chuvas
+
+Hora
+
+Condição
+
+Precipit.
+
+Probabil.
+
+23:00
+
+0.2 mm
+
+72%
+
+01:00
+
+< 0.1 mm
+
+31%
+
+05:00
+
+0 mm
+
+0%
+
+09:00
+
+< 0.1 mm
+
+16%
+
+13:00
+
+0.1 mm
+
+47%
+
+Próximas 24 horas
+
+### Previsão de Ventos
+
+Hora
+
+Velocidade
+
+Direção
+
+23:00
+
+3 nós
+
+SSW
+
+05:00
+
+3 nós
+
+WSW
+
+09:00
+
+7 nós
+
+E
+
+13:00
+
+7 nós
+
+ENE
+
+Próximas 24 horas
+
+Direção do vento durante o dia
+
+23:00
+
+SSW
+
+05:00
+
+WSW
+
+11:00
+
+E
+
+17:00
+
+E
+
+### Mapa de Localizações
+
+Paranaguá
+
+17°C
+
+Antonina
+
+17°C
+
++–
+
+⇧
+
+i
+
+Paranaguá
+
+Lat: -25.52, Lon: -48.52
+
+### Dados Oceanográficos
+
+#### Previsão de Marés
+
+Paranaguá
+
+02:001.2mAlta
+
+05:100.5mBaixa
+
+08:401.5mAlta
+
+11:400.9mBaixa
+
+### Fases da Lua
+
+🌔
+
+Minguante Gibosa55.53% iluminação
+
+Nascer do Sol
+
+04:54
+
+Pôr do Sol
+
+17:15`;
+
+/** Painel igual ao anterior, mas com a previsão revisada (chuva e vento maiores). */
+const PAINEL_MUDADO = PAINEL.replace("0.1 mm\n\n47%", "6.4 mm\n\n92%").replace("7 nós\n\nENE", "28 nós\n\nENE");
+
+/* ----------------------------------------------------------- instantâneo */
+function previsao(opcoes: { chance?: number; rajada?: number; mm?: number; gravidade?: number } = {}): Previsao {
+  const chance = opcoes.chance ?? 10;
+  const rajada = opcoes.rajada ?? 18;
+  const mm = opcoes.mm ?? 0;
+  const base = Math.floor(Date.now() / 1000);
+  const horas = Array.from({ length: 30 }, (_, i) => ({
+    ts: base + i * 3600,
+    hora: `${String((i + new Date().getHours()) % 24).padStart(2, "0")}h`,
+    dia: "2026-10-02",
+    temperatura: 20 + (i % 6),
+    sensacao: 20 + (i % 6),
+    umidade: 80,
+    chanceChuva: chance,
+    chuvaMm: mm,
+    ventoKmh: Math.round(rajada * 0.6),
+    rajadaKmh: rajada,
+    ventoGraus: 135,
+    ventoDirecao: "SE",
+    icone: (opcoes.gravidade === 5 ? "chuva" : "sol-nuvem") as Previsao["horas"][number]["icone"],
+    descricao: opcoes.gravidade === 5 ? "Chuva" : "Parcialmente nublado",
+  }));
+  const dia = (max: number, min: number) => ({
+    data: "2026-10-02",
+    rotulo: "Hoje",
+    dataCurta: "2 de outubro",
+    max,
+    min,
+    chuvaMm: mm,
+    chanceChuva: chance,
+    icone: (opcoes.gravidade === 5 ? "chuva" : "sol-nuvem") as Previsao["dias"][number]["icone"],
+    descricao: opcoes.gravidade === 5 ? "Chuva" : "Parcialmente nublado",
+    fonte: "simport" as const,
+    temHoras: true,
+  });
+  return {
+    cidade: "Paranaguá",
+    uf: "PR",
+    agora: {
+      temperatura: 21,
+      sensacao: 21,
+      umidade: 80,
+      chanceChuva: chance,
+      ventoKmh: 14,
+      rajadaKmh: rajada,
+      ventoDirecao: "SE",
+      ventoGraus: 135,
+      chuva24h: 0,
+      icone: "sol-nuvem",
+      descricao: "Parcialmente nublado",
+      hora: "06:00",
+      fonte: "estacao",
+    },
+    alerta: { nivel: "tempo-bom", titulo: "Tempo firme", texto: "Sem chuva prevista." },
+    boletim: [{ data: "2026-10-02", texto: "Sol com nuvens no porto.", tempoRuim: false }],
+    horas,
+    dias: [dia(26, 17), { ...dia(25, 16), data: "2026-10-03", rotulo: "Amanhã" }],
+    nascerSol: "04:54",
+    porSol: "17:15",
+    atualizadoEm: new Date().toISOString(),
+    fontes: { simport: true, estacao: true, openMeteo: true, composio: false },
+  };
+}
+
+const instantaneo = (
+  opcoes: { chance?: number; rajada?: number; mm?: number; gravidade?: number; painel?: PainelSimport | null } = {},
+  em = Date.now(),
+): InstantaneoClima =>
+  montarInstantaneo(
+    previsao({ chance: opcoes.chance, rajada: opcoes.rajada, mm: opcoes.mm, gravidade: opcoes.gravidade }),
+    opcoes.painel ?? null,
+    em,
+  );
+
+/* ------------------------------------------------------------ puros */
+
+test("radar: configuração padrão (5 min, painel 30 min, sensibilidade média)", () => {
+  const c = configRadar({} as Record<string, string>);
+  assert.equal(c.ativo, true);
+  assert.equal(c.sensibilidade, "media");
+  assert.equal(c.intervaloMs, 5 * 60_000);
+  assert.equal(c.painelMs, 30 * 60_000);
+  assert.equal(c.avisoMinMs, 20 * 60_000);
+  assert.equal(c.maxPorHora, 3);
+
+  assert.equal(configRadar({ CLIMA_MONITOR_ATIVO: "0" } as Record<string, string>).ativo, false);
+  assert.equal(configRadar({ CLIMA_MONITOR_MIN: "2" } as Record<string, string>).intervaloMs, 120_000);
+  assert.equal(configRadar({ CLIMA_MONITOR_SENSIBILIDADE: "alta" } as Record<string, string>).sensibilidade, "alta");
+  // Valores zerados ou inválidos não derrubam o radar: valem os padrões.
+  assert.equal(configRadar({ CLIMA_MONITOR_MIN: "0" } as Record<string, string>).intervaloMs, 300_000);
+});
+
+test("radar: lê o painel da Simport (boletim, chuva, vento, marés e sol)", () => {
+  const p = parsearPainelSimport(PAINEL);
+  assert.ok(p, "painel lido");
+  assert.equal(p.agora.temperatura, 17);
+  assert.equal(p.agora.sensacao, 18);
+  assert.equal(p.agora.umidade, 90);
+  assert.equal(p.agora.ventoNos, 0);
+  assert.equal(p.agora.direcao, "SSE");
+  assert.equal(p.agora.pressao, 1016);
+
+  assert.equal(p.chuva.length, 5);
+  assert.deepEqual(p.chuva[0], { hora: "23:00", mm: 0.2, prob: 72 });
+  assert.equal(p.chuva[2].mm, 0);
+  assert.equal(p.chuva[4].prob, 47);
+
+  assert.equal(p.vento.length, 4);
+  assert.equal(p.vento[0].nos, 3);
+  assert.equal(p.vento[0].direcao, "SSW");
+  assert.equal(p.vento[3].nos, 7);
+
+  assert.equal(p.mares.length, 4);
+  assert.deepEqual(p.mares[0], { hora: "02:00", altura: 1.2, tipo: "alta" });
+  assert.deepEqual(p.mares[1], { hora: "05:10", altura: 0.5, tipo: "baixa" });
+
+  assert.equal(p.nascerSol, "04:54");
+  assert.equal(p.porSol, "17:15");
+
+  assert.equal(p.boletim.length, 2);
+  assert.equal(p.boletim[0].dia, "02/10");
+  assert.match(p.boletim[0].texto, /possibilidade de chuva fraca/i);
+  assert.equal(p.boletim[1].dia, "03/10");
+
+  // Lixo ou resposta vazia do Composio não derruba o radar.
+  assert.equal(parsearPainelSimport(""), null);
+  assert.equal(parsearPainelSimport("erro 500"), null);
+});
+
+test("radar: detecta a mudança de chuva e vento entre dois instantâneos", () => {
+  const antes = instantaneo({ chance: 10, rajada: 18, mm: 0 });
+  const depois = instantaneo({ chance: 75, rajada: 52, mm: 6.5, gravidade: 5 }, Date.now() + 60_000);
+  const m = detectarMudancas(antes, depois, "media");
+  const tipos = m.map((x) => x.tipo);
+  assert.ok(tipos.includes("chuva"), "mudança de chuva detectada");
+  assert.ok(tipos.includes("vento"), "mudança de vento detectada");
+  assert.ok(tipos.includes("condicao"), "mudança da condição do tempo detectada");
+  // Chuva forte entrando é grave: a notificação fica na tela até o motorista tocar.
+  assert.ok(m.some((x) => x.grave));
+  const chuva = m.find((x) => x.tipo === "chuva");
+  assert.ok(chuva?.frase.includes("10%"));
+  assert.ok(chuva?.frase.includes("75%"));
+  assert.match(chuva?.assinatura ?? "", /^chuvaProb6h:/);
+});
+
+test("radar: abaixo do limite da sensibilidade não avisa (antispam)", () => {
+  const antes = instantaneo({ chance: 30, rajada: 20 });
+  const depois = instantaneo({ chance: 45, rajada: 28 }, Date.now() + 60_000);
+  assert.equal(detectarMudancas(antes, depois, "media").length, 0, "média ignora 15 pontos de chance");
+  assert.ok(detectarMudancas(antes, depois, "alta").length > 0, "alta pega 15 pontos");
+  assert.equal(detectarMudancas(antes, depois, "baixa").length, 0);
+  // Nada mudou: nada a avisar.
+  assert.equal(detectarMudancas(antes, antes, "alta").length, 0);
+  // Sem o WRF da APPA nas duas leituras, não aparece mudança de "próximas 24 h".
+  const semApi = (i: InstantaneoClima): InstantaneoClima => ({ ...i, api: null });
+  const semWrf = detectarMudancas(semApi(antes), semApi(depois), "alta");
+  assert.ok(!semWrf.some((m) => /próximas 24 h/.test(m.rotulo)), "sem WRF não há mudança horária");
+});
+
+test("radar: mudança no painel lido pelo Composio também vira aviso", () => {
+  const p1 = parsearPainelSimport(PAINEL);
+  const p2 = parsearPainelSimport(PAINEL_MUDADO);
+  assert.ok(p1 && p2);
+  const antes = montarInstantaneo(null, p1, Date.now());
+  const depois = montarInstantaneo(null, p2, Date.now() + 60_000);
+  assert.equal(antes.api, null, "sem API estruturada neste teste");
+  const m = detectarMudancas(antes, depois, "media");
+  assert.ok(m.length >= 1, "o painel sozinho sustenta o radar");
+  assert.ok(m.every((x) => x.origem === "painel"));
+  assert.ok(m.some((x) => x.tipo === "chuva"));
+  assert.ok(m.some((x) => x.tipo === "vento"));
+});
+
+test("radar: boletim da APPA novo ou revisado entra no aviso", () => {
+  const antes = montarInstantaneo(
+    { ...previsao(), boletim: [{ data: "2026-10-02", texto: "Sol com nuvens.", tempoRuim: false }] },
+    null,
+  );
+  const depois = montarInstantaneo(
+    {
+      ...previsao(),
+      boletim: [{ data: "2026-10-02", texto: "Chuva forte e vento no porto.", tempoRuim: true }],
+    },
+    null,
+    Date.now() + 60_000,
+  );
+  const m = detectarMudancas(antes, depois, "media");
+  const boletins = m.filter((x) => x.tipo === "boletim");
+  assert.ok(boletins.length >= 1, "revisão do boletim detectada");
+  assert.ok(boletins.some((x) => x.grave), "tempo ruim é grave");
+  assert.ok(
+    boletins.some((x) => /^boletim:2026-10-02:/.test(x.assinatura)),
+    "assinatura por dia do boletim",
+  );
+  assert.ok(
+    boletins.some((x) => x.assinatura.startsWith("boletimRuim:")),
+    "liga/desliga do alerta de tempo ruim",
+  );
+  // Um dia novo de boletim também avisa (assinatura própria).
+  const novoDia = montarInstantaneo(
+    {
+      ...previsao(),
+      boletim: [
+        { data: "2026-10-02", texto: "Chuva forte e vento no porto.", tempoRuim: true },
+        { data: "2026-10-03", texto: "Tempo firme pela manhã.", tempoRuim: false },
+      ],
+    },
+    null,
+    Date.now() + 120_000,
+  );
+  assert.ok(detectarMudancas(depois, novoDia, "media").some((x) => x.rotulo.includes("2026-10-03")));
+});
+
+test("radar: texto do aviso usa só dados reais e cabe numa notificação", () => {
+  const antes = instantaneo({ chance: 10, rajada: 18 });
+  const depois = instantaneo({ chance: 75, rajada: 52, mm: 6.5, gravidade: 5 }, Date.now() + 60_000);
+  const m = detectarMudancas(antes, depois, "media");
+  const t = textoMudancaPadrao(m, previsao({ chance: 75, rajada: 52, mm: 6.5, gravidade: 5 }));
+  assert.match(t, /previsão do porto mudou/i);
+  assert.match(t, /75%/);
+  assert.ok(t.length <= 480, "cabe no corpo da notificação");
+  assert.match(t, /SIMPORT/);
+  // Mudança de vento escolhe o emoji de vento quando é o único assunto.
+  const soVento = detectarMudancas(instantaneo({ rajada: 18 }), instantaneo({ rajada: 52 }, Date.now() + 1000), "media");
+  assert.match(textoMudancaPadrao(soVento, null), /💨/);
+});
+
+test("radar: a assinatura vale por bloco de 3 h (a mesma mudança pode voltar)", () => {
+  const antes = instantaneo({ chance: 10 });
+  const depois = instantaneo({ chance: 80 }, Date.now() + 60_000);
+  const m = detectarMudancas(antes, depois, "media")[0];
+  assert.ok(m);
+  const manha = new Date("2026-10-02T09:00:00-03:00");
+  const tarde = new Date("2026-10-02T15:00:00-03:00");
+  assert.equal(assinaturaDoDia(m, manha), assinaturaDoDia(m, new Date("2026-10-02T10:30:00-03:00")));
+  assert.notEqual(assinaturaDoDia(m, manha), assinaturaDoDia(m, tarde));
+  assert.match(assinaturaDoDia(m, manha), /^2026-10-02:b\d+:/);
+});
+
+test("radar: normaliza texto do boletim (espaço, caixa e pontuação)", () => {
+  assert.equal(normalizarTexto("  Sol   com nuvens. "), "sol com nuvens");
+  assert.equal(normalizarTexto("Chuva fraca"), normalizarTexto("chuva fraca"));
+  // Limiares por sensibilidade: quanto mais alta, menor o limite.
+  assert.ok(LIMIARES.alta.chuvaProb < LIMIARES.media.chuvaProb);
+  assert.ok(LIMIARES.media.chuvaProb < LIMIARES.baixa.chuvaProb);
+});
+
+/* ------------------------------------------------- ponta a ponta (banco) */
+
+test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por Push", { skip: !local }, async () => {
+  const { db, pool } = await import("../src/db");
+  const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
+  const { inArray } = await import("drizzle-orm");
+  const { garantirTabelas } = await import("../src/lib/estado");
+  const { verificarMudancasPrevisao, NOME_RADAR, statusRadarClima } = await import("../src/lib/clima-monitor");
+  const webpush = (await import("web-push")).default;
+
+  const chaves = webpush.generateVAPIDKeys();
+  process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
+  process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
+  process.env.COMPOSIO_API_KEY = "chave-de-teste";
+  delete process.env.CLIMA_MONITOR_ATIVO;
+
+  const pushes: string[] = [];
+  Object.defineProperty(webpush, "sendNotification", {
+    configurable: true,
+    value: async (_s: unknown, c: string) => {
+      pushes.push(JSON.parse(c).title);
+      return { statusCode: 201 };
+    },
+  });
+
+  // Cenário da previsão (mutável): chance de chuva, rajada e condição.
+  let cenario = { chance: 10, rajada: 18, mm: 0, gravidade: 0 };
+  const fetchReal = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    // Painel da Simport lido PELO COMPOSIO (o slug da ferramenta vem na URL).
+    if (url.includes("backend.composio.dev")) {
+      if (url.includes("COMPOSIO_SEARCH_FETCH_URL_CONTENT")) {
+        return Response.json({
+          successful: true,
+          data: { results: [{ url: "https://weather-appa.app.simport.com.br/", text: PAINEL }] },
+        });
+      }
+      // Sem Gemini: o radar cai no texto pronto das regras.
+      throw new Error("sem Gemini neste teste");
+    }
+    if (url.includes("wfa.app.simport.com.br")) return Response.json({ events: [] });
+    if (url.includes("simport")) {
+      const base = Math.floor(Date.now() / 1000) - 3600;
+      const horas = Array.from({ length: 40 }, (_, i) => ({
+        date: { sec: base + i * 3600 },
+        ...(url.includes("chanceOfRain")
+          ? {
+              precipitation: cenario.mm,
+              temperature: 21,
+              relativeHumidity: 80,
+              thermalSensation: 21,
+              chanceOfRain: cenario.chance,
+              icon: cenario.gravidade === 5 ? 1186 : 1003,
+            }
+          : {}),
+        ...(url.includes("windGust")
+          ? { windSpeed: Math.round((cenario.rajada / 1.852) * 0.6), windGust: Math.round(cenario.rajada / 1.852), windDirection: 135 }
+          : {}),
+        ...(url.includes("hourlyPrecipitation")
+          ? { temperatureAverage: 21, thermalSensationAverage: 21, humidityAverage: 80, hourlyPrecipitation: 0 }
+          : {}),
+        ...(url.includes("windDirectionAverage")
+          ? { windDirectionAverage: 135, windSpeedAverage: 7 }
+          : {}),
+      }));
+      return Response.json(horas);
+    }
+    if (url.includes("open-meteo")) {
+      const dias = Array.from({ length: 16 }, (_, i) => {
+        const d = new Date(Date.now() + i * 86400000).toISOString().slice(0, 10);
+        return d;
+      });
+      return Response.json({
+        daily: {
+          time: dias,
+          weather_code: dias.map(() => 2),
+          temperature_2m_max: dias.map(() => 26),
+          temperature_2m_min: dias.map(() => 17),
+          precipitation_sum: dias.map(() => 0),
+          precipitation_probability_max: dias.map(() => cenario.chance),
+          sunrise: dias.map(() => "2026-10-02T04:54"),
+          sunset: dias.map(() => "2026-10-02T17:15"),
+        },
+      });
+    }
+    return fetchReal(input, init);
+  };
+
+  try {
+    await garantirTabelas();
+    await db.delete(climaMudancas);
+    await db.delete(chatMensagens);
+    // Zera o estado do radar (o banco de teste é reaproveitado entre execuções).
+    await db.delete(configuracao).where(
+      inArray(configuracao.chave, [
+        "clima_monitor_instantaneo",
+        "clima_monitor_ultima",
+        "clima_monitor_painel",
+        "clima_monitor_semeado",
+      ]),
+    );
+    await db.delete(subscriptions);
+    const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
+    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
+
+    // 1) Primeira leitura: registra o que já existe, sem avisar nada antigo.
+    const r1 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r1.postou, false);
+    assert.match(r1.motivo, /primeira leitura/i);
+    assert.equal((await db.select().from(chatMensagens)).length, 0);
+    assert.equal(pushes.length, 0);
+
+    // 2) A APPA revisa a previsão: entra chuva forte e rajada alta.
+    cenario = { chance: 80, rajada: 55, mm: 6.5, gravidade: 5 };
+    const r2 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
+    assert.ok(r2.mudancas.length > 0);
+    const msgs = await db.select().from(chatMensagens);
+    assert.equal(msgs.length, 1);
+    assert.equal(msgs[0].nome, NOME_RADAR);
+    assert.match(msgs[0].texto, /mudou|chuva/i);
+    assert.deepEqual(pushes, [NOME_RADAR], "Push com o nome do radar");
+    assert.ok((await db.select().from(climaMudancas)).length > 0);
+
+    // 2b) Sem forçar, o radar respeita o intervalo entre leituras (5 min).
+    const r2b = await verificarMudancasPrevisao();
+    assert.equal(r2b.rodou, false);
+    assert.match(r2b.motivo, /aguardando intervalo/i);
+
+    // 3) Mesma previsão no ciclo seguinte: nada muda, nada repete.
+    const r3 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r3.postou, false);
+    assert.match(r3.motivo, /sem mudança/i);
+    assert.equal((await db.select().from(chatMensagens)).length, 1);
+    assert.equal(pushes.length, 1);
+
+    // 4) O alerta/boletim do clima já falou neste minuto: o radar cala a boca,
+    //    mas avança a referência (não avisa de novo no ciclo seguinte).
+    cenario = { chance: 20, rajada: 18, mm: 0, gravidade: 0 };
+    const r4 = await verificarMudancasPrevisao({ forcar: true, registrarSomente: true });
+    assert.equal(r4.postou, false);
+    assert.match(r4.motivo, /já avisou/i);
+    assert.equal((await db.select().from(chatMensagens)).length, 1);
+
+    // 5) Mudança nova de verdade (de 20% para 95%) volta a avisar.
+    cenario = { chance: 95, rajada: 70, mm: 12, gravidade: 5 };
+    const r5 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r5.postou, true, `motivo: ${r5.motivo}`);
+    assert.equal((await db.select().from(chatMensagens)).length, 2);
+    assert.equal(pushes.length, 2);
+
+    // 6) Status do radar para a tela Tempo e para o painel.
+    const s = await statusRadarClima();
+    assert.equal(s.ativo, true);
+    assert.equal(s.sensibilidade, "media");
+    assert.ok(s.ultimaVerificacao);
+    assert.equal(s.mudancas24h, (await db.select().from(climaMudancas)).length);
+    assert.equal(s.fontes.simport, true);
+    assert.equal(s.fontes.painel, true, "o painel lido pelo Composio alimentou o radar");
+    assert.equal(s.fontes.composio, false);
+    assert.ok(s.composio, "Composio configurado (chave de teste)");
+    assert.ok(s.ultimaMudanca?.resumo);
+
+    // 7) CLIMA_MONITOR_ATIVO=0 desliga o radar sem quebrar o cron.
+    process.env.CLIMA_MONITOR_ATIVO = "0";
+    const desligado = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(desligado.rodou, false);
+    assert.match(desligado.motivo, /desligado/i);
+    delete process.env.CLIMA_MONITOR_ATIVO;
+  } finally {
+    globalThis.fetch = fetchReal;
+    delete process.env.COMPOSIO_API_KEY;
+    delete process.env.CLIMA_MONITOR_ATIVO;
+    await pool.end();
+  }
+});

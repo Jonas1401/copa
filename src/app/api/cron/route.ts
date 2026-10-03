@@ -4,6 +4,7 @@ import { varrer } from "@/lib/estado";
 import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarClima } from "@/lib/clima-alerta";
+import { verificarMudancasPrevisao } from "@/lib/clima-monitor";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 import { enviarRegrasSeguranca } from "@/lib/regras-seguranca";
 
@@ -48,12 +49,18 @@ export async function GET(req: Request) {
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
     const clima = await verificarClima().catch(() => null);
+    // Radar da previsão (Composio + SIMPORT): avisa QUALQUER mudança no tempo.
+    const radar = await verificarMudancasPrevisao({
+      previsao: clima?.previsao,
+      registrarSomente: Boolean(clima?.postou),
+    }).catch(() => null);
     const navios = await verificarNaviosFertilizantes().catch(() => null);
     return NextResponse.json({
       rodou: false,
       motivo: "Nenhum ponto cadastrado — monitoramento em repouso.",
       ...(testes.total ? { testes } : {}),
       ...(clima?.postou ? { clima } : {}),
+      ...(radar?.postou ? { radar } : {}),
       ...(navios?.rodou ? { navios } : {}),
     });
   }
@@ -66,6 +73,12 @@ export async function GET(req: Request) {
     testes = await enviarTestesDoCiclo();
   }
   const clima = await verificarClima().catch(() => null);
+  // Radar da previsão: compara a leitura atual (API da Simport + painel lido
+  // pelo Composio) com a do último aviso e manda qualquer mudança para o chat.
+  const radar = await verificarMudancasPrevisao({
+    previsao: clima?.previsao,
+    registrarSomente: Boolean(clima?.postou),
+  }).catch(() => null);
   // Navios de fertilizantes (APPA + SINPRAPAR): no máximo a cada 5 min.
   const navios = await verificarNaviosFertilizantes().catch(() => null);
   // Regras de segurança do Porto para quem saiu para o trabalho.
@@ -78,6 +91,7 @@ export async function GET(req: Request) {
     quando: new Date().toISOString(),
     ...(testes.total ? { testes } : {}),
     ...(clima?.postou ? { clima } : {}),
+    ...(radar?.postou ? { radar } : {}),
     ...(navios?.rodou ? { navios } : {}),
     ...(regras?.enviadas ? { regras } : {}),
   });

@@ -989,6 +989,23 @@ export async function garantirTabelas() {
   } catch {
     // já existe ou sem permissão: segue
   }
+  // Radar da previsão: mudanças no tempo já avisadas (tabela nova, separada).
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS clima_mudancas (
+        id SERIAL PRIMARY KEY,
+        assinatura TEXT NOT NULL UNIQUE,
+        resumo TEXT NOT NULL,
+        grave INTEGER NOT NULL DEFAULT 0,
+        mensagem_id INTEGER,
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS clima_mudancas_criado_em_idx ON clima_mudancas(criado_em);
+      ALTER TABLE clima_mudancas ENABLE ROW LEVEL SECURITY;
+    `);
+  } catch {
+    // já existe ou sem permissão: segue
+  }
   // Alerta individual do administrador (tabela nova, separada das demais).
   try {
     await db.execute(sql`

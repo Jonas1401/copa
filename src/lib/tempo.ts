@@ -192,7 +192,8 @@ function doWmo(codigo: number): { icone: Icone; descricao: string } {
   return { icone: "nuvem", descricao: "Nublado" };
 }
 
-const GRAVIDADE: Record<Icone, number> = {
+/** Peso de cada condição (0 = céu limpo … 7 = temporal). Exportado para o radar da previsão. */
+export const GRAVIDADE: Record<Icone, number> = {
   sol: 0, lua: 0, "sol-nuvem": 1, "lua-nuvem": 1, nuvem: 2, neblina: 3,
   garoa: 4, chuva: 5, "chuva-forte": 6, tempestade: 7,
 };

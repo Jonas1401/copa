@@ -11,10 +11,10 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Início** | ponto monitorado ao vivo, último escalado e contadores das 6 tabelas (TRUCK e CAVALO/C nos Livros A, B e M) |
 | **Cadastrar ponto** | tipo + livro + número, com ativação de notificações |
 | **Notificações** | Web Push (VAPID) quando o ponto é chamado, sai da tabela ou chega perto da vez |
-| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h) |
+| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h); o **Radar da previsão** mostra que o monitoramento está no ar |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão e auditoria |
 
@@ -30,7 +30,8 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 - **Web Push** (`web-push`, VAPID) com Service Worker próprio
 - **Leitura do site monitorado**: `intranet.copadubo.com.br/ponto/` (3 quadros,
   6 tabelas), com reserva via **Composio**
-- Clima: **APPA/SIMPORT** + Open-Meteo, com reserva via Composio
+- Clima: **APPA/SIMPORT** + Open-Meteo, com reserva via Composio; o **Radar da
+  previsão** monitora o tempo o dia todo (painel da APPA lido pelo Composio)
 
 ## Motoristas e pontos
 
@@ -156,6 +157,61 @@ silenciou o chat não recebe — o mesmo caminho dos avisos de navios
 Teste: `TEST_DATABASE_URL=... tsx --test tests/clima-boletim.test.ts` (banco
 `fila_push_test_*`): turnos de 6 h, texto do boletim e o fluxo completo
 chat + Push, incluindo o alerta tomando o lugar do boletim.
+
+## Radar da previsão: monitoramento constante (Composio + SIMPORT®)
+
+Além do boletim por turno, o CopaLinks **não para de olhar o tempo**. É o
+**📡 Radar da Previsão** (`src/lib/clima-monitor.ts`), chamado pelo `/api/cron`
+a cada minuto:
+
+1. **API estruturada do SIMPORT®** — Dashboard Meteoceanográfico da APPA
+   (`https://weather-appa.app.simport.com.br/`): modelo WRF hora a hora,
+   estação do porto, boletim e Open-Meteo para os dias seguintes. Relida a
+   cada **5 minutos** (`CLIMA_MONITOR_MIN`).
+2. **Painel público lido PELO COMPOSIO** a cada **30 minutos**
+   (`CLIMA_MONITOR_PAINEL_MIN`) com a ferramenta
+   `COMPOSIO_SEARCH_FETCH_URL_CONTENT` — é o Composio que busca a página da
+   APPA e devolve o texto: boletim do dia, tabelas de chuva e vento das
+   próximas 24 h e tábua de marés (`parsearPainelSimport`).
+
+Cada leitura vira um **instantâneo** comparável (números + textos
+normalizados). Quando a comparação com o instantâneo do **último aviso** passa
+do limite da sensibilidade, o radar:
+
+- publica **uma** mensagem no chat como **📡 Radar da Previsão**
+  (`motorista_id = 0`), escrita pela IA (**Gemini pelo Composio**) com os
+  números reais — se a IA falhar, vale o texto pronto das regras;
+- dispara **Web Push para todos os aparelhos: a notificação chega mesmo com o
+  aplicativo fechado** (quem mostra é o Service Worker) e, ao tocar, abre o
+  chat. Em mudança grave (chuva forte, rajada ≥ 40 km/h ou boletim da APPA com
+  tempo ruim) o aviso fica na tela até o motorista tocar.
+
+**O que é comparado:** chance e volume de chuva (6 h e 24 h), vento e rajada
+máximos, condição do tempo, máxima/mínima de hoje e de amanhã, boletim da APPA
+(texto e alerta de tempo ruim), tabelas do painel (chuva, vento em nós), marés
+e horários do sol.
+
+**Antispam:** a 1ª leitura só registra (nada de aviso antigo); a comparação é
+sempre contra o último aviso, então uma mudança lenta é avisada uma vez só;
+cada mudança tem assinatura única por bloco de 3 h (tabela `clima_mudancas`);
+intervalo mínimo de **20 min** entre avisos e no máximo **3 por hora**; se o
+alerta/boletim do clima acabou de falar no mesmo minuto, o radar cala e apenas
+avança a referência; quem silenciou o chat não recebe.
+
+Tudo é opcional e configurável por variável de ambiente (veja `.env.example`):
+`CLIMA_MONITOR_ATIVO`, `CLIMA_MONITOR_MIN`, `CLIMA_MONITOR_PAINEL_MIN`,
+`CLIMA_MONITOR_SENSIBILIDADE` (baixa/média/alta), `CLIMA_MONITOR_AVISO_MIN` e
+`CLIMA_MONITOR_MAX_HORA`. Sem `COMPOSIO_API_KEY` o radar continua funcionando
+só com a API da Simport; com ela, lê também o painel inteiro.
+
+Na tela **Tempo** o cartão *Radar da previsão* mostra se está monitorando, a
+última leitura, a última mudança avisada e as fontes no ar; para o
+administrador há o botão **Verificar agora** (`POST /api/tempo/radar`). O painel
+`/admin → Integrações → Previsão do Tempo APPA` mostra o mesmo estado.
+
+Testes: `tsx --test tests/clima-monitor.test.ts` (puros: leitura do painel,
+comparação, sensibilidade e texto) e o trecho de ponta a ponta no banco
+`fila_push_test_*` (radar → chat → Push).
 
 ## Filtro do grupo SEM APK (pelo servidor)
 
@@ -361,6 +417,7 @@ Não comite `.env` nem cole a `DATABASE_URL` no chat.
 | `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
+| `CLIMA_MONITOR_*` | não | radar da previsão: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (painel da APPA pelo Composio), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
 
 Segredos opcionais (Composio, WhatsApp, IA) podem ser cadastrados no `/admin`:
 ficam **cifrados no banco** e nunca são enviados ao navegador. As chaves do
