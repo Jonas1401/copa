@@ -103,6 +103,7 @@ function horaMin(iso: string) {
 }
 
 export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: StatusRadar | null } = {}) {
+  const [aberto, setAberto] = useState(false);
   const [s, setS] = useState<StatusRadar | null>(inicial ?? null);
   const [rodando, setRodando] = useState(false);
   const [aviso, setAviso] = useState("");
@@ -161,222 +162,246 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
     }
   }
 
-  if (!s) return null;
-
-  const ligado = s.ativo;
-  const conectado = s.painel.conectado;
-  const leitura = s.painel.leitura;
+  const ligado = s?.ativo ?? false;
+  const conectado = s?.painel.conectado ?? false;
+  const leitura = s?.painel.leitura ?? null;
   return (
     <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
-      <div className="mb-2.5 flex items-center justify-between gap-2 px-0.5">
-        <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
-          <Radar size={22} strokeWidth={2.2} /> Radar da previsão
-        </h2>
-        <span
-          className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-bold ${
-            ligado ? "bg-verde/20 text-verde" : "bg-gelo/15 text-gelo/70"
-          }`}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${ligado ? "bg-verde" : "bg-gelo/50"}`} />
-          {ligado ? "Monitorando" : "Desligado"}
-        </span>
-      </div>
-
-      <p className="px-0.5 text-[13.5px] leading-snug text-gelo/85">
-        O CopaLinks acompanha o SIMPORT® – Dashboard Meteoceanográfico da APPA a cada{" "}
-        <b className="text-white">{s.intervaloMin} minutos</b>, com o painel relido a cada{" "}
-        <b className="text-white">{s.painelMin} minutos</b> por leitura automática (API → HTML →
-        navegador → OCR → Composio). Qualquer mudança na previsão entra no chat e chega como
-        notificação, mesmo com o aplicativo fechado.
-      </p>
-
-      <dl className="mt-2.5 space-y-1.5 px-0.5 text-[13px]">
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Sensibilidade</dt>
-          <dd className="text-white">{SENSIBILIDADE[s.sensibilidade]}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Última leitura</dt>
-          <dd className="text-white">
-            {s.ultimaVerificacao ? horaMin(s.ultimaVerificacao) : "ainda não rodou"}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Última mudança</dt>
-          <dd className="min-w-0 text-white">
-            {s.ultimaMudanca ? (
-              <>
-                <span className="text-gelo/70">{horaMin(s.ultimaMudanca.em)} — </span>
-                {s.ultimaMudanca.resumo}
-              </>
-            ) : (
-              "nenhuma desde que o radar começou"
-            )}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Fontes no ar</dt>
-          <dd className="text-white">
-            {[
-              s.fontes.simport ? "SIMPORT (API)" : null,
-              s.fontes.estacao ? "Estação do porto" : null,
-              s.fontes.painel ? "Painel da APPA" : null,
-              s.fontes.composio ? "Composio (tempo atual)" : null,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "aguardando a próxima leitura"}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Avisos em 24 h</dt>
-          <dd className="text-white">{s.mudancas24h}</dd>
-        </div>
-
-        {/* ------------------------------- painel da APPA: conectado ou não */}
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Painel APPA</dt>
-          <dd className="min-w-0">
-            {conectado ? (
-              <span className="font-bold text-verde">
-                conectado · leitura realizada
-                {s.painel.em ? <span className="font-normal text-gelo/70"> em {horaMin(s.painel.em)}</span> : null}
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div className="min-w-0">
+          <h2 className="flex flex-wrap items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+            <Radar size={22} strokeWidth={2.2} /> Radar da previsão
+            {s && (
+              <span
+                className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 font-sans text-[12px] font-bold normal-case ${
+                  ligado ? "bg-verde/20 text-verde" : "bg-gelo/15 text-gelo/70"
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${ligado ? "bg-verde" : "bg-gelo/50"}`} />
+                {ligado ? "Monitorando" : "Desligado"}
               </span>
-            ) : s.painel.erro ? (
-              <span className="text-ambar">sem leitura agora</span>
-            ) : (
-              <span className="text-gelo/70">aguardando a primeira leitura</span>
             )}
-          </dd>
+          </h2>
+          <p className="mt-0.5 text-[12.5px] text-gelo/60">
+            Monitoramento constante da previsão e do painel da APPA
+          </p>
         </div>
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Método de leitura</dt>
-          <dd className="min-w-0 text-white">
-            {conectado ? (
-              <>
-                <b>{s.painel.metodoRotulo ?? "leitura automática"}</b>
-                {s.painel.tentativas.filter((t) => !t.ok).length > 0 ? (
-                  <span className="text-gelo/60">
-                    {" "}
-                    ({s.painel.tentativas.filter((t) => !t.ok).length} método(s) tentado(s) antes)
-                  </span>
-                ) : null}
-              </>
-            ) : (
-              "nenhum método conseguiu ler ainda"
-            )}
-          </dd>
-        </div>
+        <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
+          {aberto ? "Fechar" : "Abrir"}
+          {aberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </span>
+      </button>
 
-        {/* ------------------------------ última leitura no formato único */}
-        {leitura && leitura.status === "sucesso" && (
-          <>
-            <div className="flex gap-2">
-              <dt className="shrink-0 text-gelo/70">Chuva</dt>
-              <dd className="min-w-0 text-white">{leitura.chuva}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="shrink-0 text-gelo/70">Chuva forte</dt>
-              <dd className="min-w-0 text-white">{leitura.chuva_forte}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="shrink-0 text-gelo/70">Tempestade</dt>
-              <dd className="min-w-0 text-white">{leitura.tempestade}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="shrink-0 text-gelo/70">Vento</dt>
-              <dd className="min-w-0 text-white">{leitura.vento}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="shrink-0 text-gelo/70">Temperatura</dt>
-              <dd className="min-w-0 text-white">
-                {leitura.temperatura} · umidade {leitura.umidade} · pressão {leitura.pressao}
-              </dd>
-            </div>
-            {leitura.alertas.length > 0 && (
-              <div className="flex gap-2">
-                <dt className="shrink-0 text-gelo/70">Alertas do painel</dt>
-                <dd className="min-w-0 text-ambar">{leitura.alertas.join(" · ")}</dd>
-              </div>
-            )}
-            {leitura.atualizado_em && (
-              <div className="flex gap-2">
-                <dt className="shrink-0 text-gelo/70">Atualização do painel</dt>
-                <dd className="min-w-0 text-white">{leitura.atualizado_em}</dd>
-              </div>
-            )}
-          </>
-        )}
-      </dl>
+      {aberto && (
+        <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+          {!s ? (
+            <p className="text-[14px] text-gelo/60">Carregando situação do radar…</p>
+          ) : (
+            <>
+              <p className="px-0.5 text-[13.5px] leading-snug text-gelo/85">
+                O CopaLinks acompanha o SIMPORT® – Dashboard Meteoceanográfico da APPA a cada{" "}
+                <b className="text-white">{s.intervaloMin} minutos</b>, com o painel relido a cada{" "}
+                <b className="text-white">{s.painelMin} minutos</b> por leitura automática (API → HTML →
+                navegador → OCR → Composio). Qualquer mudança na previsão entra no chat e chega como
+                notificação, mesmo com o aplicativo fechado.
+              </p>
 
-      {/* --------------------------------- log de diagnóstico (tentativas) */}
-      {s.painel.tentativas.length > 0 && (
-        <div className="mt-2.5">
-          <button
-            type="button"
-            onClick={() => setDetalhes((v) => !v)}
-            className="flex items-center gap-1.5 text-[12.5px] font-bold text-[#8fd6ff]"
-          >
-            {detalhes ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-            Log de diagnóstico da leitura ({s.painel.tentativas.filter((t) => t.ok).length} de{" "}
-            {s.painel.tentativas.length} método(s) com sucesso)
-          </button>
-          {detalhes && (
-            <ul className="mt-1.5 space-y-1 rounded-[12px] bg-[#04102a] px-2.5 py-2 text-[12px] leading-snug">
-              {s.painel.tentativas.map((t) => (
-                <li key={`${t.metodo}-${t.ordem}`} className="flex gap-1.5">
-                  <span className={t.ok ? "text-verde" : "text-ambar"}>{t.ok ? "✓" : "✗"}</span>
-                  <span className="min-w-0 text-gelo/85">
-                    <b className="text-white">
-                      {t.ordem}. {t.rotulo}
-                    </b>{" "}
-                    — {t.motivo}
-                    <span className="text-gelo/50"> ({Math.round(t.ms)} ms)</span>
-                    {t.detalhe ? <span className="text-gelo/50"> · {t.detalhe}</span> : null}
-                  </span>
-                </li>
-              ))}
-            </ul>
+              <dl className="mt-2.5 space-y-1.5 px-0.5 text-[13px]">
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Sensibilidade</dt>
+                  <dd className="text-white">{SENSIBILIDADE[s.sensibilidade]}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Última leitura</dt>
+                  <dd className="text-white">
+                    {s.ultimaVerificacao ? horaMin(s.ultimaVerificacao) : "ainda não rodou"}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Última mudança</dt>
+                  <dd className="min-w-0 text-white">
+                    {s.ultimaMudanca ? (
+                      <>
+                        <span className="text-gelo/70">{horaMin(s.ultimaMudanca.em)} — </span>
+                        {s.ultimaMudanca.resumo}
+                      </>
+                    ) : (
+                      "nenhuma desde que o radar começou"
+                    )}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Fontes no ar</dt>
+                  <dd className="text-white">
+                    {[
+                      s.fontes.simport ? "SIMPORT (API)" : null,
+                      s.fontes.estacao ? "Estação do porto" : null,
+                      s.fontes.painel ? "Painel da APPA" : null,
+                      s.fontes.composio ? "Composio (tempo atual)" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "aguardando a próxima leitura"}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Avisos em 24 h</dt>
+                  <dd className="text-white">{s.mudancas24h}</dd>
+                </div>
+
+                {/* ------------------------------- painel da APPA: conectado ou não */}
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Painel APPA</dt>
+                  <dd className="min-w-0">
+                    {conectado ? (
+                      <span className="font-bold text-verde">
+                        conectado · leitura realizada
+                        {s.painel.em ? <span className="font-normal text-gelo/70"> em {horaMin(s.painel.em)}</span> : null}
+                      </span>
+                    ) : s.painel.erro ? (
+                      <span className="text-ambar">sem leitura agora</span>
+                    ) : (
+                      <span className="text-gelo/70">aguardando a primeira leitura</span>
+                    )}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Método de leitura</dt>
+                  <dd className="min-w-0 text-white">
+                    {conectado ? (
+                      <>
+                        <b>{s.painel.metodoRotulo ?? "leitura automática"}</b>
+                        {s.painel.tentativas.filter((t) => !t.ok).length > 0 ? (
+                          <span className="text-gelo/60">
+                            {" "}
+                            ({s.painel.tentativas.filter((t) => !t.ok).length} método(s) tentado(s) antes)
+                          </span>
+                        ) : null}
+                      </>
+                    ) : (
+                      "nenhum método conseguiu ler ainda"
+                    )}
+                  </dd>
+                </div>
+
+                {/* ------------------------------ última leitura no formato único */}
+                {leitura && leitura.status === "sucesso" && (
+                  <>
+                    <div className="flex gap-2">
+                      <dt className="shrink-0 text-gelo/70">Chuva</dt>
+                      <dd className="min-w-0 text-white">{leitura.chuva}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="shrink-0 text-gelo/70">Chuva forte</dt>
+                      <dd className="min-w-0 text-white">{leitura.chuva_forte}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="shrink-0 text-gelo/70">Tempestade</dt>
+                      <dd className="min-w-0 text-white">{leitura.tempestade}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="shrink-0 text-gelo/70">Vento</dt>
+                      <dd className="min-w-0 text-white">{leitura.vento}</dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="shrink-0 text-gelo/70">Temperatura</dt>
+                      <dd className="min-w-0 text-white">
+                        {leitura.temperatura} · umidade {leitura.umidade} · pressão {leitura.pressao}
+                      </dd>
+                    </div>
+                    {leitura.alertas.length > 0 && (
+                      <div className="flex gap-2">
+                        <dt className="shrink-0 text-gelo/70">Alertas do painel</dt>
+                        <dd className="min-w-0 text-ambar">{leitura.alertas.join(" · ")}</dd>
+                      </div>
+                    )}
+                    {leitura.atualizado_em && (
+                      <div className="flex gap-2">
+                        <dt className="shrink-0 text-gelo/70">Atualização do painel</dt>
+                        <dd className="min-w-0 text-white">{leitura.atualizado_em}</dd>
+                      </div>
+                    )}
+                  </>
+                )}
+              </dl>
+
+              {/* --------------------------------- log de diagnóstico (tentativas) */}
+              {s.painel.tentativas.length > 0 && (
+                <div className="mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setDetalhes((v) => !v)}
+                    className="flex items-center gap-1.5 text-[12.5px] font-bold text-[#8fd6ff]"
+                  >
+                    {detalhes ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                    Log de diagnóstico da leitura ({s.painel.tentativas.filter((t) => t.ok).length} de{" "}
+                    {s.painel.tentativas.length} método(s) com sucesso)
+                  </button>
+                  {detalhes && (
+                    <ul className="mt-1.5 space-y-1 rounded-[12px] bg-[#04102a] px-2.5 py-2 text-[12px] leading-snug">
+                      {s.painel.tentativas.map((t) => (
+                        <li key={`${t.metodo}-${t.ordem}`} className="flex gap-1.5">
+                          <span className={t.ok ? "text-verde" : "text-ambar"}>{t.ok ? "✓" : "✗"}</span>
+                          <span className="min-w-0 text-gelo/85">
+                            <b className="text-white">
+                              {t.ordem}. {t.rotulo}
+                            </b>{" "}
+                            — {t.motivo}
+                            <span className="text-gelo/50"> ({Math.round(t.ms)} ms)</span>
+                            {t.detalhe ? <span className="text-gelo/50"> · {t.detalhe}</span> : null}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* Erro SÓ quando todos os métodos falharam (nenhum "não lido pelo Composio"). */}
+              {s.painel.erro && !conectado && (
+                <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
+                  Nenhum dos {s.painel.tentativas.length || 5} métodos conseguiu ler o painel da APPA agora:{" "}
+                  {s.painel.erro} O radar continua com a API da Simport e com a medição do tempo atual.
+                </p>
+              )}
+              {s.painel.erro && conectado && (
+                <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
+                  A última tentativa não conseguiu reler o painel ({s.painel.erro}); vale a última leitura
+                  guardada, de {s.painel.em ? horaMin(s.painel.em) : "antes"}.
+                </p>
+              )}
+              {!s.composio && (
+                <p className="mt-2 rounded-[12px] bg-gelo/10 px-2.5 py-1.5 text-[12.5px] leading-snug text-gelo/75">
+                  O Composio é opcional: sem a chave, a leitura do painel usa API/JSON, HTTP + HTML,
+                  navegador automático e OCR. Cadastre em <b>/admin → Integrações</b> só se quiser o método
+                  extra.
+                </p>
+              )}
+              {s.composio && s.composioErro && (
+                <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
+                  O Composio não devolveu a medição do tempo agora: {s.composioErro}. O radar segue com a
+                  estação da APPA.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void verificarAgora()}
+                disabled={rodando}
+                className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-4 py-2.5 font-display text-[14px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
+              >
+                <RefreshCw size={16} className={rodando ? "animate-spin" : ""} />
+                {rodando ? "Verificando…" : "Verificar agora"}
+              </button>
+              {aviso && <p className="mt-2 px-0.5 text-[12.5px] text-[#8fd6ff]">{aviso}</p>}
+            </>
           )}
         </div>
       )}
-
-      {/* Erro SÓ quando todos os métodos falharam (nenhum "não lido pelo Composio"). */}
-      {s.painel.erro && !conectado && (
-        <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
-          Nenhum dos {s.painel.tentativas.length || 5} métodos conseguiu ler o painel da APPA agora:{" "}
-          {s.painel.erro} O radar continua com a API da Simport e com a medição do tempo atual.
-        </p>
-      )}
-      {s.painel.erro && conectado && (
-        <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
-          A última tentativa não conseguiu reler o painel ({s.painel.erro}); vale a última leitura
-          guardada, de {s.painel.em ? horaMin(s.painel.em) : "antes"}.
-        </p>
-      )}
-      {!s.composio && (
-        <p className="mt-2 rounded-[12px] bg-gelo/10 px-2.5 py-1.5 text-[12.5px] leading-snug text-gelo/75">
-          O Composio é opcional: sem a chave, a leitura do painel usa API/JSON, HTTP + HTML,
-          navegador automático e OCR. Cadastre em <b>/admin → Integrações</b> só se quiser o método
-          extra.
-        </p>
-      )}
-      {s.composio && s.composioErro && (
-        <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
-          O Composio não devolveu a medição do tempo agora: {s.composioErro}. O radar segue com a
-          estação da APPA.
-        </p>
-      )}
-
-      <button
-        type="button"
-        onClick={() => void verificarAgora()}
-        disabled={rodando}
-        className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-4 py-2.5 font-display text-[14px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
-      >
-        <RefreshCw size={16} className={rodando ? "animate-spin" : ""} />
-        {rodando ? "Verificando…" : "Verificar agora"}
-      </button>
-      {aviso && <p className="mt-2 px-0.5 text-[12.5px] text-[#8fd6ff]">{aviso}</p>}
     </section>
   );
 }

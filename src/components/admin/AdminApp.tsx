@@ -9,7 +9,9 @@ import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmi
 import {
   BellRing,
   Bot,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   CloudSun,
   Database,
   Eye,
@@ -21,6 +23,7 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
+  Smartphone,
   Trash2,
   X,
 } from "lucide-react";
@@ -257,7 +260,6 @@ function CardIntegracao({
   onSalvar,
   onTestar,
   onRemover,
-  onSessaoExpirada,
 }: {
   it: Integracao;
   ocupado: string | null;
@@ -266,6 +268,7 @@ function CardIntegracao({
   onRemover: (it: Integracao) => void;
   onSessaoExpirada: (status: number) => boolean;
 }) {
+  const [aberto, setAberto] = useState(false);
   const [valores, setValores] = useState<Record<string, string>>({});
   const Icone = ICONES[it.id] ?? Plug;
   const st = STATUS[it.status];
@@ -282,93 +285,119 @@ function CardIntegracao({
 
   return (
     <section className={`rounded-[22px] border-[1.5px] bg-[linear-gradient(180deg,rgba(13,40,92,0.9),rgba(8,24,60,0.94))] p-4 ${st.borda}`}>
-      <header className="flex items-start gap-3">
-        <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-[14px] text-white ${COR_ICONE[it.id]}`}>
-          <Icone size={24} strokeWidth={2.2} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="font-display text-[18px] leading-tight font-extrabold text-white">{it.nome}</h2>
-          <p className="mt-0.5 text-[13px] leading-snug text-gelo/75">{it.descricao}</p>
-        </div>
-      </header>
-
-      {/* resumo: chave mascarada + status */}
-      <div className="mt-3 grid gap-1.5 rounded-[14px] border border-[#2a5bb0]/50 bg-[#06122b]/70 px-3.5 py-2.5 text-[13.5px]">
-        {it.campos.some((c) => c.secreto) && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-gelo/70">API Key</span>
-            <span className="tabular font-mono text-white">{final4Principal ? `${MASCARA}${final4Principal}` : "—"}</span>
-          </div>
-        )}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-gelo/70">Status</span>
-          <span className={`flex items-center gap-2 font-bold ${st.texto}`}>
-            <span className={`h-2.5 w-2.5 rounded-full ${st.ponto}`} />
-            {st.rotulo}
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-[14px] text-white ${COR_ICONE[it.id]}`}>
+            <Icone size={22} strokeWidth={2.2} />
           </span>
-        </div>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-gelo/70">Última verificação</span>
-          <span className="tabular text-white">{dataHora(it.verificadoEm)}</span>
-        </div>
-        {it.detalhes.map((d) => (
-          <div key={d.rotulo} className="flex items-start justify-between gap-3">
-            <span className="shrink-0 text-gelo/70">{d.rotulo}</span>
-            <span className="text-right text-white">{ehIso(d.valor) ? dataHora(d.valor) : d.valor}</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-[17px] leading-tight font-extrabold text-white">{it.nome}</h2>
+            <span className={`mt-0.5 inline-flex items-center gap-1.5 text-[12px] font-bold ${st.texto}`}>
+              <span className={`h-2 w-2 rounded-full ${st.ponto}`} />
+              {st.rotulo}
+            </span>
           </div>
-        ))}
-      </div>
+        </div>
+        <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
+          {aberto ? "Fechar" : "Abrir"}
+          {aberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </span>
+      </button>
 
-      {it.mensagem && it.status !== "nao_configurado" && (
-        <p className={`mt-2 text-[13px] leading-snug ${it.status === "erro" ? "text-red-300" : "text-gelo/80"}`}>{it.mensagem}</p>
-      )}
+      {aberto && (
+        <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+          <p className="text-[13px] leading-snug text-gelo/75">{it.descricao}</p>
 
-      {it.podeSalvar && (
-        <div className="mt-3 space-y-3">
-          {it.campos.map((c) => (
-            <CampoSecreto
-              key={c.chave}
-              campo={c}
-              valor={valores[c.chave] ?? ""}
-              onValor={(v) => setValores((s) => ({ ...s, [c.chave]: v }))}
-            />
-          ))}
+          {/* resumo: chave mascarada + status */}
+          <div className="mt-3 grid gap-1.5 rounded-[14px] border border-[#2a5bb0]/50 bg-[#06122b]/70 px-3.5 py-2.5 text-[13.5px]">
+            {it.campos.some((c) => c.secreto) && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-gelo/70">API Key</span>
+                <span className="tabular font-mono text-white">{final4Principal ? `${MASCARA}${final4Principal}` : "—"}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gelo/70">Status</span>
+              <span className={`flex items-center gap-2 font-bold ${st.texto}`}>
+                <span className={`h-2.5 w-2.5 rounded-full ${st.ponto}`} />
+                {st.rotulo}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gelo/70">Última verificação</span>
+              <span className="tabular text-white">{dataHora(it.verificadoEm)}</span>
+            </div>
+            {it.detalhes.map((d) => (
+              <div key={d.rotulo} className="flex items-start justify-between gap-3">
+                <span className="shrink-0 text-gelo/70">{d.rotulo}</span>
+                <span className="text-right text-white">{ehIso(d.valor) ? dataHora(d.valor) : d.valor}</span>
+              </div>
+            ))}
+          </div>
+
+          {it.mensagem && it.status !== "nao_configurado" && (
+            <p className={`mt-2 text-[13px] leading-snug ${it.status === "erro" ? "text-red-300" : "text-gelo/80"}`}>{it.mensagem}</p>
+          )}
+
+          {it.podeSalvar && (
+            <>
+              <p className="mt-3 flex items-start gap-2 rounded-[14px] border border-verde/35 bg-verde/[0.07] px-3 py-2 text-[12px] leading-snug text-gelo/85">
+                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-verde" />
+                As chaves ficam cifradas no servidor e nunca voltam para a tela: depois de salvas, só os 4 últimos caracteres aparecem. Os testes rodam no servidor.
+              </p>
+              <div className="mt-3 space-y-3">
+                {it.campos.map((c) => (
+                  <CampoSecreto
+                    key={c.chave}
+                    campo={c}
+                    valor={valores[c.chave] ?? ""}
+                    onValor={(v) => setValores((s) => ({ ...s, [c.chave]: v }))}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* ações */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {it.podeSalvar && (
+              <button
+                type="button"
+                onClick={() => void salvar()}
+                disabled={!algoDigitado || Boolean(ocupado)}
+                className="ouro flex items-center gap-2 rounded-full px-4 py-2.5 font-display text-[14px] font-extrabold uppercase disabled:opacity-45"
+              >
+                <Save size={16} /> {ocupado === `${it.id}:salvar` ? "Salvando…" : it.rotuloSalvar}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onTestar(it.id)}
+              disabled={Boolean(ocupado) || (!it.configurada && it.campos.length > 0)}
+              className="flex items-center gap-2 rounded-full border-[1.5px] border-ciano/55 px-4 py-2.5 font-display text-[14px] font-bold text-ciano uppercase hover:bg-ciano/10 disabled:opacity-45"
+            >
+              <RefreshCw size={16} className={ocupado === `${it.id}:testar` ? "animate-spin" : ""} />
+              {ocupado === `${it.id}:testar` ? "Testando…" : it.rotuloTestar}
+            </button>
+            {it.podeRemover && temNoPainel && (
+              <button
+                type="button"
+                onClick={() => onRemover(it)}
+                disabled={Boolean(ocupado)}
+                className="flex items-center gap-2 rounded-full border-[1.5px] border-red-500/55 px-4 py-2.5 font-display text-[14px] font-bold text-red-300 uppercase hover:bg-red-500/10 disabled:opacity-45"
+              >
+                <Trash2 size={16} /> Remover chave
+              </button>
+            )}
+          </div>
+          {carregandoEste && <span className="sr-only">Processando…</span>}
         </div>
       )}
-
-      {/* ações */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {it.podeSalvar && (
-          <button
-            type="button"
-            onClick={() => void salvar()}
-            disabled={!algoDigitado || Boolean(ocupado)}
-            className="ouro flex items-center gap-2 rounded-full px-4 py-2.5 font-display text-[14px] font-extrabold uppercase disabled:opacity-45"
-          >
-            <Save size={16} /> {ocupado === `${it.id}:salvar` ? "Salvando…" : it.rotuloSalvar}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => onTestar(it.id)}
-          disabled={Boolean(ocupado) || (!it.configurada && it.campos.length > 0)}
-          className="flex items-center gap-2 rounded-full border-[1.5px] border-ciano/55 px-4 py-2.5 font-display text-[14px] font-bold text-ciano uppercase hover:bg-ciano/10 disabled:opacity-45"
-        >
-          <RefreshCw size={16} className={ocupado === `${it.id}:testar` ? "animate-spin" : ""} />
-          {ocupado === `${it.id}:testar` ? "Testando…" : it.rotuloTestar}
-        </button>
-        {it.podeRemover && temNoPainel && (
-          <button
-            type="button"
-            onClick={() => onRemover(it)}
-            disabled={Boolean(ocupado)}
-            className="flex items-center gap-2 rounded-full border-[1.5px] border-red-500/55 px-4 py-2.5 font-display text-[14px] font-bold text-red-300 uppercase hover:bg-red-500/10 disabled:opacity-45"
-          >
-            <Trash2 size={16} /> Remover chave
-          </button>
-        )}
-      </div>
-      {carregandoEste && <span className="sr-only">Processando…</span>}
     </section>
   );
 }
@@ -572,13 +601,21 @@ function TrocarSenha({
         aria-expanded={aberto}
         className="flex w-full items-center justify-between gap-3 text-left"
       >
-        <span className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
-          <KeyRound size={22} /> Trocar senha
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+            <KeyRound size={22} /> Trocar senha
+          </h2>
+          <p className="mt-0.5 text-[12.5px] text-gelo/60">
+            Alterar a senha de acesso do administrador
+          </p>
+        </div>
+        <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
+          {aberto ? "Fechar" : "Abrir"}
+          {aberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </span>
-        <span className="text-[13px] text-gelo/70">{aberto ? "Fechar" : "Abrir"}</span>
       </button>
       {aberto && (
-        <form onSubmit={salvar} className="mt-3 grid gap-2.5 sm:grid-cols-3">
+        <form onSubmit={salvar} className="mt-3 grid gap-2.5 border-t border-[#2a5bb0]/35 pt-3 sm:grid-cols-3">
           <input className={inputBase} type="password" placeholder="Senha atual" value={atual} onChange={(e) => setAtual(e.target.value)} autoComplete="current-password" aria-label="Senha atual" />
           <input className={inputBase} type="password" placeholder="Nova senha (mín. 8)" value={nova} onChange={(e) => setNova(e.target.value)} autoComplete="new-password" aria-label="Nova senha" />
           <input className={inputBase} type="password" placeholder="Repita a nova senha" value={nova2} onChange={(e) => setNova2(e.target.value)} autoComplete="new-password" aria-label="Repita a nova senha" />
@@ -600,6 +637,8 @@ export default function AdminApp() {
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
   const [remover, setRemover] = useState<Integracao | null>(null);
+  const [monitorAberto, setMonitorAberto] = useState(false);
+  const [auditoriaAberta, setAuditoriaAberta] = useState(false);
 
   const sair401 = useCallback((status: number) => {
     // Só desloga com "Sessão expirada" se realmente havia um token salvo que falhou
@@ -753,23 +792,46 @@ export default function AdminApp() {
             {/* nome e pontos de todos os motoristas (só o administrador vê) */}
             <CartaoMotoristasAdmin api={api} onSessaoExpirada={sair401} />
 
-            <Link href="/monitor" className="mt-4 flex items-center justify-between gap-3 rounded-[20px] border border-ciano/45 bg-[#0b2146] p-4 transition-colors hover:border-ciano">
-              <span>
-                <span className="block font-display text-base font-bold text-white">Monitor WhatsApp</span>
-                <span className="mt-1 block text-xs text-gelo/70">Parear Android monitor, acompanhar códigos e notificações FCM</span>
-              </span>
-              <span aria-hidden className="text-xl text-ciano">→</span>
-            </Link>
+            <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
+              <button
+                type="button"
+                onClick={() => setMonitorAberto((v) => !v)}
+                aria-expanded={monitorAberto}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+                    <Smartphone size={22} /> Monitor WhatsApp
+                  </h2>
+                  <p className="mt-0.5 text-[12.5px] text-gelo/60">
+                    Parear Android monitor, acompanhar códigos e notificações FCM
+                  </p>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
+                  {monitorAberto ? "Fechar" : "Abrir"}
+                  {monitorAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+              {monitorAberto && (
+                <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+                  <p className="text-[13.5px] leading-snug text-gelo/80">
+                    Gerencie o pareamento do Android monitor, acompanhe códigos enviados pelo grupo, configure o filtro sem APK (webhook) e simule avisos para os motoristas.
+                  </p>
+                  <Link
+                    href="/monitor"
+                    className="mt-3 inline-flex items-center justify-between gap-3 rounded-full border border-ciano/60 bg-[#0b2146] px-5 py-2.5 font-display text-[14px] font-bold text-ciano uppercase transition-colors hover:border-ciano hover:bg-ciano/10"
+                  >
+                    <span>Abrir Monitor WhatsApp</span>
+                    <span aria-hidden className="text-lg">→</span>
+                  </Link>
+                </div>
+              )}
+            </section>
 
             {/* situação do radar da previsão (monitoramento constante no servidor) */}
             <CartaoRadarPrevisaoAdmin />
 
-            <p className="mt-4 flex items-start gap-2 rounded-[16px] border border-verde/35 bg-verde/[0.07] px-3.5 py-2.5 text-[13px] leading-snug text-gelo/85">
-              <ShieldCheck size={18} className="mt-0.5 shrink-0 text-verde" />
-              As chaves ficam cifradas no servidor e nunca voltam para a tela: depois de salvas, só os 4 últimos caracteres aparecem. Os testes rodam no servidor.
-            </p>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="mt-4 grid items-start gap-3 md:grid-cols-2">
               {itens.length === 0 && <p className="text-[15px] text-gelo/70">Carregando integrações…</p>}
               {itens.map((it) => (
                 <CardIntegracao key={it.id} it={it} ocupado={ocupado} onSalvar={salvar} onTestar={(id) => void testar(id)} onRemover={setRemover} onSessaoExpirada={sair401} />
@@ -781,24 +843,43 @@ export default function AdminApp() {
             <TrocarSenha onAviso={setAviso} onSessaoExpirada={sair401} />
 
             <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
-              <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
-                <History size={22} /> Auditoria
-              </h2>
-              <p className="mt-0.5 text-[12.5px] text-gelo/60">Quem alterou o quê e quando. Valores de chave nunca são registrados.</p>
-              <ul className="barra-rolagem mt-3 max-h-[380px] divide-y divide-[#2a5bb0]/35 overflow-y-auto">
-                {registros.length === 0 && <li className="py-3 text-[14px] text-gelo/60">Nenhum registro ainda.</li>}
-                {registros.map((r) => (
-                  <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5 text-[13.5px]">
-                    <span className="tabular shrink-0 text-[12px] text-gelo/55">{dataHora(r.criadoEm)}</span>
-                    <b className="text-white">{r.admin}</b>
-                    <span className="text-gelo/85">{r.acao}</span>
-                    <span className="rounded-full bg-[#2f8cf0]/15 px-2 py-0.5 text-[11.5px] font-semibold text-azulclaro">
-                      {NOMES_INTEGRACAO[r.integracao] ?? r.integracao}
-                    </span>
-                    {r.detalhe && <span className="w-full text-[12px] text-gelo/55">{r.detalhe}</span>}
-                  </li>
-                ))}
-              </ul>
+              <button
+                type="button"
+                onClick={() => setAuditoriaAberta((v) => !v)}
+                aria-expanded={auditoriaAberta}
+                className="flex w-full items-center justify-between gap-3 text-left"
+              >
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+                    <History size={22} /> Auditoria
+                  </h2>
+                  <p className="mt-0.5 text-[12.5px] text-gelo/60">
+                    Quem alterou o quê e quando. Valores de chave nunca são registrados.
+                  </p>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
+                  {auditoriaAberta ? "Fechar" : "Abrir"}
+                  {auditoriaAberta ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+              {auditoriaAberta && (
+                <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+                  <ul className="barra-rolagem max-h-[380px] divide-y divide-[#2a5bb0]/35 overflow-y-auto">
+                    {registros.length === 0 && <li className="py-3 text-[14px] text-gelo/60">Nenhum registro ainda.</li>}
+                    {registros.map((r) => (
+                      <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5 text-[13.5px]">
+                        <span className="tabular shrink-0 text-[12px] text-gelo/55">{dataHora(r.criadoEm)}</span>
+                        <b className="text-white">{r.admin}</b>
+                        <span className="text-gelo/85">{r.acao}</span>
+                        <span className="rounded-full bg-[#2f8cf0]/15 px-2 py-0.5 text-[11.5px] font-semibold text-azulclaro">
+                          {NOMES_INTEGRACAO[r.integracao] ?? r.integracao}
+                        </span>
+                        {r.detalhe && <span className="w-full text-[12px] text-gelo/55">{r.detalhe}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </section>
           </>
         )}

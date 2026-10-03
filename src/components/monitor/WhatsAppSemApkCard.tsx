@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Copy, Link2, Power, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Copy, Link2, Power, TriangleAlert } from "lucide-react";
 import { NOME_GRUPO_MONITORADO } from "@/lib/monitor-group-name";
 
 type Status = {
@@ -25,6 +25,7 @@ const quando = (v: string | null) =>
  * do grupo estão chegando. O segredo aparece uma única vez.
  */
 export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Record<string, string> }) {
+  const [aberto, setAberto] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [gerado, setGerado] = useState<Gerado | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -83,63 +84,86 @@ export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Rec
   );
 
   return (
-    <section className="mt-6 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-5">
-      <div className="flex items-center gap-2 font-display text-lg font-bold"><Link2 size={21} className="text-ciano" /> Filtro do grupo sem APK (pelo servidor)</div>
-      <p className="mt-2 text-sm leading-relaxed text-[#b8c9e5]">
-        Um número de WhatsApp que participa do grupo <b>{NOME_GRUPO_MONITORADO}</b> fica conectado a um serviço de WhatsApp Web
-        (recomendado: <b>Green-API</b>). A cada mensagem, o serviço avisa o CopaLinks, que lê só esse grupo e avisa cada motorista do
-        próprio ponto pelas notificações do app. Nenhum motorista precisa instalar nada.
-      </p>
-      <p className="mt-2 flex gap-2 rounded-xl border border-amber-500/40 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-100">
-        <TriangleAlert size={16} className="mt-0.5 shrink-0 text-ambar" />
-        Conexão não oficial do WhatsApp: use um <b>número dedicado</b> (chip só para isso), não o seu pessoal — existe risco de bloqueio do número.
-      </p>
-
-      <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-        <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Endereço (webhook)</dt>
-          <dd className={status?.configurado ? "font-bold text-verde" : "font-bold text-ambar"}>{status?.configurado ? `ativo${status.segredoNoAmbiente ? " (variável da Vercel)" : ""}` : "não gerado"}</dd></div>
-        <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Serviço falou com o CopaLinks</dt><dd>{quando(status?.ultimoContato ?? null)}</dd></div>
-        <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Última mensagem do grupo</dt><dd>{quando(status?.ultimaMensagemGrupo ?? null)}</dd></div>
-        <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Grupo identificado</dt>
-          <dd className="break-all">{status?.grupoId ? `${status.grupoId} (${status.grupoIdOrigem === "ambiente" ? "fixo na Vercel" : "automático"})` : "aguardando a 1ª mensagem do grupo"}</dd></div>
-      </dl>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" disabled={ocupado} onClick={() => void acao("POST")}
-          className="rounded-full bg-ouro px-6 py-3 font-display text-sm font-bold text-[#281e00] disabled:opacity-50">
-          {ocupado ? "Aguarde…" : status?.configurado ? "Gerar novo endereço" : "Gerar endereço"}
-        </button>
-        {status?.configurado && !status.segredoNoAmbiente && (
-          <button type="button" disabled={ocupado} onClick={() => void acao("DELETE")}
-            className="flex items-center gap-2 rounded-full border border-red-400/40 px-5 py-3 text-sm text-red-200 hover:bg-red-950/40 disabled:opacity-50">
-            <Power size={16} /> Desligar
-          </button>
-        )}
-      </div>
-      {erro && <p className="mt-3 text-sm text-red-300" role="alert">{erro}</p>}
-
-      {gerado && (
-        <div className="mt-4 rounded-xl border border-[#37c9ce]/50 bg-[#071a35] p-4" role="status">
-          <p className="text-sm font-bold text-ciano">Mostrado uma única vez — copie agora. Não compartilhe em grupos.</p>
-          <Linha rotulo="URL do webhook" valor={gerado.endereco} />
-          <Linha rotulo="Token do webhook" valor={gerado.segredo} />
-          <Linha rotulo="Se o serviço só aceita URL (ex.: Z-API): URL com token" valor={gerado.enderecoComSegredo} />
-          <ol className="mt-4 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-[#b8c9e5]">
-            <li>Em <b>console.green-api.com</b>, crie uma instância e escaneie o QR Code com o WhatsApp do número dedicado (que participa do grupo).</li>
-            <li>Nas configurações da instância, cole a <b>URL do webhook</b> em &quot;URL para notificações&quot; e o <b>Token do webhook</b> em &quot;Token de autorização&quot;.</li>
-            <li>Ligue <b>&quot;Receber notificações sobre mensagens recebidas&quot;</b> e salve. Em alguns minutos, &quot;Serviço falou com o CopaLinks&quot; muda para agora.</li>
-          </ol>
+    <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
+            <Link2 size={21} className="text-ciano" /> Filtro do grupo sem APK (pelo servidor)
+          </h2>
+          <p className="mt-0.5 text-xs text-[#b8c9e5]">
+            {status?.configurado ? "Endereço (webhook) ativo" : "Conectar grupo pelo servidor sem instalar APK"}
+          </p>
         </div>
-      )}
+        <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+          {aberto ? "Fechar" : "Abrir"}
+          {aberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </span>
+      </button>
 
-      {Boolean(status?.listas?.length) && (
-        <div className="mt-4">
-          <p className="text-xs text-[#b8c9e5]">Listas processadas pelo servidor (sem o texto):</p>
-          <ul className="mt-2 space-y-1 text-sm">
-            {status!.listas.map((l, i) => (
-              <li key={i} className="rounded-lg bg-[#071a35] px-3 py-2"><span className="text-xs text-[#b8c9e5]">{quando(l.criadoEm)}</span> · {l.codigos.join(" · ")}</li>
-            ))}
-          </ul>
+      {aberto && (
+        <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
+          <p className="text-sm leading-relaxed text-[#b8c9e5]">
+            Um número de WhatsApp que participa do grupo <b>{NOME_GRUPO_MONITORADO}</b> fica conectado a um serviço de WhatsApp Web
+            (recomendado: <b>Green-API</b>). A cada mensagem, o serviço avisa o CopaLinks, que lê só esse grupo e avisa cada motorista do
+            próprio ponto pelas notificações do app. Nenhum motorista precisa instalar nada.
+          </p>
+          <p className="mt-2 flex gap-2 rounded-xl border border-amber-500/40 bg-amber-950/20 p-3 text-xs leading-relaxed text-amber-100">
+            <TriangleAlert size={16} className="mt-0.5 shrink-0 text-ambar" />
+            Conexão não oficial do WhatsApp: use um <b>número dedicado</b> (chip só para isso), não o seu pessoal — existe risco de bloqueio do número.
+          </p>
+
+          <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Endereço (webhook)</dt>
+              <dd className={status?.configurado ? "font-bold text-verde" : "font-bold text-ambar"}>{status?.configurado ? `ativo${status.segredoNoAmbiente ? " (variável da Vercel)" : ""}` : "não gerado"}</dd></div>
+            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Serviço falou com o CopaLinks</dt><dd>{quando(status?.ultimoContato ?? null)}</dd></div>
+            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Última mensagem do grupo</dt><dd>{quando(status?.ultimaMensagemGrupo ?? null)}</dd></div>
+            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Grupo identificado</dt>
+              <dd className="break-all">{status?.grupoId ? `${status.grupoId} (${status.grupoIdOrigem === "ambiente" ? "fixo na Vercel" : "automático"})` : "aguardando a 1ª mensagem do grupo"}</dd></div>
+          </dl>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" disabled={ocupado} onClick={() => void acao("POST")}
+              className="rounded-full bg-ouro px-6 py-3 font-display text-sm font-bold text-[#281e00] disabled:opacity-50">
+              {ocupado ? "Aguarde…" : status?.configurado ? "Gerar novo endereço" : "Gerar endereço"}
+            </button>
+            {status?.configurado && !status.segredoNoAmbiente && (
+              <button type="button" disabled={ocupado} onClick={() => void acao("DELETE")}
+                className="flex items-center gap-2 rounded-full border border-red-400/40 px-5 py-3 text-sm text-red-200 hover:bg-red-950/40 disabled:opacity-50">
+                <Power size={16} /> Desligar
+              </button>
+            )}
+          </div>
+          {erro && <p className="mt-3 text-sm text-red-300" role="alert">{erro}</p>}
+
+          {gerado && (
+            <div className="mt-4 rounded-xl border border-[#37c9ce]/50 bg-[#071a35] p-4" role="status">
+              <p className="text-sm font-bold text-ciano">Mostrado uma única vez — copie agora. Não compartilhe em grupos.</p>
+              <Linha rotulo="URL do webhook" valor={gerado.endereco} />
+              <Linha rotulo="Token do webhook" valor={gerado.segredo} />
+              <Linha rotulo="Se o serviço só aceita URL (ex.: Z-API): URL com token" valor={gerado.enderecoComSegredo} />
+              <ol className="mt-4 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-[#b8c9e5]">
+                <li>Em <b>console.green-api.com</b>, crie uma instância e escaneie o QR Code com o WhatsApp do número dedicado (que participa do grupo).</li>
+                <li>Nas configurações da instância, cole a <b>URL do webhook</b> em &quot;URL para notificações&quot; e o <b>Token do webhook</b> em &quot;Token de autorização&quot;.</li>
+                <li>Ligue <b>&quot;Receber notificações sobre mensagens recebidas&quot;</b> e salve. Em alguns minutos, &quot;Serviço falou com o CopaLinks&quot; muda para agora.</li>
+              </ol>
+            </div>
+          )}
+
+          {Boolean(status?.listas?.length) && (
+            <div className="mt-4">
+              <p className="text-xs text-[#b8c9e5]">Listas processadas pelo servidor (sem o texto):</p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {status!.listas.map((l, i) => (
+                  <li key={i} className="rounded-lg bg-[#071a35] px-3 py-2"><span className="text-xs text-[#b8c9e5]">{quando(l.criadoEm)}</span> · {l.codigos.join(" · ")}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </section>
