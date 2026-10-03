@@ -338,14 +338,14 @@ export function descreverResposta(o: unknown): string {
  * (COMPOSIO_SEARCH_FETCH_URL_CONTENT). Uso: reserva quando a leitura direta
  * falha e leitura do painel da APPA pelo radar da previsão.
  */
-export async function lerPaginas(urls: string[], maxCaracteres = 20000) {
+export async function lerPaginas(urls: string[], maxCaracteres = 20000, timeoutMs = 25000) {
   const r = await chamar<{
     data?: { results?: Record<string, unknown>[] };
     successful?: boolean;
     error?: string | null;
   }>("/tools/execute/COMPOSIO_SEARCH_FETCH_URL_CONTENT", {
     method: "POST",
-    signal: AbortSignal.timeout(25000),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       user_id: USUARIO_SERVIDOR,
       arguments: { urls, text: true, max_characters: maxCaracteres },
@@ -386,14 +386,21 @@ export const SIMPORT_PAINEL_URL =
  * Sem COMPOSIO_API_KEY (ou com o Composio fora do ar) a função joga erro: o
  * radar segue trabalhando com a API estruturada da Simport/Open-Meteo.
  */
-export async function painelSimportComposio(maxCaracteres = 14000): Promise<string> {
+export async function painelSimportComposio(
+  maxCaracteres = 14000,
+  opcoes: { timeoutMs?: number } = {},
+): Promise<string> {
   // Alguns painéis só devolvem conteúdo na rota interna (/forecast); tenta as
-  // duas antes de desistir, para o radar não ficar sem o painel à toa.
+  // duas antes de desistir, mas sem passar do prazo total (a leitura do painel
+  // tem um orçamento de tempo, veja src/lib/appa/leitor.ts).
   const enderecos = [...new Set([SIMPORT_PAINEL_URL, SIMPORT_PAINEL_URL.replace(/\/$/, "") + "/forecast"])];
+  const prazo = Date.now() + (opcoes.timeoutMs ?? 50_000);
   let ultimoErro: unknown = null;
   for (const endereco of enderecos) {
+    const restante = prazo - Date.now();
+    if (restante < 2500) break;
     try {
-      const [pagina] = await lerPaginas([endereco], maxCaracteres);
+      const [pagina] = await lerPaginas([endereco], maxCaracteres, Math.min(restante, 25_000));
       const texto = (pagina?.texto ?? "").trim();
       if (texto) return texto;
     } catch (e) {

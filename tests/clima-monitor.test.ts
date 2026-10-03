@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import {
   LIMIARES,
   assinaturaDoDia,
@@ -17,7 +17,12 @@ import {
 import type { Previsao } from "@/lib/tempo";
 
 /**
- * RADAR DA PREVISÃO — monitoramento constante do tempo via Composio.
+ * RADAR DA PREVISÃO — monitoramento constante do tempo (SIMPORT®/APPA).
+ *
+ * O painel da APPA é lido pelo servidor com fallback automático (API → HTML →
+ * navegador → OCR → Composio): o Composio devolver vazio não para o radar. Os
+ * testes da leitura em si estão em tests/appa-leitor.test.ts e os eventos do
+ * painel normalizado (chuva forte, tempestade, alertas…) em tests/appa-radar.test.ts.
  *
  * Os primeiros testes são puros (configuração, leitura do painel da Simport,
  * comparação de instantâneos e texto do aviso) e rodam sempre: não acessam a
@@ -288,12 +293,12 @@ const instantaneo = (
 
 /* ------------------------------------------------------------ puros */
 
-test("radar: configuração padrão (5 min, painel 30 min, sensibilidade média)", () => {
+test("radar: configuração padrão (5 min, painel lido a cada ciclo, sensibilidade média)", () => {
   const c = configRadar({} as Record<string, string>);
   assert.equal(c.ativo, true);
   assert.equal(c.sensibilidade, "media");
   assert.equal(c.intervaloMs, 5 * 60_000);
-  assert.equal(c.painelMs, 30 * 60_000);
+  assert.equal(c.painelMs, 5 * 60_000, "o painel é relido a cada ciclo do radar");
   assert.equal(c.avisoMinMs, 20 * 60_000);
   assert.equal(c.maxPorHora, 3);
 
@@ -425,18 +430,23 @@ test("radar: boletim da APPA novo ou revisado entra no aviso", () => {
   assert.ok(detectarMudancas(depois, novoDia, "media").some((x) => x.rotulo.includes("2026-10-03")));
 });
 
-test("radar: texto do aviso usa só dados reais e cabe numa notificação", () => {
+test("radar: texto do aviso usa só dados reais, no formato ALERTA METEOROLÓGICO, e cabe numa notificação", () => {
   const antes = instantaneo({ chance: 10, rajada: 18 });
   const depois = instantaneo({ chance: 75, rajada: 52, mm: 6.5, gravidade: 5 }, Date.now() + 60_000);
   const m = detectarMudancas(antes, depois, "media");
   const t = textoMudancaPadrao(m, previsao({ chance: 75, rajada: 52, mm: 6.5, gravidade: 5 }));
-  assert.match(t, /previsão do porto mudou/i);
+  const linhas = t.split("\n");
+  assert.equal(linhas[0], "🌧️ ALERTA METEOROLÓGICO");
+  assert.equal(linhas[2], "Foi identificada uma mudança na previsão meteorológica da região do Porto de Paranaguá.");
+  assert.match(t, /\nCondição: chuva \+ vento\n/, "a chuva e o vento mudaram juntos");
+  assert.match(t, /\nHorário: \d{2}:00\n/, "o horário vem da hora da maior chance de chuva do modelo");
   assert.match(t, /75%/);
+  assert.equal(linhas.at(-1), "Fonte: SIMPORT® / APPA");
   assert.ok(t.length <= 480, "cabe no corpo da notificação");
-  assert.match(t, /SIMPORT/);
   // Mudança de vento escolhe o emoji de vento quando é o único assunto.
   const soVento = detectarMudancas(instantaneo({ rajada: 18 }), instantaneo({ rajada: 52 }, Date.now() + 1000), "media");
-  assert.match(textoMudancaPadrao(soVento, null), /💨/);
+  assert.match(textoMudancaPadrao(soVento, null), /💨 ALERTA METEOROLÓGICO/);
+  assert.match(textoMudancaPadrao(soVento, null), /Condição: vento/);
 });
 
 test("composio: extrai o texto da resposta e descreve quando vem vazio", async () => {
@@ -496,77 +506,73 @@ test("radar: normaliza texto do boletim (espaço, caixa e pontuação)", () => {
 
 /* ------------------------------------------------- ponta a ponta (banco) */
 
-test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por Push", { skip: !local }, async () => {
-  const { db, pool } = await import("../src/db");
-  const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
-  const { inArray } = await import("drizzle-orm");
-  const { garantirTabelas } = await import("../src/lib/estado");
-  const { verificarMudancasPrevisao, NOME_RADAR, statusRadarClima, tickRadar, resetarTickRadar } = await import("../src/lib/clima-monitor");
-  const webpush = (await import("web-push")).default;
+const CASCA_SPA = `<!doctype html><html><head><title>SIMPORT® - Dashboard Meteoceanográfico</title>
+<script type="module" src="/assets/index-x.js"></script></head><body><div id="root"></div></body></html>`;
 
-  const chaves = webpush.generateVAPIDKeys();
-  process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
-  process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
-  process.env.COMPOSIO_API_KEY = "chave-de-teste";
-  delete process.env.CLIMA_MONITOR_ATIVO;
+type Cenario = { chance: number; rajada: number; mm: number; gravidade: number };
 
-  const pushes: string[] = [];
-  Object.defineProperty(webpush, "sendNotification", {
-    configurable: true,
-    value: async (_s: unknown, c: string) => {
-      pushes.push(JSON.parse(c).title);
-      return { statusCode: 201 };
-    },
-  });
-
-  // Cenário da previsão (mutável): chance de chuva, rajada e condição.
-  let cenario = { chance: 10, rajada: 18, mm: 0, gravidade: 0 };
+/**
+ * Simula a internet do radar: API da Simport (previsão e painel), o site da
+ * APPA (uma SPA vazia, como o de verdade para quem não roda JavaScript) e o
+ * Composio. `ctrl` muda o comportamento no meio do teste.
+ */
+function instalarRede() {
+  const ctrl = {
+    cenario: { chance: 10, rajada: 18, mm: 0, gravidade: 0 } as Cenario,
+    /** false = a API da Simport responde 503. */
+    apiNoAr: true,
+    /** O que o Composio devolve ao ler o painel: "vazio" é o caso real (results: []). */
+    composio: "vazio" as "vazio" | "texto",
+    painelTexto: PAINEL,
+    chamadasComposioPainel: 0,
+  };
   const fetchReal = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    // Painel da Simport lido PELO COMPOSIO (o slug da ferramenta vem na URL).
+    // Composio: a leitura do painel volta vazia (ou com o texto) e o Gemini nunca responde.
     if (url.includes("backend.composio.dev")) {
       if (url.includes("COMPOSIO_SEARCH_FETCH_URL_CONTENT")) {
+        ctrl.chamadasComposioPainel++;
         return Response.json({
           successful: true,
-          data: { results: [{ url: "https://weather-appa.app.simport.com.br/", text: PAINEL }] },
+          data: { results: ctrl.composio === "texto" ? [{ url: "https://weather-appa.app.simport.com.br/", text: ctrl.painelTexto }] : [] },
         });
       }
-      // Sem Gemini: o radar cai no texto pronto das regras.
       throw new Error("sem Gemini neste teste");
+    }
+    // O painel público: uma casca de SPA, sem os dados no HTML.
+    if (url.startsWith("https://weather-appa.app.simport.com.br")) {
+      return new Response(CASCA_SPA, { status: 200, headers: { "content-type": "text/html" } });
     }
     if (url.includes("wfa.app.simport.com.br")) return Response.json({ events: [] });
     if (url.includes("simport")) {
+      if (!ctrl.apiNoAr) return new Response("Serviço indisponível", { status: 503 });
+      const c = ctrl.cenario;
       const base = Math.floor(Date.now() / 1000) - 3600;
       const horas = Array.from({ length: 40 }, (_, i) => ({
         date: { sec: base + i * 3600 },
         ...(url.includes("chanceOfRain")
           ? {
-              precipitation: cenario.mm,
+              precipitation: c.mm,
               temperature: 21,
               relativeHumidity: 80,
               thermalSensation: 21,
-              chanceOfRain: cenario.chance,
-              icon: cenario.gravidade === 5 ? 1186 : 1003,
+              chanceOfRain: c.chance,
+              icon: c.gravidade === 5 ? 1186 : 1003,
             }
           : {}),
         ...(url.includes("windGust")
-          ? { windSpeed: Math.round((cenario.rajada / 1.852) * 0.6), windGust: Math.round(cenario.rajada / 1.852), windDirection: 135 }
+          ? { windSpeed: Math.round((c.rajada / 1.852) * 0.6), windGust: Math.round(c.rajada / 1.852), windDirection: 135 }
           : {}),
         ...(url.includes("hourlyPrecipitation")
           ? { temperatureAverage: 21, thermalSensationAverage: 21, humidityAverage: 80, hourlyPrecipitation: 0 }
           : {}),
-        ...(url.includes("windDirectionAverage")
-          ? { windDirectionAverage: 135, windSpeedAverage: 7 }
-          : {}),
+        ...(url.includes("windDirectionAverage") ? { windDirectionAverage: 135, windSpeedAverage: 7 } : {}),
       }));
       return Response.json(horas);
     }
     if (url.includes("open-meteo")) {
-      const dias = Array.from({ length: 16 }, (_, i) => {
-        const d = new Date(Date.now() + i * 86400000).toISOString().slice(0, 10);
-        return d;
-      });
+      const dias = Array.from({ length: 16 }, (_, i) => new Date(Date.now() + i * 86400000).toISOString().slice(0, 10));
       return Response.json({
         daily: {
           time: dias,
@@ -574,7 +580,7 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
           temperature_2m_max: dias.map(() => 26),
           temperature_2m_min: dias.map(() => 17),
           precipitation_sum: dias.map(() => 0),
-          precipitation_probability_max: dias.map(() => cenario.chance),
+          precipitation_probability_max: dias.map(() => ctrl.cenario.chance),
           sunrise: dias.map(() => "2026-10-02T04:54"),
           sunset: dias.map(() => "2026-10-02T17:15"),
         },
@@ -582,41 +588,106 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     }
     return fetchReal(input, init);
   };
+  return { ctrl, restaurar: () => void (globalThis.fetch = fetchReal) };
+}
+
+/** Banco de teste limpo + Push falso: devolve o que o radar mandou. */
+async function prepararBanco() {
+  const { db, pool } = await import("../src/db");
+  const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
+  const { inArray } = await import("drizzle-orm");
+  const { garantirTabelas } = await import("../src/lib/estado");
+  const webpush = (await import("web-push")).default;
+
+  const chaves = webpush.generateVAPIDKeys();
+  process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
+  process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
+  process.env.COMPOSIO_API_KEY = "chave-de-teste";
+  process.env.APPA_LOG = "0";
+  // O teste não tem Chromium: sem isso o navegador seria procurado em cada leitura.
+  process.env.APPA_NAVEGADOR = "0";
+  delete process.env.CLIMA_MONITOR_ATIVO;
+  delete process.env.APPA_METODOS;
+
+  const pushes: { titulo: string; corpo: string }[] = [];
+  Object.defineProperty(webpush, "sendNotification", {
+    configurable: true,
+    value: async (_s: unknown, c: string) => {
+      const j = JSON.parse(c);
+      pushes.push({ titulo: j.title, corpo: j.body });
+      return { statusCode: 201 };
+    },
+  });
+
+  await garantirTabelas();
+  await db.delete(climaMudancas);
+  await db.delete(chatMensagens);
+  // Zera o estado do radar (o banco de teste é reaproveitado entre execuções).
+  await db.delete(configuracao).where(
+    inArray(configuracao.chave, [
+      "clima_monitor_instantaneo",
+      "clima_monitor_ultima",
+      "clima_monitor_painel",
+      "clima_monitor_painel_diag",
+      "clima_monitor_painel_erro",
+      "clima_monitor_ocr_pendente",
+      "clima_monitor_semeado",
+    ]),
+  );
+  await db.delete(subscriptions);
+  const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
+  await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
+  return { db, pool, chatMensagens, climaMudancas, pushes };
+}
+
+// O pool é um só para o arquivo inteiro: fecha depois do último teste (`after`).
+const limpar = async (_pool?: unknown) => {
+  delete process.env.COMPOSIO_API_KEY;
+  delete process.env.CLIMA_MONITOR_ATIVO;
+  delete process.env.APPA_NAVEGADOR;
+  delete process.env.APPA_METODOS;
+};
+
+after(async () => {
+  if (!local) return;
+  const { pool } = await import("../src/db");
+  await pool.end();
+});
+
+test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por Push (painel lido pela API, Composio vazio)", { skip: !local }, async () => {
+  const { verificarMudancasPrevisao, NOME_RADAR, statusRadarClima, tickRadar, resetarTickRadar } = await import("../src/lib/clima-monitor");
+  const rede = instalarRede();
+  const { db, pool, chatMensagens, climaMudancas, pushes } = await prepararBanco();
+  const { ctrl } = rede;
 
   try {
-    await garantirTabelas();
-    await db.delete(climaMudancas);
-    await db.delete(chatMensagens);
-    // Zera o estado do radar (o banco de teste é reaproveitado entre execuções).
-    await db.delete(configuracao).where(
-      inArray(configuracao.chave, [
-        "clima_monitor_instantaneo",
-        "clima_monitor_ultima",
-        "clima_monitor_painel",
-        "clima_monitor_semeado",
-      ]),
-    );
-    await db.delete(subscriptions);
-    const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
-    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
-
     // 1) Primeira leitura: registra o que já existe, sem avisar nada antigo.
     const r1 = await verificarMudancasPrevisao({ forcar: true });
     assert.equal(r1.postou, false);
     assert.match(r1.motivo, /primeira leitura/i);
+    assert.equal(r1.painel?.metodo, "api", "o painel foi lido pela API, mesmo com o Composio devolvendo results vazio");
     assert.equal((await db.select().from(chatMensagens)).length, 0);
     assert.equal(pushes.length, 0);
 
     // 2) A APPA revisa a previsão: entra chuva forte e rajada alta.
-    cenario = { chance: 80, rajada: 55, mm: 6.5, gravidade: 5 };
+    ctrl.cenario = { chance: 80, rajada: 55, mm: 6.5, gravidade: 5 };
     const r2 = await verificarMudancasPrevisao({ forcar: true });
     assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
     assert.ok(r2.mudancas.length > 0);
     const msgs = await db.select().from(chatMensagens);
     assert.equal(msgs.length, 1);
     assert.equal(msgs[0].nome, NOME_RADAR);
-    assert.match(msgs[0].texto, /mudou|chuva/i);
-    assert.deepEqual(pushes, [NOME_RADAR], "Push com o nome do radar");
+    // Formato do alerta: título, explicação, condição, horário e fonte.
+    assert.match(msgs[0].texto, /^🌧️ ALERTA METEOROLÓGICO\n\nFoi identificada uma mudança na previsão meteorológica da região do Porto de Paranaguá\.\n\nCondição: chuva forte/);
+    assert.match(msgs[0].texto, /\nHorário: \d{2}:\d{2}\n/);
+    assert.match(msgs[0].texto, /\n\nFonte: SIMPORT® \/ APPA$/);
+    // Web Push (chega com o app fechado): título do alerta, condição/horário/fonte no corpo.
+    assert.equal(pushes.length, 1);
+    assert.equal(pushes[0].titulo, "🌧️ ALERTA METEOROLÓGICO");
+    assert.match(pushes[0].corpo, /Condição: chuva forte/);
+    assert.match(pushes[0].corpo, /Horário: \d{2}:\d{2}/);
+    assert.match(pushes[0].corpo, /Fonte: SIMPORT® \/ APPA/);
+    assert.ok(pushes[0].corpo.length <= 220);
     assert.ok((await db.select().from(climaMudancas)).length > 0);
 
     // 2b) Sem forçar, o radar respeita o intervalo entre leituras (5 min).
@@ -633,30 +704,42 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
 
     // 4) O alerta/boletim do clima já falou neste minuto: o radar cala a boca,
     //    mas avança a referência (não avisa de novo no ciclo seguinte).
-    cenario = { chance: 20, rajada: 18, mm: 0, gravidade: 0 };
+    ctrl.cenario = { chance: 20, rajada: 18, mm: 0, gravidade: 0 };
     const r4 = await verificarMudancasPrevisao({ forcar: true, registrarSomente: true });
     assert.equal(r4.postou, false);
     assert.match(r4.motivo, /já avisou/i);
     assert.equal((await db.select().from(chatMensagens)).length, 1);
 
     // 5) Mudança nova de verdade (de 20% para 95%) volta a avisar.
-    cenario = { chance: 95, rajada: 70, mm: 12, gravidade: 5 };
+    ctrl.cenario = { chance: 95, rajada: 70, mm: 12, gravidade: 5 };
     const r5 = await verificarMudancasPrevisao({ forcar: true });
     assert.equal(r5.postou, true, `motivo: ${r5.motivo}`);
     assert.equal((await db.select().from(chatMensagens)).length, 2);
     assert.equal(pushes.length, 2);
 
-    // 6) Status do radar para a tela Tempo e para o painel.
+    // 6) Status do radar para o painel do administrador.
     const s = await statusRadarClima();
     assert.equal(s.ativo, true);
     assert.equal(s.sensibilidade, "media");
     assert.ok(s.ultimaVerificacao);
     assert.equal(s.mudancas24h, (await db.select().from(climaMudancas)).length);
     assert.equal(s.fontes.simport, true);
-    assert.equal(s.fontes.painel, true, "o painel lido pelo Composio alimentou o radar");
+    assert.equal(s.fontes.painel, true, "o painel da APPA alimentou o radar");
     assert.equal(s.fontes.composio, false);
     assert.ok(s.composio, "Composio configurado (chave de teste)");
     assert.ok(s.ultimaMudanca?.resumo);
+    // A tela: "Painel APPA: conectado" + "Método de leitura: API" e nada de erro do Composio.
+    assert.equal(s.painel.rotulo, "Painel APPA: conectado");
+    assert.equal(s.painel.situacao, "conectado");
+    assert.equal(s.painel.metodoRotulo, "API");
+    assert.equal(s.painel.erro, null);
+    assert.ok(s.painel.em);
+    assert.equal(s.painel.leitura?.metodo_leitura, "api");
+    assert.equal(s.painel.leitura?.fonte, "APPA");
+    // Log de diagnóstico: uma linha por tentativa, com a hora entre colchetes.
+    assert.ok(s.painel.log.length >= 5, "uma linha por ciclo");
+    assert.match(s.painel.log[0], /^\[\d{2}:\d{2}:\d{2}\] APPA · #1 API · SUCESSO · /);
+    assert.equal(ctrl.chamadasComposioPainel, 0, "com a API funcionando nem se pergunta ao Composio");
 
     // 6b) Batida leve do caminho do app aberto: a 1ª roda o ciclo, as seguintes
     // saem de graça (só uma comparação de horário, sem banco e sem rede).
@@ -679,9 +762,106 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     assert.match(desligado.motivo, /desligado/i);
     delete process.env.CLIMA_MONITOR_ATIVO;
   } finally {
-    globalThis.fetch = fetchReal;
-    delete process.env.COMPOSIO_API_KEY;
-    delete process.env.CLIMA_MONITOR_ATIVO;
-    await pool.end();
+    rede.restaurar();
+    await limpar(pool);
+  }
+});
+
+test("radar: API da Simport fora do ar → o painel é lido pelo Composio (método adicional) e o radar segue", { skip: !local }, async () => {
+  const { verificarMudancasPrevisao, statusRadarClima, lerPainelAgora } = await import("../src/lib/clima-monitor");
+  const rede = instalarRede();
+  const { db, pool, chatMensagens, pushes } = await prepararBanco();
+  const { ctrl } = rede;
+  ctrl.apiNoAr = false;
+  ctrl.composio = "texto";
+
+  try {
+    const r1 = await verificarMudancasPrevisao({ forcar: true });
+    assert.match(r1.motivo, /primeira leitura/i, `motivo: ${r1.motivo}`);
+    assert.equal(r1.painel?.metodo, "composio");
+    const s1 = await statusRadarClima();
+    // O erro da API e do HTML ficam só no log: a tela mostra a leitura, não uma falha.
+    assert.equal(s1.painel.situacao, "leitura-realizada");
+    assert.equal(s1.painel.rotulo, "Painel APPA: leitura realizada");
+    assert.equal(s1.painel.metodoRotulo, "Composio");
+    assert.equal(s1.painel.erro, null);
+    assert.ok(s1.painel.log.some((l) => /#1 API · (FALHOU|VAZIO)/.test(l)), "o log registra a tentativa da API");
+    assert.ok(s1.painel.log.some((l) => /#2 HTML direto · VAZIO/.test(l)), "e a do HTML, que veio vazio (SPA)");
+    // (neste teste o navegador/OCR estão desligados, então o Composio é o 3º da fila)
+    assert.ok(s1.painel.log.some((l) => /#3 Composio · SUCESSO/.test(l)));
+
+    // O painel muda (chuva e vento maiores): o radar avisa no chat e por Push, lendo só pelo Composio.
+    ctrl.painelTexto = PAINEL_MUDADO;
+    const r2 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
+    const msgs = await db.select().from(chatMensagens);
+    assert.equal(msgs.length, 1);
+    assert.match(msgs[0].texto, /ALERTA METEOROLÓGICO/);
+    assert.equal(pushes.length, 1);
+
+    // "Ler painel agora" (diagnóstico do administrador): lê, registra e não avisa ninguém.
+    const antes = (await db.select().from(chatMensagens)).length;
+    const lido = await lerPainelAgora();
+    assert.equal(lido.status, "sucesso");
+    assert.equal(lido.metodo, "composio");
+    assert.equal((await db.select().from(chatMensagens)).length, antes);
+
+    // O app aberto (caminho leve: só API e HTML) não consegue ler com a API fora do ar. Isso NÃO é
+    // "todos os métodos falharam" (navegador, OCR e Composio nem foram tentados): a tela não vira erro.
+    const { configuracao } = await import("../src/db/schema");
+    const { inArray } = await import("drizzle-orm");
+    const { tickRadar, resetarTickRadar } = await import("../src/lib/clima-monitor");
+    await db.delete(configuracao).where(inArray(configuracao.chave, ["clima_monitor_ultima", "clima_monitor_painel"]));
+    const logAntes = (await statusRadarClima()).painel.log.length;
+    resetarTickRadar();
+    await tickRadar();
+    const s3 = await statusRadarClima();
+    assert.ok(s3.painel.log.length > logAntes, "o log registra a tentativa leve");
+    assert.notEqual(s3.painel.situacao, "erro", "falha do caminho leve não é erro do painel");
+    assert.equal(s3.painel.erro, null);
+    assert.equal(s3.painel.metodoRotulo, "Composio", "continua valendo a última leitura completa");
+  } finally {
+    rede.restaurar();
+    await limpar(pool);
+  }
+});
+
+test("radar: TODOS os métodos falham → a tela mostra o erro detalhado, mas o radar continua com a previsão", { skip: !local }, async () => {
+  const { verificarMudancasPrevisao, statusRadarClima } = await import("../src/lib/clima-monitor");
+  const rede = instalarRede();
+  const { pool, db, chatMensagens } = await prepararBanco();
+  const { ctrl } = rede;
+  // Só o Composio ligado e ele devolve results vazio: exatamente o relato original.
+  process.env.APPA_METODOS = "composio";
+  ctrl.composio = "vazio";
+
+  try {
+    const r1 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r1.rodou, true);
+    assert.match(r1.motivo, /primeira leitura/i, "a previsão pela API mantém o radar de pé");
+    assert.equal(r1.painel?.status, "erro");
+    const s = await statusRadarClima();
+    assert.equal(s.painel.situacao, "erro", "todos os métodos ligados falharam");
+    assert.equal(s.painel.rotulo, "Painel APPA: sem leitura");
+    assert.match(s.painel.erro ?? "", /^Nenhum método conseguiu ler o painel da APPA/);
+    assert.match(s.painel.erro ?? "", /Composio: /);
+    assert.ok(s.painel.log.some((l) => /Composio · VAZIO/.test(l)));
+    assert.equal(s.fontes.painel, false);
+
+    // Mesmo sem o painel, a previsão continua avisando mudanças.
+    ctrl.cenario = { chance: 85, rajada: 60, mm: 7, gravidade: 5 };
+    const r2 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
+    assert.equal((await db.select().from(chatMensagens)).length, 1);
+
+    // Os outros métodos voltam a funcionar: a tela deixa de mostrar o erro no ciclo seguinte.
+    delete process.env.APPA_METODOS;
+    await verificarMudancasPrevisao({ forcar: true });
+    const s2 = await statusRadarClima();
+    assert.equal(s2.painel.situacao, "conectado");
+    assert.equal(s2.painel.erro, null);
+  } finally {
+    rede.restaurar();
+    await limpar(pool);
   }
 });

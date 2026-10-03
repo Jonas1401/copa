@@ -173,14 +173,18 @@ export async function listarEstados(): Promise<EstadoIntegracao[]> {
     if (d.id === "clima") {
       detalhes.push({ rotulo: "Fonte", valor: "weather-appa.app.simport.com.br" });
       detalhes.push({ rotulo: "Uso", valor: "Tela de tempo e chip do clima da tela inicial" });
-      // Radar da previsão: o mesmo painel lido pelo Composio, de 5 em 5 min.
+      // Radar da previsão: o painel é lido pelo servidor, de 5 em 5 min, por vários métodos com fallback.
       const radar = await statusRadarClima().catch(() => null);
       if (radar) {
         detalhes.push({
           rotulo: "Radar da previsão",
           valor: radar.ativo
-            ? `Monitorando a cada ${radar.intervaloMin} min (painel pelo Composio a cada ${radar.painelMin} min)`
+            ? `Monitorando a cada ${radar.intervaloMin} min (painel lido com fallback: API → HTML → navegador → OCR → Composio)`
             : "Desligado (CLIMA_MONITOR_ATIVO=0)",
+        });
+        detalhes.push({
+          rotulo: "Painel APPA",
+          valor: `${radar.painel.rotulo.replace("Painel APPA: ", "")}${radar.painel.metodoRotulo ? ` · método de leitura: ${radar.painel.metodoRotulo}` : ""}`,
         });
         detalhes.push({
           rotulo: "Última leitura do radar",

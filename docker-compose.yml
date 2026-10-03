@@ -32,6 +32,11 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       INTRANET_URL: ${INTRANET_URL:-}
       SIMPORT_AUTH_TOKEN: ${SIMPORT_AUTH_TOKEN:-}
+      # Leitura do painel da APPA (veja .env.example): o Chromium da imagem é achado sozinho.
+      APPA_METODOS: ${APPA_METODOS:-}
+      APPA_NAVEGADOR: ${APPA_NAVEGADOR:-1}
+      APPA_BROWSER_WS: ${APPA_BROWSER_WS:-}
+      APPA_SCREENSHOT_URL: ${APPA_SCREENSHOT_URL:-}
     ports:
       - "3000:3000"
 

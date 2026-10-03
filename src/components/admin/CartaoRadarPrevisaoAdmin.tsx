@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Radar, RefreshCw } from "lucide-react";
+import { Radar, RefreshCw, ScanSearch } from "lucide-react";
 
 /**
  * Situação do RADAR DA PREVISÃO (monitoramento constante do tempo) — agora
@@ -10,16 +10,48 @@ import { Radar, RefreshCw } from "lucide-react";
  * como notificação, mas o diagnóstico fica só com quem administra.
  *
  * O radar roda no servidor (`/api/cron`, a cada minuto): relê o SIMPORT®/APPA
- * pela API e o painel público PELO COMPOSIO, compara com a última leitura e
- * manda QUALQUER mudança para o chat dos motoristas + Web Push — a notificação
- * chega mesmo com o aplicativo fechado.
+ * pela API e o painel público (por vários métodos, com troca automática:
+ * API → HTML → navegador automático → OCR → Composio), compara com a última
+ * leitura e manda QUALQUER mudança para o chat dos motoristas + Web Push — a
+ * notificação chega mesmo com o aplicativo fechado.
  *
- * Este cartão só mostra o estado (não escreve nada): se está ligado, de quanto
- * em quanto tempo lê, quando foi a última leitura, a última mudança avisada e
- * quais fontes estão no ar. Só aparece depois do login, então o botão
- * "Verificar agora" fica sempre disponível (`POST /api/tempo/radar`).
+ * Este cartão mostra o estado: se está ligado, de quanto em quanto tempo lê, a
+ * situação do painel da APPA ("Painel APPA: conectado" + "Método de leitura"),
+ * a última mudança avisada, as fontes no ar e o log de diagnóstico de cada
+ * tentativa. Erro só aparece quando TODOS os métodos falham. Só aparece depois
+ * do login, então os botões "Verificar agora" e "Ler painel agora" ficam sempre
+ * disponíveis (`POST /api/tempo/radar`).
  */
 
+export type StatusPainel = {
+  em: string | null;
+  erro: string | null;
+  situacao: "conectado" | "leitura-realizada" | "erro" | "aguardando";
+  rotulo: string;
+  metodo: "api" | "html" | "playwright" | "ocr" | "composio" | null;
+  metodoRotulo: string | null;
+  tentativaEm: string | null;
+  parcial: boolean;
+  log: string[];
+  leitura: {
+    fonte: string;
+    timestamp_leitura: string;
+    atualizado_em: string | null;
+    temperatura: string | null;
+    sensacao_termica: string | null;
+    chuva: string | null;
+    chuva_forte: string | null;
+    tempestade: string | null;
+    vento: string | null;
+    umidade: string | null;
+    pressao: string | null;
+    alertas: string[];
+    status: "sucesso" | "parcial";
+    metodo_leitura: string;
+  } | null;
+};
+
+/** Espelha `StatusRadarClima` (src/lib/clima-monitor.ts): mexeu num, mexa no outro. */
 export type StatusRadar = {
   ativo: boolean;
   sensibilidade: "baixa" | "media" | "alta";
@@ -30,7 +62,7 @@ export type StatusRadar = {
   mudancas24h: number;
   fontes: { simport: boolean; estacao: boolean; painel: boolean; composio: boolean };
   composio: boolean;
-  painel: { em: string | null; erro: string | null };
+  painel: StatusPainel;
   composioErro: string | null;
 };
 
@@ -66,6 +98,7 @@ function horaMin(iso: string) {
 export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: StatusRadar | null } = {}) {
   const [s, setS] = useState<StatusRadar | null>(inicial ?? null);
   const [rodando, setRodando] = useState(false);
+  const [lendo, setLendo] = useState(false);
   const [aviso, setAviso] = useState("");
 
   const buscar = useCallback(async () => {
@@ -121,6 +154,38 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
     }
   }
 
+  /** Lê o painel agora por todos os métodos (só diagnóstico: não avisa ninguém). */
+  async function lerPainelAgora() {
+    setLendo(true);
+    setAviso("");
+    try {
+      const r = await fetch("/api/tempo/radar?painel=1", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: cabecalhoAdmin(),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 401) {
+        setAviso("Sessão expirada. Entre novamente no painel para ler o painel da APPA.");
+        return;
+      }
+      setAviso(
+        r.ok
+          ? d.leitura
+            ? `Painel lido pelo método ${d.metodoRotulo} em ${((d.duracaoMs ?? 0) / 1000).toFixed(1).replace(".", ",")} s.`
+            : (d.erro ?? "Nenhum método conseguiu ler o painel.")
+          : (d.erro ?? "Não foi possível ler o painel."),
+      );
+      if (d.status) setS(d.status as StatusRadar);
+      else await buscar();
+    } catch {
+      setAviso("Não foi possível ler o painel.");
+    } finally {
+      setLendo(false);
+    }
+  }
+
   if (!s) return null;
 
   const ligado = s.ativo;
@@ -142,10 +207,76 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
 
       <p className="px-0.5 text-[13.5px] leading-snug text-gelo/85">
         O CopaLinks acompanha o SIMPORT® – Dashboard Meteoceanográfico da APPA de{" "}
-        <b className="text-white">{s.intervaloMin} em {s.intervaloMin} minutos</b> (o painel completo,
-        lido pelo Composio, a cada <b className="text-white">{s.painelMin} minutos</b>). Qualquer
-        mudança na previsão entra no chat e chega como notificação, mesmo com o aplicativo fechado.
+        <b className="text-white">{s.intervaloMin} em {s.intervaloMin} minutos</b>. O painel é lido pelo
+        servidor por vários métodos (API, HTML, navegador automático, OCR e Composio) e, se um falha, o
+        próximo assume sozinho. Qualquer mudança na previsão entra no chat e chega como notificação,
+        mesmo com o aplicativo fechado.
       </p>
+
+      <div
+        className={`mt-2.5 rounded-[14px] border px-3 py-2 ${
+          s.painel.situacao === "erro"
+            ? "border-ambar/50 bg-ambar/10"
+            : "border-[#2a5bb0]/60 bg-[#0b2150]/70"
+        }`}
+      >
+        <p className="flex items-center gap-2 text-[14px] font-bold text-white">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              s.painel.situacao === "erro"
+                ? "bg-ambar"
+                : s.painel.situacao === "aguardando"
+                  ? "bg-gelo/50"
+                  : "bg-verde"
+            }`}
+          />
+          {s.painel.rotulo}
+        </p>
+        {s.painel.metodoRotulo && s.painel.situacao !== "erro" && (
+          <p className="mt-0.5 text-[13px] text-gelo/85">
+            Método de leitura: <b className="text-white">{s.painel.metodoRotulo}</b>
+            {s.painel.parcial ? " (leitura parcial)" : ""}
+          </p>
+        )}
+        {s.painel.em && s.painel.situacao !== "erro" && (
+          <p className="text-[12.5px] text-gelo/70">Lido em {horaMin(s.painel.em)}</p>
+        )}
+        {s.painel.leitura && s.painel.situacao !== "erro" && (
+          <p className="mt-1 text-[12.5px] leading-snug text-gelo/85">
+            {[
+              s.painel.leitura.temperatura,
+              s.painel.leitura.vento ? `vento ${s.painel.leitura.vento.split(" · ")[0]}` : null,
+              s.painel.leitura.umidade ? `umidade ${s.painel.leitura.umidade}` : null,
+              s.painel.leitura.pressao ? `pressão ${s.painel.leitura.pressao}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            {s.painel.leitura.chuva ? ` · ${s.painel.leitura.chuva}` : ""}
+          </p>
+        )}
+        {s.painel.leitura && s.painel.situacao !== "erro" && s.painel.leitura.alertas.length > 0 && (
+          <p className="mt-1 text-[12.5px] leading-snug text-ambar">
+            ⚠️ {s.painel.leitura.alertas[0].slice(0, 160)}
+          </p>
+        )}
+        {s.painel.situacao === "erro" && (
+          <p className="mt-1 text-[12.5px] leading-snug text-ambar">
+            Nenhum dos métodos de leitura conseguiu ler o painel da APPA agora. O radar segue com a API
+            da previsão e tenta de novo no próximo ciclo. Detalhes:{" "}
+            {(s.painel.erro ?? "").replace(/^Nenhum método conseguiu ler o painel da APPA — /, "")}
+          </p>
+        )}
+        {s.painel.log.length > 0 && (
+          <details className="mt-1.5">
+            <summary className="cursor-pointer text-[12px] font-bold text-[#8fd6ff]">
+              Log de diagnóstico ({s.painel.log.length} {s.painel.log.length === 1 ? "linha" : "linhas"})
+            </summary>
+            <pre className="mt-1 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-[10px] bg-black/30 p-2 text-[11px] leading-snug text-gelo/80">
+              {s.painel.log.slice(-12).join("\n")}
+            </pre>
+          </details>
+        )}
+      </div>
 
       <dl className="mt-2.5 space-y-1.5 px-0.5 text-[13px]">
         <div className="flex gap-2">
@@ -177,7 +308,7 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
             {[
               s.fontes.simport ? "SIMPORT (API)" : null,
               s.fontes.composio ? "Composio (tempo atual)" : null,
-              s.fontes.painel ? "Painel da APPA (Composio)" : null,
+              s.fontes.painel ? `Painel da APPA (${s.painel.metodoRotulo ?? "lido"})` : null,
               s.fontes.estacao ? "Estação do porto" : null,
             ]
               .filter(Boolean)
@@ -188,48 +319,35 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
           <dt className="shrink-0 text-gelo/70">Avisos em 24 h</dt>
           <dd className="text-white">{s.mudancas24h}</dd>
         </div>
-        <div className="flex gap-2">
-          <dt className="shrink-0 text-gelo/70">Painel APPA</dt>
-          <dd className="min-w-0 text-white">
-            {s.painel.em ? (
-              <>
-                lido pelo Composio em <span className="text-gelo/70">{horaMin(s.painel.em)}</span>
-              </>
-            ) : (
-              "ainda não lido pelo Composio"
-            )}
-          </dd>
-        </div>
       </dl>
 
-      {!s.composio && (
-        <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
-          Cadastre a chave do Composio em <b>/admin → Integrações</b> para o radar ler também o
-          painel completo da APPA (boletim, marés e tabelas de chuva e vento).
-        </p>
-      )}
-      {s.composio && s.painel.erro && (
-        <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
-          O Composio não conseguiu ler o painel da APPA: {s.painel.erro}. O radar segue com a API da
-          Simport e com a medição do Composio.
-        </p>
-      )}
       {s.composio && s.composioErro && (
         <p className="mt-2 rounded-[12px] bg-ambar/15 px-2.5 py-1.5 text-[12.5px] leading-snug text-ambar">
-          O Composio não devolveu a medição do tempo agora: {s.composioErro}. O radar segue com a
-          estação da APPA.
+          A segunda opinião do Composio (medição do tempo atual) não veio agora: {s.composioErro}. O
+          radar segue sem ela.
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={() => void verificarAgora()}
-        disabled={rodando}
-        className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-4 py-2.5 font-display text-[14px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
-      >
-        <RefreshCw size={16} className={rodando ? "animate-spin" : ""} />
-        {rodando ? "Verificando…" : "Verificar agora"}
-      </button>
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => void verificarAgora()}
+          disabled={rodando || lendo}
+          className="flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-3 py-2.5 font-display text-[13px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
+        >
+          <RefreshCw size={16} className={rodando ? "animate-spin" : ""} />
+          {rodando ? "Verificando…" : "Verificar agora"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void lerPainelAgora()}
+          disabled={rodando || lendo}
+          className="flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-3 py-2.5 font-display text-[13px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
+        >
+          <ScanSearch size={16} className={lendo ? "animate-pulse" : ""} />
+          {lendo ? "Lendo…" : "Ler painel agora"}
+        </button>
+      </div>
       {aviso && <p className="mt-2 px-0.5 text-[12.5px] text-[#8fd6ff]">{aviso}</p>}
     </section>
   );

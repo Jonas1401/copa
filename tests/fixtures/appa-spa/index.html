@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>SIMPORT® - Dashboard Meteoceanográfico</title>
+<style>
+  body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#0b1d3a; color:#e8f1ff; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .topo { display:flex; gap:32px; align-items:center; }
+  .temp { font-size: 64px; font-weight: 700; }
+  .card { background:#12305c; border-radius:12px; padding:16px; margin:16px 0; }
+  .grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; }
+  table { width:100%; border-collapse: collapse; font-size: 20px; }
+  th, td { padding: 8px 12px; text-align:left; border-bottom:1px solid #2a4f86; }
+  h2 { font-size: 26px; margin: 8px 0; }
+  h3 { font-size: 22px; margin: 8px 0; }
+  .boletim p { font-size: 18px; line-height: 1.4; }
+  .icone { display:inline-block; width:22px; height:22px; border-radius:50%; background:#7fb8ff; }
+  .pequeno { font-size: 16px; color:#9db7de }
+  .espaco { height: 1100px; }
+</style>
+</head>
+<body>
+<div class="wrap"><div id="root">Carregando…</div></div>
+<script>
+  // SPA de teste (réplica simplificada do painel da APPA): a página nasce vazia, os dados chegam por
+  // XHR depois de 1,5 s e o bloco de baixo (marés/sol) só monta quando a tela rola até ele.
+  function el(html){ const d=document.createElement('div'); d.innerHTML=html; return d; }
+  setTimeout(async () => {
+    const r = await fetch('/api/painel.json'); const d = await r.json();
+    const root = document.getElementById('root');
+    root.innerHTML = '';
+    root.appendChild(el(`
+      <div class="card topo">
+        <div><div class="temp">${d.temp}°C</div><div class="pequeno">Sensação térmica: ${d.sens}°C</div></div>
+        <div class="grid" style="flex:1">
+          <div><div style="font-size:28px">${d.vento} nós</div><div>${d.dir}</div></div>
+          <div><div style="font-size:28px">${d.umid}%</div><div>Umidade</div></div>
+          <div><div style="font-size:28px">${d.pressao}</div><div>Pressão</div></div>
+        </div>
+      </div>`));
+    root.appendChild(el(`<div class="card boletim">${d.boletim.map(b => `<p><b>${b.dia}</b>: ${b.texto}</p>`).join('')}</div>`));
+    root.appendChild(el(`<h2>Previsões Detalhadas</h2>`));
+    root.appendChild(el(`<div class="card"><h3>Previsão de Chuvas</h3><table><thead><tr><th>Hora</th><th>Condição</th><th>Precipit.</th><th>Probabil.</th></tr></thead><tbody>${d.chuva.map(c => `<tr><td>${c.h}</td><td><span class="icone"></span></td><td>${c.mm}</td><td>${c.p}%</td></tr>`).join('')}</tbody></table><div class="pequeno">Próximas 24 horas</div></div>`));
+    root.appendChild(el(`<div class="card"><h3>Previsão de Ventos</h3><table><thead><tr><th>Hora</th><th>Velocidade</th><th>Direção</th></tr></thead><tbody>${d.ventoTab.map(c => `<tr><td>${c.h}</td><td>${c.nos} nós</td><td>${c.dir}</td></tr>`).join('')}</tbody></table><div class="pequeno">Próximas 24 horas</div></div>`));
+    root.appendChild(el(`<div class="espaco"></div>`));
+    const lazy = el(`<div id="lazy"></div>`); root.appendChild(lazy);
+    const io = new IntersectionObserver((es) => { if (es.some(e => e.isIntersecting)) { io.disconnect(); setTimeout(() => {
+      lazy.innerHTML = `<div class="card"><h2>Dados Oceanográficos</h2><h3>Previsão de Marés</h3><div>Paranaguá</div>${d.mares.map(m => `<div style="font-size:22px">${m}</div>`).join('')}</div>
+        <div class="card"><h2>Fases da Lua</h2><div>Minguante Gibosa 51.09% iluminação</div><div>Nascer do Sol</div><div style="font-size:22px">04:53</div><div>Pôr do Sol</div><div style="font-size:22px">17:15</div></div>`;
+    }, 300); } }, { threshold: 0.1 });
+    io.observe(lazy);
+  }, 1500);
+</script>
+</body>
+</html>

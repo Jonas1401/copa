@@ -1,0 +1,8 @@
+{"temp":19,"sens":21,"vento":"3.0","dir":"W","umid":86,"pressao":1017,
+ "boletim":[
+  {"dia":"Sáb (03/10)","texto":"O dia apresenta céu encoberto e previsão de chuvas fracas e intermitentes, especialmente durante a madrugada e a manhã. Entre a tarde e a noite, as chuvas continuam de forma isolada. Os ventos apresentam direção variável, de SW/E, com intensidade fraca a moderada."},
+  {"dia":"Dom (04/10)","texto":"<strong>Atenção</strong>: O tempo permanece instável durante a madrugada e a manhã, com previsão de chuvas e possibilidade de tempestades com atividade elétrica. No decorrer da tarde, a instabilidade diminui, com aberturas de sol. À noite, as chuvas voltam a se intensificar."}
+ ],
+ "chuva":[{"h":"08:00","mm":"0 mm","p":0},{"h":"10:00","mm":"< 0.1 mm","p":3},{"h":"12:00","mm":"< 0.1 mm","p":19},{"h":"14:00","mm":"6.4 mm","p":92},{"h":"16:00","mm":"< 0.1 mm","p":31},{"h":"18:00","mm":"< 0.1 mm","p":31},{"h":"20:00","mm":"< 0.1 mm","p":13},{"h":"22:00","mm":"< 0.1 mm","p":38},{"h":"00:00","mm":"< 0.1 mm","p":0},{"h":"02:00","mm":"0 mm","p":0},{"h":"04:00","mm":"0 mm","p":0},{"h":"06:00","mm":"0 mm","p":0}],
+ "ventoTab":[{"h":"08:00","nos":3,"dir":"W"},{"h":"10:00","nos":3,"dir":"WSW"},{"h":"12:00","nos":4,"dir":"SE"},{"h":"14:00","nos":7,"dir":"E"},{"h":"16:00","nos":6,"dir":"E"},{"h":"18:00","nos":7,"dir":"ENE"},{"h":"20:00","nos":5,"dir":"ENE"},{"h":"22:00","nos":0,"dir":"ESE"},{"h":"00:00","nos":2,"dir":"WSW"},{"h":"02:00","nos":3,"dir":"WNW"},{"h":"04:00","nos":4,"dir":"NNE"},{"h":"06:00","nos":3,"dir":"S"}],
+ "mares":["08:40 1.5m Alta","11:40 0.9m Baixa","14:40 1.3m Alta","18:10 0.6m Baixa"]}

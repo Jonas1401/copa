@@ -1,0 +1,70 @@
+19ºC 30onós               86%                   1017
+
+w                                        Umidade                                Pressão
+Sensação térmica: 21ºC
+
+Sáb (03/10): O dia apresenta céu encoberto e previsão de chuvas fracas e intermitentes, especialmente durante a madrugada e
+a manhã, Entre a tarde e a noite, as chuvas continuam de forma isolada. Os ventos apresentam direção variável, de SW/E, com
+intensidade fraca a moderada.
+
+Dom (04/10): Atenção: O tempo permanece instável durante a madrugada e a manhã, com previsão de chuvas e possibilidade
+de tempestades com atividade elétrica. No decorrer da tarde, a instabilidade diminui, com aberturas de sol. À noite, as chuvas
+voltam a se intensificar.
+
+Previsões Detalhadas
+
+Previsão de Chuvas
+
+Hora                  Condição                          Precipit.                          Probabil.
+08:00                  o                                   o mm                             0%
+10:00                o                               <0.1 mm                      3%
+12:00                o                               <0.1 mm                       19%
+14:00                    o                                        6.4 mm                               92%
+16:00                o                               <0.1 mm                      31%
+18:00                o                               <0.1 mm                      31%
+20:00                o                               <0.1 mm                       13%
+22:00                o                               <0.1 mm                      38%
+00:00                o                               <0.1 mm                      0%
+02:00                  o                                   o mm                             0%
+04:00                  o                                   o mm                             0%
+06:00                  o                                   o mm                             0%
+
+Próximas 24 horas
+
+Previsão de Ventos
+
+Hora                           Velocidade                                            Direção
+08:00                          3 nós                                                   W
+10:00                          3 nós                                                   WSW
+12:00                              4 nós                                                           SE
+14:00                          7 nós                                                    E
+16:00                          6 nós                                                    E
+18:00                          7 nós                                                    ENE
+20:00                          5 nós                                                    ENE
+22:00                          O nós                                                    ESE
+00:00                          2 nós                                                   WSW
+02:00                          3 nós                                                   WNW
+04:00                              4 nós                                                           NNE
+06:00                          3 nós                                                    E)
+
+Próximas 24 horas
+
+Dados Oceanográficos
+
+Previsão de Marés
+Paranaguá
+
+08:40 1.5m Alta
+11:40 0.9m Baixa
+14:40 1.3m Alta
+18:10 0.6m Baixa
+
+Fases da Lua
+
+Minguante Gibosa 51.09% iluminação
+Nascer do Sol
+
+04:53
+Pôr do Sol
+
+17:15

@@ -11,7 +11,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Início** | ponto monitorado ao vivo, último escalado e contadores das 6 tabelas (TRUCK e CAVALO/C nos Livros A, B e M) |
 | **Cadastrar ponto** | tipo + livro + número, com ativação de notificações |
 | **Notificações** | Web Push (VAPID) quando o ponto é chamado, sai da tabela ou chega perto da vez |
-| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h); o **Radar da previsão** mostra que o monitoramento está no ar |
+| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h); o **Radar da previsão** (só no `/admin`) mostra que o monitoramento está no ar |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
@@ -31,7 +31,9 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 - **Leitura do site monitorado**: `intranet.copadubo.com.br/ponto/` (3 quadros,
   6 tabelas), com reserva via **Composio**
 - Clima: **APPA/SIMPORT** + Open-Meteo, com reserva via Composio; o **Radar da
-  previsão** monitora o tempo o dia todo (painel da APPA lido pelo Composio)
+  previsão** monitora o tempo o dia todo, lendo o painel da APPA pelo servidor
+  com **vários métodos e fallback automático** (API → HTML → navegador
+  automático → OCR → Composio)
 
 ## Motoristas e pontos
 
@@ -158,7 +160,7 @@ Teste: `TEST_DATABASE_URL=... tsx --test tests/clima-boletim.test.ts` (banco
 `fila_push_test_*`): turnos de 6 h, texto do boletim e o fluxo completo
 chat + Push, incluindo o alerta tomando o lugar do boletim.
 
-## Radar da previsão: monitoramento constante (Composio + SIMPORT®)
+## Radar da previsão: monitoramento constante (SIMPORT®/APPA)
 
 Além do boletim por turno, o CopaLinks **não para de olhar o tempo**. É o
 **📡 Radar da Previsão** (`src/lib/clima-monitor.ts`):
@@ -168,73 +170,178 @@ O radar tem **dois caminhos** para não parar:
 - **`/api/cron`** (a cada minuto, Vercel ou Supabase pg_cron): é quem garante o
   aviso **com o aplicativo fechado**;
 - **`/api/estado` e `/api/atualizar`** (`tickRadar`): o app aberto chama essas
-  rotas o tempo todo,
-  então o monitoramento continua vivo mesmo que o cron do provedor rode só uma
-  vez por dia (plano Hobby) ou o job do Supabase esteja desligado. A batida
-  custa uma comparação de horário na maior parte das vezes e, quando o
-  intervalo vence, roda um ciclo *suave* (usa o cache de 10 min da previsão em
-  vez de forçar a leitura) — nunca atrasa nem quebra a resposta da fila.
+  rotas o tempo todo, então o monitoramento continua vivo mesmo que o cron do
+  provedor rode só uma vez por dia (plano Hobby) ou o job do Supabase esteja
+  desligado. A batida custa uma comparação de horário na maior parte das vezes e,
+  quando o intervalo vence, roda um ciclo *suave* — só os métodos rápidos de
+  leitura (API e HTML, no máximo 7 s) — nunca atrasa nem quebra a resposta da fila.
 
-1. **API estruturada do SIMPORT®** — Dashboard Meteoceanográfico da APPA
-   (`https://weather-appa.app.simport.com.br/`): modelo WRF hora a hora,
-   estação do porto, boletim e Open-Meteo para os dias seguintes. Relida a
-   cada **5 minutos** (`CLIMA_MONITOR_MIN`).
-1. **Medição do tempo atual PELO COMPOSIO** (ferramenta `WEATHERMAP_WEATHER` /
-   OpenWeather): é a **segunda opinião** do radar, com cache de 10 min — cobre
-   o tempo atual mesmo quando a estação da APPA e o WRF caem.
-2. **Painel público lido PELO COMPOSIO** a cada **30 minutos**
-   (`CLIMA_MONITOR_PAINEL_MIN`) com a ferramenta
-   `COMPOSIO_SEARCH_FETCH_URL_CONTENT` — é o Composio que busca a página da
-   APPA e devolve o texto: boletim do dia, tabelas de chuva e vento das
-   próximas 24 h e tábua de marés (`parsearPainelSimport`).
-   **Atenção:** essa ferramenta usa a Exa, que **não roda JavaScript**; o
-   painel da APPA é renderizado no navegador, então ela pode devolver vazio
-   (é o que acontece hoje em produção). O radar não depende disso: segue com a
-   API da Simport e com a medição do Composio, e o cartão da tela Tempo mostra
-   o motivo quando a página não vem.
+A cada ciclo (**5 minutos**, `CLIMA_MONITOR_MIN`) o radar: lê a previsão e o
+painel da APPA, identifica qual método funcionou, compara com a leitura
+anterior (a do último aviso), detecta as mudanças, registra a leitura e avisa
+quando a mudança é relevante. Três fontes entram na comparação:
+
+1. **API estruturada do SIMPORT®** (`src/lib/tempo.ts`): modelo WRF hora a hora,
+   estação do porto, boletim e Open-Meteo para os dias seguintes.
+2. **Painel público da APPA** (`https://weather-appa.app.simport.com.br/`),
+   lido pelo servidor com fallback automático — veja a próxima seção. É a
+   leitura **normalizada** do painel que o radar compara; o Composio **não é
+   mais o único responsável** por ela.
+3. **Medição do tempo atual PELO COMPOSIO** (ferramenta `WEATHERMAP_WEATHER` /
+   OpenWeather): segunda opinião, com cache de 10 min.
 
 Cada leitura vira um **instantâneo** comparável (números + textos
 normalizados). Quando a comparação com o instantâneo do **último aviso** passa
 do limite da sensibilidade, o radar:
 
 - publica **uma** mensagem no chat como **📡 Radar da Previsão**
-  (`motorista_id = 0`), escrita pela IA (**Gemini pelo Composio**) com os
-  números reais — se a IA falhar, vale o texto pronto das regras;
+  (`motorista_id = 0`) no formato abaixo — só dados reais, sem texto inventado;
 - dispara **Web Push para todos os aparelhos: a notificação chega mesmo com o
-  aplicativo fechado** (quem mostra é o Service Worker) e, ao tocar, abre o
-  chat. Em mudança grave (chuva forte, rajada ≥ 40 km/h ou boletim da APPA com
-  tempo ruim) o aviso fica na tela até o motorista tocar.
+  aplicativo (ou o site) fechado** — quem mostra é o Service Worker — e, ao
+  tocar, abre o chat. Em mudança grave (chuva forte, tempestade, alerta novo,
+  rajada ≥ 40 km/h ou boletim da APPA com tempo ruim) o aviso fica na tela até
+  o motorista tocar.
 
-**O que é comparado:** chance e volume de chuva (6 h e 24 h), vento e rajada
-máximos, condição do tempo, máxima/mínima de hoje e de amanhã, boletim da APPA
-(texto e alerta de tempo ruim), tabelas do painel (chuva, vento em nós), marés
-e horários do sol.
+```
+🌧️ ALERTA METEOROLÓGICO
+
+Foi identificada uma mudança na previsão meteorológica da região do Porto de Paranaguá.
+
+Condição: chuva forte
+Horário: 14:00
+Mudança: Chuva forte prevista para as 14:00
+
+Fonte: SIMPORT® / APPA
+```
+
+A notificação traz o mesmo conteúdo resumido (título **🌧️ ALERTA METEOROLÓGICO**;
+⛈️ para tempestade, 💨 para vento, ⚠️ para alerta). O horário só aparece quando
+se sabe qual é (hora da tabela/modelo ou período do boletim).
+
+**Mudanças que o radar avisa:** início de chuva; chuva mais intensa (fraca →
+moderada → forte); chuva forte prevista; possibilidade de tempestade; alerta
+meteorológico novo no boletim (`Atenção:`…); aumento ou mudança relevante do
+vento (nós/rajada); mudança da previsão (chance e volume de chuva em 6 h e 24 h,
+condição do tempo, máxima/mínima de hoje e amanhã, texto revisado do boletim); e
+horário previsto diferente (o início da chuva ou da chuva forte andou 2 h ou
+mais). Mudança só de maré ou de horário do sol aparece no diagnóstico mas **não
+avisa sozinha**, e um dia que só entrou na janela do boletim também não.
 
 **Antispam:** a 1ª leitura só registra (nada de aviso antigo); a comparação é
 sempre contra o último aviso, então uma mudança lenta é avisada uma vez só;
 cada mudança tem assinatura única por bloco de 3 h (tabela `clima_mudancas`);
 intervalo mínimo de **20 min** entre avisos e no máximo **3 por hora**; se o
 alerta/boletim do clima acabou de falar no mesmo minuto, o radar cala e apenas
-avança a referência; quem silenciou o chat não recebe.
+avança a referência; o mesmo boletim lido por métodos diferentes (o OCR erra
+diferente do HTML) é comparado por **semelhança**, então trocar de método não
+gera falso "boletim revisado"; quem silenciou o chat não recebe.
+
+### Leitura do painel da APPA: vários métodos, fallback automático
+
+O painel é uma página que se monta por JavaScript, e a ferramenta do Composio
+(`COMPOSIO_SEARCH_FETCH_URL_CONTENT`) **não roda JavaScript**: por isso ela
+voltava `results` vazio e o radar ficava sem o painel. Agora a leitura é
+**sempre feita pelo servidor** (`src/lib/appa/`), por estes métodos, **nesta
+ordem**, parando no primeiro que trouxer os dados:
+
+| # | Método | `metodo_leitura` | O que faz |
+|---|---|---|---|
+| 1 | **API** | `api` | lê direto os endpoints JSON do SIMPORT® de onde o painel bebe (previsão WRF, estação do porto, boletim); monta as mesmas tabelas do painel (de 2 em 2 h, 24 h à frente) |
+| 2 | **HTML** | `html` | HTTP direto na página oficial; extrai texto, tabelas e JSON incorporado (`__NEXT_DATA__`, `application/json`…); se a Simport trocar o token da API, **descobre o novo nos scripts do site** e lê a API com ele |
+| 3 | **Navegador automático** | `playwright` | Playwright + Chromium: espera o JavaScript montar a página (nunca a chama de "vazia" antes disso), rola até o fim, captura texto, tabelas, cartões e as respostas JSON (XHR) que a própria página recebeu; 2 tentativas de abrir e recarga se o painel não aparecer |
+| 4 | **Captura de tela + OCR** | `ocr` | tesseract.js em português lê a imagem da captura do método 3 (ou de um serviço de captura) e normaliza: chuva, chuva forte, tempestade, vento e velocidade, temperatura, pressão, umidade, previsão, horários e alertas; corrige erros típicos (`O nós`, `64 mm` por `6.4 mm`) e descarta valores impossíveis |
+| 5 | **Composio** | `composio` | método **adicional**, por último: vazio, erro ou timeout só viram uma linha de log |
+
+Resultado vazio, texto vazio, erro ou timeout de um método **não aparece como
+falha**: o próximo assume sozinho. Só quando **todos** falham a tela mostra o
+erro (com o motivo de cada método). A leitura parcial (só o tempo de agora) vale
+se nenhum método trouxer a previsão completa. Cada método tem prazo próprio e o
+ciclo tem um orçamento total (`APPA_ORCAMENTO_SEG`, 32 s), porque o cron tem 60 s.
+
+O restante do aplicativo consome **somente** este formato normalizado
+(`LeituraAppa`, `src/lib/appa/tipos.ts`):
+
+```json
+{
+  "fonte": "APPA",
+  "timestamp_leitura": "2026-10-03T11:20:00.000Z",
+  "atualizado_em": "2026-10-03T11:15:00.000Z",
+  "temperatura": "19°C",
+  "sensacao_termica": "21°C",
+  "chuva": "sem chuva significativa nas próximas 24 h (chance máxima de 38%)",
+  "chuva_forte": "não",
+  "tempestade": "sim · 04/10, madrugada e manhã · Atenção: O tempo permanece instável…",
+  "vento": "3 nós W (6 km/h) · máx. 7 nós às 14:00",
+  "umidade": "86%",
+  "pressao": "1017 hPa",
+  "alertas": ["04/10: Atenção: O tempo permanece instável…"],
+  "status": "sucesso",
+  "metodo_leitura": "api"
+}
+```
+
+**Log de diagnóstico:** cada tentativa de cada método gera uma linha, no console
+do servidor (`[appa] …`, `APPA_LOG=0` silencia) e num log rolante guardado no
+banco (últimas 60 linhas, mais um histórico das últimas 24 leituras):
+
+```
+[09:15:02] APPA · #1 API · FALHOU · 10,0 s · previsão WRF (chuva): sem resposta em 10 s · …
+[09:15:12] APPA · #2 HTML direto · VAZIO · 412 ms · a página não traz os dados no HTML … montado por JavaScript
+[09:15:24] APPA · #3 Navegador automático · SUCESSO · 11,8 s · agora · chuva 12 · vento 12 · boletim 2 · marés 4
+```
+
+**Tela do administrador** (`/admin`, cartão *Radar da previsão*): mostra
+**Painel APPA: conectado** (leitura pela API) ou **Painel APPA: leitura
+realizada** (outro método), o **Método de leitura** (API · HTML direto ·
+Navegador automático · OCR · Composio), a última leitura normalizada, os alertas
+e o log de diagnóstico. O erro **Painel APPA: sem leitura** só aparece quando
+todos os métodos falharam. Dois botões: **Verificar agora**
+(`POST /api/tempo/radar`) e **Ler painel agora**
+(`POST /api/tempo/radar?painel=1`: lê por todos os métodos, grava leitura e log,
+**não avisa ninguém** — serve para conferir na hora qual método está de pé).
+O painel `/admin → Integrações → Previsão do Tempo APPA` mostra o mesmo estado.
+
+#### Navegador automático e OCR (opcionais)
+
+Os métodos 1 e 2 não precisam de nada além do Node. O navegador (método 3) e o
+OCR (método 4) usam um Chromium, escolhido nesta ordem (o primeiro que subir vale):
+
+1. `APPA_BROWSER_WS` — navegador remoto por CDP (Browserless, Browserbase…): a
+   forma mais simples na Vercel;
+2. `APPA_CHROMIUM_PATH` — executável local (também aceita
+   `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, `CHROME_PATH`, `CHROMIUM_PATH`);
+3. **Vercel/AWS Lambda**: `@sparticuz/chromium-min` (já é dependência) baixa o
+   pacote do Chromium do GitHub na primeira leitura (`APPA_CHROMIUM_PACK_URL`
+   troca o endereço); ativa sozinho quando `VERCEL` ou `AWS_EXECUTION_ENV` existem;
+4. caminhos comuns do sistema (`/usr/bin/chromium`, `google-chrome`…);
+5. o Chromium instalado por `npx playwright install chromium`.
+
+A imagem do **Docker** já instala o Chromium (`--build-arg INSTALAR_CHROMIUM=0`
+desliga). Sem nenhum Chromium o método 3 falha com a mensagem
+"nenhum navegador disponível" e o fallback segue; o OCR então só funciona se
+`APPA_SCREENSHOT_URL` apontar para um serviço de captura de tela. O idioma do OCR
+(`@tesseract.js-data/por`) vai junto no pacote; sem ele o Tesseract baixa o
+arquivo na primeira leitura. `APPA_NAVEGADOR=0` desliga o navegador e o OCR.
+O `next.config.ts` manda para a Vercel os arquivos que o Playwright e o Tesseract
+carregam por caminho em tempo de execução (`outputFileTracingIncludes`): as rotas
+do radar (`/api/cron`, `/api/tempo/radar`, `/api/estado`, `/api/atualizar`) ficam
+com ~120 MB, abaixo do limite de 250 MB por função.
+No plano Hobby (cron 1×/dia) o navegador/OCR só rodam nesses ciclos do cron e no
+botão **Ler painel agora**; a API (método 1) cobre o resto.
 
 Tudo é opcional e configurável por variável de ambiente (veja `.env.example`):
 `CLIMA_MONITOR_ATIVO`, `CLIMA_MONITOR_MIN`, `CLIMA_MONITOR_PAINEL_MIN`,
-`CLIMA_MONITOR_SENSIBILIDADE` (baixa/média/alta), `CLIMA_MONITOR_AVISO_MIN` e
-`CLIMA_MONITOR_MAX_HORA`. Sem `COMPOSIO_API_KEY` o radar continua funcionando
-só com a API da Simport; com ela, lê também o painel inteiro.
+`CLIMA_MONITOR_SENSIBILIDADE` (baixa/média/alta), `CLIMA_MONITOR_AVISO_MIN`,
+`CLIMA_MONITOR_MAX_HORA` e as `APPA_*` da leitura do painel. Sem
+`COMPOSIO_API_KEY` o radar continua funcionando normalmente (o Composio é só o
+último método e a segunda opinião do tempo atual).
 
-O cartão *Radar da previsão* fica **somente na área do administrador**
-(`/admin`, logo abaixo do atalho do Monitor WhatsApp): mostra se está
-monitorando, a última leitura, a última mudança avisada, as fontes no ar e o
-diagnóstico do Composio, com o botão **Verificar agora**
-(`POST /api/tempo/radar`). A tela pública **Tempo** não exibe mais o cartão —
-o motorista continua recebendo os avisos no chat e por Push. As rotas
-`GET`/`POST /api/tempo/radar` exigem sessão de administrador. O painel
-`/admin → Integrações → Previsão do Tempo APPA` mostra o mesmo estado.
-
-Testes: `tsx --test tests/clima-monitor.test.ts` (puros: leitura do painel,
-comparação, sensibilidade e texto) e o trecho de ponta a ponta no banco
-`fila_push_test_*` (radar → chat → Push).
+Testes: `tsx --test tests/appa-leitor.test.ts` (parser, métodos, fallback, log),
+`tests/appa-radar.test.ts` (eventos do painel, texto do alerta, status da tela),
+`tests/clima-monitor.test.ts` (comparação e o trecho de ponta a ponta no banco
+`fila_push_test_*`: radar → chat → Push, com a API fora do ar e com todos os
+métodos falhando) e `tests/appa-navegador.test.ts` (Chromium e OCR de verdade;
+só roda com `APPA_CHROMIUM_PATH`).
 
 ## Filtro do grupo SEM APK (pelo servidor)
 
@@ -440,7 +547,8 @@ Não comite `.env` nem cole a `DATABASE_URL` no chat.
 | `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
-| `CLIMA_MONITOR_*` | não | radar da previsão: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (painel da APPA pelo Composio), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
+| `CLIMA_MONITOR_*` | não | radar da previsão: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (de quanto em quanto tempo o painel da APPA é relido; padrão 5), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
+| `APPA_*` | não | leitura do painel da APPA com fallback: `METODOS`, `NAVEGADOR`, `ORCAMENTO_SEG`, `TIMEOUT_*_SEG`, `BROWSER_WS`, `CHROMIUM_PATH`, `CHROMIUM_PACK_URL`, `SCREENSHOT_URL`, `OCR_LANG_PATH`, `LOG` |
 
 Segredos opcionais (Composio, WhatsApp, IA) podem ser cadastrados no `/admin`:
 ficam **cifrados no banco** e nunca são enviados ao navegador. As chaves do

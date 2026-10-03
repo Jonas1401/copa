@@ -78,3 +78,25 @@ DATABASE_URL="sua-connection-string-da-vercel" ./scripts/importar-banco.sh copal
 4. Depois de entrar, altere a senha e configure as integrações.
 
 **Não existe senha padrão embutida no código desta réplica.**
+
+---
+
+## 8. Radar da previsão: navegador automático e OCR (opcional)
+
+O radar lê o painel da APPA por vários métodos, com fallback automático (API →
+HTML → navegador automático → OCR → Composio). **A API da Simport basta para o
+dia a dia e não exige nenhuma configuração.** O navegador e o OCR são a rede de
+segurança para o dia em que a API mudar, e precisam de um Chromium:
+
+- **Vercel:** nada a fazer — o `@sparticuz/chromium-min` baixa o Chromium na
+  primeira leitura que precisar dele. Se preferir um navegador remoto (mais
+  rápido e sem download), defina `APPA_BROWSER_WS` (Browserless, Browserbase…).
+- **Docker:** a imagem já instala o Chromium (`--build-arg INSTALAR_CHROMIUM=0`
+  para não instalar).
+- **Servidor próprio:** instale o Chromium e, se necessário, defina
+  `APPA_CHROMIUM_PATH`.
+
+No `/admin`, o cartão *Radar da previsão* mostra **Painel APPA: conectado** (ou
+**leitura realizada**), o **Método de leitura** e o log de cada tentativa; o botão
+**Ler painel agora** confere na hora qual método está funcionando. Veja o `README.md`
+(seção *Leitura do painel da APPA*) e o `.env.example` para as variáveis `APPA_*`.

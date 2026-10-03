@@ -11,11 +11,13 @@
  * Tudo roda só no servidor: o token da Simport nunca vai para o navegador.
  */
 
-const SIMPORT_DADOS = "https://appa.cs.simport.com.br/api/v2/data";
-const SIMPORT_BOLETIM = "https://wfa.app.simport.com.br/api/calendar";
+// Exportados para a leitura do painel da APPA (`src/lib/appa`): o método "API"
+// usa os MESMOS endpoints e o mesmo token que a tela Tempo.
+export const SIMPORT_DADOS = "https://appa.cs.simport.com.br/api/v2/data";
+export const SIMPORT_BOLETIM = "https://wfa.app.simport.com.br/api/calendar";
 // O painel público da Simport envia este token a qualquer visitante; mesmo
 // assim ele fica só no servidor e pode ser trocado por variável de ambiente.
-const SIMPORT_TOKEN = process.env.SIMPORT_AUTH_TOKEN || "2CA5-BFD8-0F1C-597F";
+export const SIMPORT_TOKEN = process.env.SIMPORT_AUTH_TOKEN || "2CA5-BFD8-0F1C-597F";
 
 const LOCAL = { cidade: "Paranaguá", uf: "PR", lat: -25.5161, lon: -48.5225 };
 const FUSO = "America/Sao_Paulo";
@@ -164,17 +166,21 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 
 /* ----------------------------------------------------- códigos de ícone */
 // Simport usa os códigos da WeatherAPI (1000 = sol, 1063 = chuva fraca...).
+/** Códigos de trovoada e de chuva forte (também usados pela leitura do painel). */
+export const SIMPORT_COD_TEMPESTADE = [1087, 1273, 1276, 1279, 1282];
+export const SIMPORT_COD_CHUVA_FORTE = [1192, 1195, 1243, 1246];
+
 function doSimport(codigo: number, diurno: boolean): { icone: Icone; descricao: string } {
   if (codigo === 1000) return diurno ? { icone: "sol", descricao: "Ensolarado" } : { icone: "lua", descricao: "Céu limpo" };
   if (codigo === 1003) return { icone: diurno ? "sol-nuvem" : "lua-nuvem", descricao: "Parcialmente nublado" };
   if (codigo === 1006) return { icone: "nuvem", descricao: "Nublado" };
   if (codigo === 1009) return { icone: "nuvem", descricao: "Encoberto" };
   if ([1030, 1135, 1147].includes(codigo)) return { icone: "neblina", descricao: "Neblina" };
-  if ([1087, 1273, 1276, 1279, 1282].includes(codigo)) return { icone: "tempestade", descricao: "Trovoadas" };
+  if (SIMPORT_COD_TEMPESTADE.includes(codigo)) return { icone: "tempestade", descricao: "Trovoadas" };
   if ([1150, 1153, 1168, 1171, 1072].includes(codigo)) return { icone: "garoa", descricao: "Garoa" };
   if ([1063, 1180, 1183, 1240].includes(codigo)) return { icone: "chuva", descricao: "Chuva fraca" };
   if ([1186, 1189].includes(codigo)) return { icone: "chuva", descricao: "Chuva" };
-  if ([1192, 1195, 1243, 1246].includes(codigo)) return { icone: "chuva-forte", descricao: "Chuva forte" };
+  if (SIMPORT_COD_CHUVA_FORTE.includes(codigo)) return { icone: "chuva-forte", descricao: "Chuva forte" };
   return { icone: "nuvem", descricao: "Nublado" };
 }
 
