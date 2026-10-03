@@ -291,14 +291,56 @@ export async function composioConfigurado() {
 // dependem de conta conectada, mas a API pede um user_id).
 const USUARIO_SERVIDOR = "copalinks-servidor";
 
+/** Campos onde o Composio costuma devolver o conteúdo lido. */
+const CAMPOS_TEXTO = ["text", "content", "markdown", "markdown_content", "raw", "html", "body"] as const;
+
+/** Primeiro campo de texto preenchido de um objeto de resultado. */
+export function extrairTexto(o: unknown): string {
+  if (!o || typeof o !== "object") return "";
+  const j = o as Record<string, unknown>;
+  for (const campo of CAMPOS_TEXTO) {
+    const v = j[campo];
+    if (typeof v === "string" && v.trim()) return v;
+  }
+  // Às vezes o conteúdo vem um nível abaixo (ex.: { data: { text } }).
+  for (const valor of Object.values(j)) {
+    if (valor && typeof valor === "object" && !Array.isArray(valor)) {
+      const interno = extrairTexto(valor);
+      if (interno) return interno;
+    }
+  }
+  return "";
+}
+
 /**
- * Lê o texto (markdown) de páginas públicas pelo Composio
+ * Resumo curto do formato da resposta do Composio. Serve para diagnosticar
+ * quando a leitura vem vazia (ex.: página renderizada por JavaScript), sem
+ * expor nenhum segredo.
+ */
+export function descreverResposta(o: unknown): string {
+  if (!o || typeof o !== "object") return `resposta vazia (${typeof o})`;
+  const j = o as Record<string, unknown>;
+  const chaves = Object.keys(j).join(", ") || "sem chaves";
+  const res = (j.data as { results?: unknown[] } | undefined)?.results;
+  if (Array.isArray(res)) {
+    if (!res.length) return `results vazio (chaves: ${chaves})`;
+    const primeiro = res[0] as Record<string, unknown>;
+    const dentro = Object.entries(primeiro)
+      .map(([k, v]) => `${k}=${typeof v === "string" ? `${v.length}car` : typeof v}`)
+      .join(", ");
+    return `results[0]: ${dentro}`;
+  }
+  return `chaves: ${chaves}`;
+}
+
+/**
+ * Lê o conteúdo de páginas públicas pelo Composio
  * (COMPOSIO_SEARCH_FETCH_URL_CONTENT). Uso: reserva quando a leitura direta
- * falha.
+ * falha e leitura do painel da APPA pelo radar da previsão.
  */
 export async function lerPaginas(urls: string[], maxCaracteres = 20000) {
   const r = await chamar<{
-    data?: { results?: { id?: string; url?: string; text?: string }[] };
+    data?: { results?: Record<string, unknown>[] };
     successful?: boolean;
     error?: string | null;
   }>("/tools/execute/COMPOSIO_SEARCH_FETCH_URL_CONTENT", {
@@ -312,10 +354,16 @@ export async function lerPaginas(urls: string[], maxCaracteres = 20000) {
   if (r.successful === false) throw new ErroComposio(r.error ?? "Composio não conseguiu ler a página.", 502);
   const res = r.data?.results ?? [];
   // Devolve na mesma ordem pedida.
-  return urls.map((u) => {
-    const achado = res.find((x) => (x.id ?? x.url ?? "").replace(/\/$/, "") === u.replace(/\/$/, ""));
-    return { url: u, texto: achado?.text ?? "" };
+  const paginas = urls.map((u) => {
+    const achado = res.find(
+      (x) => String(x?.id ?? x?.url ?? "").replace(/\/$/, "") === u.replace(/\/$/, ""),
+    );
+    return { url: u, texto: extrairTexto(achado ?? res[urls.indexOf(u)]) };
   });
+  if (!paginas.some((p) => p.texto)) {
+    throw new ErroComposio(`Composio não devolveu texto das páginas (${descreverResposta(r)}).`, 502);
+  }
+  return paginas;
 }
 
 /* ------------------------------------- painel SIMPORT® lido pelo Composio */
@@ -339,10 +387,22 @@ export const SIMPORT_PAINEL_URL =
  * radar segue trabalhando com a API estruturada da Simport/Open-Meteo.
  */
 export async function painelSimportComposio(maxCaracteres = 14000): Promise<string> {
-  const [pagina] = await lerPaginas([SIMPORT_PAINEL_URL], maxCaracteres);
-  const texto = (pagina?.texto ?? "").trim();
-  if (!texto) throw new ErroComposio("Composio não devolveu o painel da Simport.", 502);
-  return texto;
+  // Alguns painéis só devolvem conteúdo na rota interna (/forecast); tenta as
+  // duas antes de desistir, para o radar não ficar sem o painel à toa.
+  const enderecos = [...new Set([SIMPORT_PAINEL_URL, SIMPORT_PAINEL_URL.replace(/\/$/, "") + "/forecast"])];
+  let ultimoErro: unknown = null;
+  for (const endereco of enderecos) {
+    try {
+      const [pagina] = await lerPaginas([endereco], maxCaracteres);
+      const texto = (pagina?.texto ?? "").trim();
+      if (texto) return texto;
+    } catch (e) {
+      ultimoErro = e;
+    }
+  }
+  throw ultimoErro instanceof ErroComposio
+    ? ultimoErro
+    : new ErroComposio("Composio não devolveu o painel da Simport.", 502);
 }
 
 export type ClimaComposio = {
