@@ -1,7 +1,9 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   serial,
   text,
@@ -328,3 +330,156 @@ export const monitorDeliveries = pgTable("monitor_deliveries", {
   index("monitor_deliveries_motorista_data_idx").on(t.motoristaId, t.criadoEm),
 ]);
 
+
+
+/* ========================== INTERNET / eSIM (admin piloto) ============== */
+
+/**
+ * Modelo privado de Internet/eSIM. A página e as rotas de consulta são admin-only
+ * durante o piloto; `esim_users.motorista_id` liga o cliente ao perfil CopaLinks.
+ */
+export const esimUsers = pgTable("esim_users", {
+  id: serial("id").primaryKey(),
+  motoristaId: integer("motorista_id").references(() => motoristas.id, { onDelete: "set null" }),
+  nome: text("name").notNull(),
+  email: text("email"),
+  telefone: text("phone"),
+  criadoEm: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [unique("esim_users_motorista_id_unique").on(t.motoristaId), index("esim_users_email_idx").on(t.email)]).enableRLS();
+
+export const esimPlans = pgTable("esim_plans", {
+  id: serial("id").primaryKey(),
+  providerPackageId: text("provider_package_id").notNull().unique(),
+  providerProductId: text("provider_product_id"),
+  providerProductCode: text("provider_product_code"),
+  providerProductName: text("provider_product_name").notNull(),
+  code: text("code"),
+  name: text("name").notNull(),
+  wholesalePrice: numeric("wholesale_price", { precision: 19, scale: 6 }).notNull(),
+  retailReferencePrice: numeric("retail_reference_price", { precision: 19, scale: 6 }),
+  currency: text("currency").notNull().default("USD"),
+  dataAmount: numeric("data_amount", { precision: 19, scale: 6 }),
+  dataUnit: text("data_unit"),
+  durationDays: integer("duration_days"),
+  source: text("source").notNull().default("nexa"), // nexa | test-fixture
+  available: boolean("available").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  syncedAt: timestamp("synced_at", { withTimezone: true }),
+  criadoEm: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("esim_plans_active_idx").on(t.active, t.available)]).enableRLS();
+
+export const esimOrders = pgTable("esim_orders", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => esimUsers.id),
+  planId: integer("plan_id").notNull().references(() => esimPlans.id),
+  status: text("status").notNull().default("AWAITING_PAYMENT"),
+  currency: text("currency").notNull().default("USD"),
+  costAmount: numeric("cost_amount", { precision: 19, scale: 6 }).notNull(),
+  amount: numeric("amount", { precision: 19, scale: 2 }).notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  providerOrderCode: text("provider_order_code").unique(),
+  providerCallbackUrl: text("provider_callback_url"),
+  providerStatusCode: integer("provider_status_code"),
+  errorCode: text("error_code"),
+  criadoEm: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("esim_orders_user_idx").on(t.userId, t.criadoEm), index("esim_orders_status_idx").on(t.status)]).enableRLS();
+
+export const esimPayments = pgTable("esim_payments", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull().references(() => esimOrders.id, { onDelete: "cascade" }).unique(),
+  gateway: text("gateway").notNull().default("unconfigured"),
+  gatewayPaymentId: text("gateway_payment_id").unique(),
+  method: text("method"), // pix | card; preenchido pelo gateway integrado
+  status: text("status").notNull().default("PENDING"),
+  amount: numeric("amount", { precision: 19, scale: 2 }).notNull(),
+  currency: text("currency").notNull().default("USD"),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  criadoEm: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("esim_payments_status_idx").on(t.status)]).enableRLS();
+
+export const esims = pgTable("esims", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => esimUsers.id),
+  orderId: integer("order_id").notNull().references(() => esimOrders.id, { onDelete: "cascade" }),
+  planId: integer("plan_id").notNull().references(() => esimPlans.id),
+  iccid: text("iccid").unique(),
+  status: text("status").notNull().default("PENDING"),
+  providerStatus: text("provider_status"),
+  qrCode: text("qr_code"),
+  qrUrl: text("qr_url"),
+  activationCode: text("activation_code"), // só salvar se a API devolver esse campo
+  installationUrl: text("installation_url"),
+  smDp: text("smdp"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  totalDataAmount: numeric("total_data_amount", { precision: 19, scale: 6 }),
+  totalDataUnit: text("total_data_unit"),
+  source: text("source").notNull().default("nexa"),
+  criadoEm: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("esims_user_idx").on(t.userId, t.criadoEm), index("esims_order_idx").on(t.orderId)]).enableRLS();
+
+export const esimUsage = pgTable("esim_usage", {
+  id: serial("id").primaryKey(),
+  esimId: integer("esim_id").notNull().references(() => esims.id, { onDelete: "cascade" }),
+  usedAmount: numeric("used_amount", { precision: 19, scale: 6 }),
+  remainingAmount: numeric("remaining_amount", { precision: 19, scale: 6 }),
+  dataUnit: text("data_unit"),
+  providerPayloadHash: text("provider_payload_hash"),
+  status: text("status").notNull(),
+  note: text("note").notNull().default(""),
+  consultadoEm: timestamp("queried_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("esim_usage_esim_idx").on(t.esimId, t.consultadoEm)]).enableRLS();
+
+export const esimTopups = pgTable("esim_topups", {
+  id: serial("id").primaryKey(),
+  esimId: integer("esim_id").notNull().references(() => esims.id, { onDelete: "cascade" }),
+  planId: integer("plan_id").references(() => esimPlans.id),
+  paymentId: integer("payment_id").references(() => esimPayments.id),
+  providerTopupId: text("provider_topup_id"),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  amount: numeric("amount", { precision: 19, scale: 2 }),
+  currency: text("currency").notNull().default("USD"),
+  status: text("status").notNull().default("PENDING"),
+  criadoEm: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("esim_topups_esim_idx").on(t.esimId, t.criadoEm)]).enableRLS();
+
+/** Recibos sem corpo nos endpoints de leitura: códigos QR nunca vão para a UI de webhooks. */
+export const esimWebhookEvents = pgTable("esim_webhook_events", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(), // nexaesim | payment-gateway
+  eventHash: text("event_hash").notNull(),
+  providerEventId: text("provider_event_id"),
+  providerOrderCode: text("provider_order_code"),
+  eventType: text("event_type"),
+  status: text("status").notNull().default("RECEIVED"),
+  result: text("result").notNull().default(""),
+  // Só callbacks NexaEsim verificados sem orderCode/pagamento confirmado ficam
+  // nesta coluna para reconciliação posterior; removido quando processado.
+  pendingPayload: jsonb("pending_payload"),
+  receivedAt: timestamp("received_at", { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+}, (t) => [
+  unique("esim_webhook_events_provider_hash_unique").on(t.provider, t.eventHash),
+  unique("esim_webhook_events_provider_event_unique").on(t.provider, t.providerEventId),
+  index("esim_webhook_events_status_idx").on(t.status, t.receivedAt),
+]).enableRLS();
+
+export const esimApiErrors = pgTable("esim_api_errors", {
+  id: serial("id").primaryKey(),
+  requestId: text("request_id").notNull(),
+  operation: text("operation").notNull(),
+  httpStatus: integer("http_status"),
+  providerErrorCode: text("provider_error_code"),
+  message: text("message").notNull(),
+  criadoEm: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("esim_api_errors_created_idx").on(t.criadoEm)]).enableRLS();
+
+export const esimSettings = pgTable("esim_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  atualizadoEm: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}).enableRLS();

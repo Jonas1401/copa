@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import CartaoNotificacoesAdmin from "@/components/admin/CartaoNotificacoesAdmin";
 import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
+import InternetEsimAdmin from "@/components/admin/InternetEsimAdmin";
 import {
   BellRing,
   Bot,
@@ -791,6 +792,7 @@ export default function AdminApp() {
           <>
             {/* nome e pontos de todos os motoristas (só o administrador vê) */}
             <CartaoMotoristasAdmin api={api} onSessaoExpirada={sair401} />
+            <InternetEsimAdmin api={api} onSessaoExpirada={sair401} />
 
             <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
               <button
