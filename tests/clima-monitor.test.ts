@@ -1,18 +1,26 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import {
   LIMIARES,
+  PROB_ENTRA_CHUVA,
+  PROB_SAI_CHUVA,
   TIPOS_RELEVANTES,
   assinaturaDoDia,
   configRadar,
   detectarMudancas,
+  evidenciaChuva,
+  evidenciaSemChuva,
   montarInstantaneo,
+  mudancaDeTransicaoChuva,
   mudancasRelevantes,
   normalizarTexto,
+  parseRegistroEstadoChuva,
   parsearPainelSimport,
+  proximoEstadoChuva,
   resetarTickRadar,
   textoMudancaPadrao,
   tickRadar,
+  type EstadoChuva,
   type InstantaneoClima,
   type Mudanca,
   type PainelSimport,
@@ -604,10 +612,111 @@ test("radar: normaliza texto do boletim (espaço, caixa e pontuação)", () => {
   assert.ok(LIMIARES.media.chuvaProb < LIMIARES.baixa.chuvaProb);
 });
 
+/* --------------------------------------------- situação da chuva (estado) */
+
+test("radar: evidência de chuva exige força (chance ≥ 50, volume, condição ou chovendo agora)", () => {
+  // Dia seco: nenhuma fonte aponta chuva.
+  assert.equal(evidenciaChuva(instantaneo({ chance: 10 })), false);
+  assert.equal(evidenciaSemChuva(instantaneo({ chance: 10 })), true);
+  // Chance na faixa de entra (≥ 50%) já é previsão de chuva.
+  assert.equal(evidenciaChuva(instantaneo({ chance: PROB_ENTRA_CHUVA })), true);
+  // Condição de chuva (gravidade 5) e volume também.
+  assert.equal(evidenciaChuva(instantaneo({ chance: 0, gravidade: 5 })), true);
+  assert.equal(evidenciaChuva(instantaneo({ chance: 0, mm: 2 })), true);
+  // Chuva medida agora (descrição da estação) conta como evidência.
+  const comChuvaAgora = instantaneo({ chance: 10 });
+  comChuvaAgora.agora = { ...comChuvaAgora.agora!, descricao: "Chuva moderada" };
+  assert.equal(evidenciaChuva(comChuvaAgora), true);
+  assert.equal(evidenciaSemChuva(comChuvaAgora), false);
+  // Medição do Composio chovendo (código 501 = chuva) também conta.
+  const cc = {
+    temperatura: 19, sensacao: 19, umidade: 95, ventoKmh: 10, rajadaKmh: 18,
+    ventoGraus: 135, nuvens: 90, codigo: 501, descricao: "chuva moderada",
+    medidoEm: Math.floor(Date.now() / 1000),
+  };
+  assert.equal(evidenciaChuva(montarInstantaneo(null, null, Date.now(), cc)), true);
+});
+
+test("radar: histerese — entre 30% e 50% a situação não mexe (não pinga aviso)", () => {
+  const indeciso = instantaneo({ chance: 40 });
+  assert.equal(evidenciaChuva(indeciso), false, "40% ainda não é previsão de chuva");
+  assert.equal(evidenciaSemChuva(indeciso), false, "40% ainda não é tempo firme");
+  // Quem estava sem chuva continua sem chuva; quem estava chovendo continua.
+  assert.equal(proximoEstadoChuva(indeciso, "sem-chuva"), "sem-chuva");
+  assert.equal(proximoEstadoChuva(indeciso, "chuva"), "chuva");
+  assert.ok(PROB_SAI_CHUVA < PROB_ENTRA_CHUVA, "as faixas formam uma banda morta");
+});
+
+test("radar: viradas de situação (sem-chuva → chuva e chuva → sem-chuva)", () => {
+  const seco = instantaneo({ chance: 10 });
+  const molhado = instantaneo({ chance: 80, gravidade: 5, mm: 3 });
+  // Estava sem chuva e a previsão passou a indicar chuva → vira.
+  assert.equal(proximoEstadoChuva(molhado, "sem-chuva"), "chuva");
+  // Estava chovendo e a previsão indica que vai limpar → vira.
+  assert.equal(proximoEstadoChuva(seco, "chuva"), "sem-chuva");
+  // Situação persiste: continua chovendo ou continua seco → não vira.
+  assert.equal(proximoEstadoChuva(molhado, "chuva"), "chuva");
+  assert.equal(proximoEstadoChuva(seco, "sem-chuva"), "sem-chuva");
+  // Primeira leitura adota o que as fontes dizem com clareza.
+  assert.equal(proximoEstadoChuva(molhado, null), "chuva");
+  assert.equal(proximoEstadoChuva(seco, null), "sem-chuva");
+  assert.equal(proximoEstadoChuva(instantaneo({ chance: 40 }), null), null);
+});
+
+test("radar: para SAIR da chuva, TODAS as fontes precisam mostrar tempo firme", () => {
+  // A API enxerga tempo limpo, mas a medição no porto segue chovendo.
+  const i = instantaneo({ chance: 5 });
+  i.agora = { ...i.agora!, descricao: "Chuva fraca" };
+  assert.equal(evidenciaSemChuva(i), false);
+  assert.equal(proximoEstadoChuva(i, "chuva"), "chuva", "ainda chovendo agora, não declara tempo limpo");
+  // Sem nenhuma fonte de previsão, não dá para afirmar que vai limpar.
+  const soMedicao = montarInstantaneo(null, null, Date.now(), null);
+  assert.equal(evidenciaSemChuva(soMedicao), false);
+});
+
+test("radar: a mudança da virada carrega antes/depois, assinatura fixa e gravidade", () => {
+  const seca = instantaneo({ chance: 10 });
+  const molhada = instantaneo({ chance: 80, gravidade: 5, mm: 3 });
+  const entra = mudancaDeTransicaoChuva("sem-chuva" as EstadoChuva, "chuva" as EstadoChuva, molhada);
+  assert.equal(entra.tipo, "chuva");
+  assert.match(entra.rotulo, /passou a indicar chuva/i);
+  assert.equal(entra.grave, true, "chuva chegando é mudança grave (fica na tela)");
+  assert.match(entra.assinatura, /^chuvaEstado:sem-chuva>chuva#/);
+  assert.match(entra.frase, /estava sem chuva/);
+  assert.ok(TIPOS_RELEVANTES.has(entra.tipo), "a virada acorda o celular");
+
+  const sai = mudancaDeTransicaoChuva("chuva" as EstadoChuva, "sem-chuva" as EstadoChuva, seca);
+  assert.match(sai.rotulo, /vai parar/i);
+  assert.equal(sai.grave, false);
+  assert.match(sai.assinatura, /^chuvaEstado:chuva>sem-chuva#/);
+  assert.match(sai.frase, /estava chovendo/);
+});
+
+test("radar: texto pronto usa ☀️ quando a chuva vai parar e 🌧️ quando chega", () => {
+  const seca = instantaneo({ chance: 10 });
+  const molhada = instantaneo({ chance: 80, gravidade: 5, mm: 3 });
+  const entra = mudancaDeTransicaoChuva("sem-chuva", "chuva", molhada);
+  const sai = mudancaDeTransicaoChuva("chuva", "sem-chuva", seca);
+  assert.match(textoMudancaPadrao([entra], null), /^🌧️/);
+  assert.match(textoMudancaPadrao([sai], null), /^☀️/);
+});
+
+test("radar: registro persistido da situação da chuva (parse tolerante)", () => {
+  const valido = JSON.stringify({ estado: "chuva", desde: 123, transicoes: 2, ultimaTransicaoEm: 456 });
+  const r = parseRegistroEstadoChuva(valido);
+  assert.equal(r?.estado, "chuva");
+  assert.equal(r?.transicoes, 2);
+  assert.equal(r?.ultimaTransicaoEm, 456);
+  assert.equal(parseRegistroEstadoChuva(null), null);
+  assert.equal(parseRegistroEstadoChuva("{"), null);
+  assert.equal(parseRegistroEstadoChuva(JSON.stringify({ estado: "nublado", desde: 1 })), null);
+  assert.equal(parseRegistroEstadoChuva(JSON.stringify({ estado: "chuva" })), null);
+});
+
 /* ------------------------------------------------- ponta a ponta (banco) */
 
 test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por Push", { skip: !local }, async () => {
-  const { db, pool } = await import("../src/db");
+  const { db } = await import("../src/db");
   const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
   const { inArray } = await import("drizzle-orm");
   const { garantirTabelas } = await import("../src/lib/estado");
@@ -705,6 +814,7 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
         "clima_monitor_ultima",
         "clima_monitor_painel",
         "clima_monitor_semeado",
+        "clima_estado_chuva",
         "notificacoes_cota",
       ]),
     );
@@ -817,6 +927,133 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     globalThis.fetch = fetchReal;
     delete process.env.COMPOSIO_API_KEY;
     delete process.env.CLIMA_MONITOR_ATIVO;
-    await pool.end();
   }
+});
+
+test("radar: situação da chuva — avisa só na virada, não repete enquanto persiste", { skip: !local }, async () => {
+  const { db } = await import("../src/db");
+  const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
+  const { eq, inArray } = await import("drizzle-orm");
+  const { garantirTabelas } = await import("../src/lib/estado");
+  const { verificarMudancasPrevisao } = await import("../src/lib/clima-monitor");
+  const webpush = (await import("web-push")).default;
+
+  const chaves = webpush.generateVAPIDKeys();
+  process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
+  process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
+  delete process.env.COMPOSIO_API_KEY;
+  delete process.env.CLIMA_MONITOR_ATIVO;
+
+  const pushes: string[] = [];
+  Object.defineProperty(webpush, "sendNotification", {
+    configurable: true,
+    value: async (_s: unknown, c: string) => {
+      pushes.push(JSON.parse(c).title);
+      return { statusCode: 201 };
+    },
+  });
+
+  // Sem rede: painel da APPA e afins ficam fora do ar — o radar trabalha só
+  // com a previsão (SIMPORT) que o teste injeta.
+  const fetchReal = globalThis.fetch;
+  globalThis.fetch = async () => new Response("indisponível", { status: 503 });
+
+  const lerChuva = async () => {
+    const [l] = await db.select().from(configuracao).where(eq(configuracao.chave, "clima_estado_chuva")).limit(1);
+    return l ? (JSON.parse(l.valor) as { estado: string; transicoes: number }) : null;
+  };
+
+  try {
+    await garantirTabelas();
+    await db.delete(climaMudancas);
+    await db.delete(chatMensagens);
+    await db.delete(configuracao).where(
+      inArray(configuracao.chave, [
+        "clima_monitor_instantaneo",
+        "clima_monitor_ultima",
+        "clima_monitor_painel",
+        "clima_monitor_painel_erro",
+        "clima_monitor_semeado",
+        "clima_estado_chuva",
+        "notificacoes_cota",
+      ]),
+    );
+    await db.delete(subscriptions);
+    const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
+    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
+
+    // 1) ☀️ Estava sem chuva: a 1ª leitura só registra a situação (semeia).
+    const r1 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 10 }) });
+    assert.equal(r1.postou, false);
+    assert.match(r1.motivo, /primeira leitura/i);
+    assert.equal((await lerChuva())?.estado, "sem-chuva", "situação inicial registrada sem avisar");
+
+    // 2) 🌧️ A previsão passa a indicar chuva: UM alerta.
+    const r2 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 80, gravidade: 5, mm: 3, rajada: 55 }) });
+    assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
+    assert.match(r2.motivo, /chuva: sem-chuva → chuva/i);
+    const msgs2 = await db.select().from(chatMensagens);
+    assert.equal(msgs2.length, 1, "uma mensagem para a virada");
+    assert.match(msgs2[0].texto, /estava sem chuva|passou a indicar chuva/i);
+    assert.equal(pushes.length, 1, "Push da virada");
+    assert.equal((await lerChuva())?.estado, "chuva", "situação notificada fica registrada");
+    assert.equal((await lerChuva())?.transicoes, 1);
+    const assinaturas2 = (await db.select().from(climaMudancas)).map((x) => x.assinatura);
+    assert.ok(assinaturas2.some((a) => a.includes("chuvaEstado:sem-chuva>chuva")), "virada registrada no histórico");
+
+    // 3) 🌧️ Continua chovendo e a previsão segue chuvosa (até piora): NÃO repete.
+    const r3 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 95, gravidade: 5, mm: 8, rajada: 55 }) });
+    assert.equal(r3.postou, false, `motivo: ${r3.motivo}`);
+    assert.equal((await db.select().from(chatMensagens)).length, 1, "sem mensagem repetida");
+    assert.equal(pushes.length, 1, "sem Push repetido");
+    assert.equal((await lerChuva())?.estado, "chuva");
+
+    // 4) ☀️→🌧️ Oscilação DENTRO da banda (40%): a situação não mexe e a
+    //    mudança numérica fica calada — proteção contra aviso pingado.
+    const r4 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 40, gravidade: 5, mm: 8, rajada: 55 }) });
+    assert.equal(r4.postou, false, `motivo: ${r4.motivo}`);
+    assert.equal((await lerChuva())?.estado, "chuva", "dentro da banda, o estado não mexe");
+    assert.equal((await db.select().from(chatMensagens)).length, 1);
+
+    // 5) ☀️ Estava chovendo e a previsão indica que vai limpar: UM alerta.
+    const r5 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 10 }) });
+    assert.equal(r5.postou, true, `motivo: ${r5.motivo}`);
+    assert.match(r5.motivo, /chuva: chuva → sem-chuva/i);
+    const msgs5 = await db.select().from(chatMensagens);
+    assert.equal(msgs5.length, 2, "uma mensagem para a segunda virada");
+    assert.match(msgs5[1].texto, /estava chovendo|vai parar|tempo abre/i);
+    assert.match(msgs5[1].texto, /☀️/);
+    assert.equal(pushes.length, 2);
+    assert.equal((await lerChuva())?.estado, "sem-chuva");
+    assert.equal((await lerChuva())?.transicoes, 2);
+
+    // 6) ☀️ Continua sem chuva: NÃO repete.
+    const r6 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 5 }) });
+    assert.equal(r6.postou, false, `motivo: ${r6.motivo}`);
+    assert.equal((await db.select().from(chatMensagens)).length, 2);
+    assert.equal(pushes.length, 2);
+
+    // 7) 🌧️ Nova virada de verdade (voltou a chover): volta a avisar.
+    const r7 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 85, gravidade: 5, mm: 5, rajada: 50 }) });
+    assert.equal(r7.postou, true, `motivo: ${r7.motivo}`);
+    assert.equal((await db.select().from(chatMensagens)).length, 3);
+    assert.equal(pushes.length, 3);
+    assert.equal((await lerChuva())?.estado, "chuva");
+    const assinaturas7 = (await db.select().from(climaMudancas)).map((x) => x.assinatura);
+    assert.ok(assinaturas7.filter((a) => a.includes("chuvaEstado:")).length >= 3, "cada virada fica registrada");
+
+    // Cada virada fica registrada UMA vez no histórico (nada de assinatura repetida).
+    const viradas = assinaturas7.filter((a) => a.includes("chuvaEstado:"));
+    assert.equal(new Set(viradas).size, viradas.length, "nenhuma virada registrada duas vezes");
+  } finally {
+    globalThis.fetch = fetchReal;
+    delete process.env.COMPOSIO_API_KEY;
+  }
+});
+
+// O banco de teste é compartilhado pelos testes de ponta a ponta do arquivo:
+// o pool fecha UMA vez, depois de todos (fechar no meio derruba os próximos).
+after(async () => {
+  const { pool } = await import("../src/db");
+  await pool.end().catch(() => null);
 });

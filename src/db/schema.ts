@@ -66,8 +66,10 @@ export const alertasMotorista = pgTable("alertas_motorista", {
 }, (t) => [index("alertas_motorista_motorista_idx").on(t.motoristaId)]);
 
 // Avisos de navios de fertilizantes já enviados (cada evento sai uma vez só).
-// chave: "P:<programação>" programado · "M:<programação>:<data hora>" manobra
-// confirmada · "A:<programação>" atracado.
+// chave: "P:<programação>:<berço>" programado · "M:<programação>:<data hora>"
+// manobra confirmada · "A:<programação>" atracado · "S:<programação>" saiu ·
+// "E:<programação>:<ETB>" previsão de atracação notificada (a mais nova serve
+// de referência para medir a próxima mudança de ETB).
 export const naviosAvisos = pgTable("navios_avisos", {
   chave: text("chave").primaryKey(),
   navio: text("navio").notNull(),

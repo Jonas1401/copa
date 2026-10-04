@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { desc, eq, inArray, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { chatMensagens, configuracao, naviosAvisos } from "@/db/schema";
 import { notificarMensagemChat } from "@/lib/chat-push";
@@ -21,19 +21,34 @@ import {
 /**
  * Avisos de navios de FERTILIZANTES (chamado pelo /api/cron).
  *
- * Três momentos, cada um avisado uma única vez por navio:
+ * Quatro novidades, cada uma avisada uma única vez por navio:
  *   1. programado para atracar (APPA → PROGRAMADOS: berço definido);
  *   2. atracação confirmada pela praticagem (SINPRAPAR, manobra EA/AT);
- *   3. atracou (APPA → ATRACADOS).
+ *   3. atracou (APPA → ATRACADOS);
+ *   4. previsão de atracação (ETB) mudou MUITO (≥ NAVIOS_ETB_DELTA_MIN,
+ *      padrão 120 min) em relação à última previsão notificada.
  * O aviso vira mensagem no chat como "🚢 Navios no Porto" e sai por Web Push
  * (quem silenciou o chat não recebe). O texto é escrito pela IA (Gemini pelo
  * Composio) com tom humano e análise da maré; se a IA falhar, usa um modelo
  * pronto. Na 1ª execução só registra o que já existe (não dispara nada antigo).
  *
+ * PRINCÍPIO GERAL (o mesmo do radar da previsão): só notifica MUDANÇA
+ * RELEVANTE de status/previsão — navio novo, mudança de situação (programado,
+ * confirmado, atracou, saiu) ou alteração significativa do ETB. A mesma
+ * informação nunca repete: cada evento notificado fica registrado em
+ * `navios_avisos` (chave única) e pequenos ajustes de ETB não viram aviso —
+ * a comparação é sempre contra a última previsão NOTIFICADA, então a deriva
+ * acumulada ainda é pega, sem pingar notificação a cada atualização.
+ *
  * ANTIESCESSO (veja também `src/lib/notificacoes-cota.ts`):
  *   - LOTE: quando dois ou mais navios têm novidade no mesmo ciclo, sai UMA
  *     mensagem (e UMA notificação) com todos eles — nada de três avisos
  *     seguidos no mesmo minuto;
+ *   - REGISTRO: toda novidade notificada vira chave em `navios_avisos`; a
+ *     mesma informação nunca é avisada duas vezes (proteção contra repetição);
+ *   - ETB: deriva pequena do horário previsto NÃO avisa — só a mudança
+ *     acumulada ≥ `NAVIOS_ETB_DELTA_MIN` (padrão 120 min) contra a última
+ *     previsão notificada;
  *   - COTA: `NAVIOS_AVISO_MIN` (padrão 20 min) entre avisos, no máximo
  *     `NAVIOS_MAX_HORA` (3) por hora e `NAVIOS_MAX_DIA` (8) por dia;
  *   - URGENTE: "atracou" e "despachado" (o navio já está no berço ou já saiu)
@@ -50,12 +65,46 @@ const MAX_POR_CICLO = 3;
 
 export type EventoNavio = {
   chave: string;
-  tipo: "programado" | "manobra" | "atracado" | "saiu";
+  tipo: "programado" | "manobra" | "atracado" | "saiu" | "etb";
   navio: NavioLineup;
   manobra: Manobra | null;
+  /** ETB anterior (o último notificado), quando o evento é reprogramação. */
+  etbAnterior?: string;
 };
 
 const CONFIRMADA = /CONFIRMADA|PR[ÁA]TICO/i;
+
+/** Delta mínimo (minutos) na previsão de atracação para virar aviso. */
+export const ETB_DELTA_MIN_PADRAO = 120;
+
+export function etbDeltaMin(ambiente: Record<string, string | undefined> = process.env): number {
+  const n = Number(String(ambiente.NAVIOS_ETB_DELTA_MIN ?? "").trim());
+  return Number.isFinite(n) && n > 0 ? n : ETB_DELTA_MIN_PADRAO;
+}
+
+/**
+ * Converte o ETB do line-up ("05/10 08:00", com ou sem ano) em data, para
+ * comparar previsões. Sem ano na fonte, assume o ano atual — e o próximo se o
+ * resultado ficar mais de 6 meses no passado (virada de dezembro → janeiro).
+ * Devolve null quando não dá para entender o horário.
+ */
+export function parseEtb(bruto: string | null | undefined, agora: Date = new Date()): Date | null {
+  const s = String(bruto ?? "").trim();
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2})[:hH](\d{2})/);
+  if (!m) return null;
+  const dia = Number(m[1]);
+  const mes = Number(m[2]);
+  const hora = Number(m[4]);
+  const min = Number(m[5]);
+  if (dia < 1 || dia > 31 || mes < 1 || mes > 12 || hora > 23 || min > 59) return null;
+  const ano = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : agora.getUTCFullYear();
+  let d = new Date(Date.UTC(ano, mes - 1, dia, hora, min));
+  if (Number.isNaN(d.getTime())) return null;
+  if (!m[3] && agora.getTime() - d.getTime() > 180 * 86_400_000) {
+    d = new Date(Date.UTC(ano + 1, mes - 1, dia, hora, min));
+  }
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 /**
  * Eventos atuais dos navios de FERTILIZANTES (sem repetir o mesmo navio).
@@ -64,6 +113,10 @@ const CONFIRMADA = /CONFIRMADA|PR[ÁA]TICO/i;
  * O aviso de "programado" exige BERÇO DEFINIDO — navio sem berço ainda não é
  * novidade útil para o motorista. A chave leva o berço, então uma mudança de
  * berço do mesmo navio também vira novidade (avisada uma vez).
+ *
+ * O evento `etb` carrega o VALOR da previsão de atracação na chave
+ * (`E:<programação>:<ETB>`); quem decide se a mudança é grande o bastante
+ * para avisar é `decidirEventosEtb` (comparando com a última notificada).
  */
 export function eventosFertilizantes(lineup: NavioLineup[], manobras: Manobra[]): EventoNavio[] {
   const vistos = new Set<string>();
@@ -83,6 +136,11 @@ export function eventosFertilizantes(lineup: NavioLineup[], manobras: Manobra[])
     if (n.secao !== "ATRACADOS" && n.secao !== "DESPACHADOS" && m && (m.codigo === "EA" || m.codigo === "AT") && CONFIRMADA.test(m.situacao)) {
       eventos.push({ chave: `M:${n.programacao}:${m.data} ${m.hora}`, tipo: "manobra", navio: n, manobra: m });
     }
+    // Previsão de atracação (ETB) dos navios que ainda não atracaram: cada
+    // valor vira candidato; só muda o que for mudança significativa.
+    if (n.secao !== "ATRACADOS" && n.secao !== "DESPACHADOS" && bercoDefinido(n.berco) && parseEtb(n.etb)) {
+      eventos.push({ chave: `E:${n.programacao}:${n.etb.trim()}`, tipo: "etb", navio: n, manobra: m });
+    }
   }
   return eventos;
 }
@@ -91,7 +149,8 @@ function fatos(ev: EventoNavio, mares: Mare[]) {
   const n = ev.navio;
   const m = ev.manobra;
   return [
-    `Evento: ${ev.tipo === "programado" ? "programado para atracar (berço definido)" : ev.tipo === "manobra" ? "atracação confirmada pela praticagem" : ev.tipo === "saiu" ? "despachado (já desatracou e saiu do porto)" : "atracou"}`,
+    `Evento: ${ev.tipo === "programado" ? "programado para atracar (berço definido)" : ev.tipo === "manobra" ? "atracação confirmada pela praticagem" : ev.tipo === "saiu" ? "despachado (já desatracou e saiu do porto)" : ev.tipo === "etb" ? "previsão de atracação (ETB) reprogramada" : "atracou"}`,
+    ev.tipo === "etb" ? `ETB anterior: ${ev.etbAnterior ?? "?"} · ETB novo: ${n.etb}` : "",
     `Navio: ${n.nome} (IMO ${n.imo || "?"}, DWT ${n.dwt || "?"})`,
     `Porto: ${n.porto} · Berço ${n.berco || "?"}`,
     `Carga: ${n.mercadoria}${n.toneladas != null ? ` · ${fmtTon(n.toneladas)} previstas` : " · tonelagem NÃO informada pela fonte (não cite nenhum número de toneladas)"}`,
@@ -112,6 +171,9 @@ export function textoPadrao(ev: EventoNavio, mares: Mare[]) {
   const mare = mares.find((x) => x.tipo === "preamar");
   const dicaMare = mare ? ` Próxima preamar por volta das ${mare.hora.slice(11, 16)}.` : "";
   const m = ev.manobra;
+  if (ev.tipo === "etb") {
+    return `🚢 A previsão de atracação do ${n.nome} mudou: era ${ev.etbAnterior ?? "?"} e agora é ${n.etb}, em ${onde}, com ${carga}. Programe-se pelo novo horário.`;
+  }
   if (ev.tipo === "saiu") {
     return `⚓ O ${n.nome} já foi despachado e deixou ${n.porto}${n.berco ? `, berço ${n.berco}` : ""}. A descarga de ${n.mercadoria.toLowerCase()} desse navio encerrou.`;
   }
@@ -131,6 +193,9 @@ export function resumoEvento(ev: EventoNavio): string {
   const carga = `${n.mercadoria.toLowerCase()}${n.toneladas != null ? ` (${fmtTon(n.toneladas)})` : ""}`;
   const onde = `${n.porto}, berço ${n.berco || "a definir"}`;
   const m = ev.manobra;
+  if (ev.tipo === "etb") {
+    return `${n.nome} (${carga}) teve a previsão de atracação reprogramada de ${ev.etbAnterior ?? "?"} para ${n.etb} em ${onde}`;
+  }
   if (ev.tipo === "saiu") {
     return `${n.nome} foi despachado e deixou ${n.porto} — a descarga de ${n.mercadoria.toLowerCase()} encerrou`;
   }
@@ -210,6 +275,59 @@ async function gravarConfig(chave: string, valor: string) {
 }
 
 /**
+ * Decide quais eventos de ETB viram aviso. A comparação é SEMPRE contra a
+ * última previsão NOTIFICADA (a linha `E:<programação>:<ETB>` mais nova em
+ * `navios_avisos`):
+ *   - navio ainda não anunciado (sem registro `P:`) → sai: o evento
+ *     "programado" apresenta o navio já com o ETB;
+ *   - sem linha de referência → registra o ETB atual em silêncio (referência
+ *     para o futuro) e não avisa;
+ *   - deriva menor que `NAVIOS_ETB_DELTA_MIN` → sai sem registrar nada: a
+ *     referência continua sendo a última previsão notificada, então a deriva
+ *     ACUMULADA ainda será pega quando cruzar o limite;
+ *   - mudança ≥ limite → fica no lote (o registro do aviso vira a nova
+ *     referência, e o mesmo ETB nunca é avisado duas vezes — chave única).
+ */
+async function decidirEventosEtb(novos: EventoNavio[], deltaMin: number): Promise<EventoNavio[]> {
+  const resultado: EventoNavio[] = [];
+  for (const e of novos) {
+    if (e.tipo !== "etb") {
+      resultado.push(e);
+      continue;
+    }
+    try {
+      const prog = e.navio.programacao;
+      const [anunciado] = await db
+        .select({ chave: naviosAvisos.chave })
+        .from(naviosAvisos)
+        .where(like(naviosAvisos.chave, `P:${prog}:%`))
+        .limit(1);
+      if (!anunciado) continue;
+      const [base] = await db
+        .select({ chave: naviosAvisos.chave })
+        .from(naviosAvisos)
+        .where(like(naviosAvisos.chave, `E:${prog}:`.replace(/[_%]/g, "\\$&") + "%"))
+        .orderBy(desc(naviosAvisos.criadoEm))
+        .limit(1);
+      if (!base) {
+        // Primeira leitura de ETB depois do navio anunciado: referência calada.
+        await db.insert(naviosAvisos).values({ chave: e.chave, navio: e.navio.nome }).onConflictDoNothing();
+        continue;
+      }
+      const etbBase = base.chave.slice(`E:${prog}:`.length);
+      const antes = parseEtb(etbBase);
+      const depois = parseEtb(e.navio.etb);
+      if (!antes || !depois) continue;
+      if (Math.abs(depois.getTime() - antes.getTime()) < deltaMin * 60_000) continue;
+      resultado.push({ ...e, etbAnterior: etbBase });
+    } catch {
+      // Sem decisão para este ETB: antes calado do que aviso errado.
+    }
+  }
+  return resultado;
+}
+
+/**
  * Nunca joga erro para cima: o cron não pode quebrar por causa dos navios.
  * `forcar` ignora o intervalo de 5 min (testes / admin).
  */
@@ -242,8 +360,20 @@ export async function verificarNaviosFertilizantes(opcoes: { forcar?: boolean } 
     }
     if (!novos.length) return { rodou: true, motivo: "nada novo", eventos: eventos.length, avisados: [] };
 
+    // ETB: só vira aviso a mudança significativa contra a última previsão
+    // notificada — deriva pequena sai calada (e não vira referência nova).
+    const decididos = await decidirEventosEtb(novos, etbDeltaMin());
+    if (!decididos.length) {
+      return {
+        rodou: true,
+        motivo: "nada novo (ETB sem mudança significativa)",
+        eventos: eventos.length,
+        avisados: [],
+      };
+    }
+
     // Um lote por ciclo: várias novidades viram UMA mensagem e UMA notificação.
-    const lote = novos.slice(0, MAX_POR_CICLO);
+    const lote = decididos.slice(0, MAX_POR_CICLO);
     // "Atracou" e "despachado" mudam a fila de trabalho: são urgentes e não
     // esperam a cota (só não saem em cima do aviso anterior).
     const urgente = lote.some((e) => e.tipo === "atracado" || e.tipo === "saiu");
