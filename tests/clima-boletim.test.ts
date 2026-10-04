@@ -108,15 +108,15 @@ function previsao(opcoes: { nivel?: Previsao["alerta"]["nivel"]; tempoRuim?: boo
   };
 }
 
-test("boletim: um turno por bloco de 6 h no horário de Brasília", () => {
-  // 03:00Z = 00h em Brasília (UTC-3).
+test("boletim: um turno por bloco (manhã 06h, noite 18h) no horário de Brasília — plano sem excesso v2", () => {
+  // 03:00Z = 00h em Brasília (UTC-3). v2: só 2 turnos (06h manhã, 18h noite)
   const casos: [string, string][] = [
-    ["2026-10-02T03:00:00Z", "madrugada"],
-    ["2026-10-02T08:59:00Z", "madrugada"], // 05:59
+    ["2026-10-02T03:00:00Z", "noite"], // 00:00 -> ainda noite do dia anterior
+    ["2026-10-02T08:59:00Z", "noite"], // 05:59 -> ainda noite
     ["2026-10-02T09:00:00Z", "manhã"], // 06:00
     ["2026-10-02T14:59:00Z", "manhã"], // 11:59
-    ["2026-10-02T15:00:00Z", "tarde"], // 12:00
-    ["2026-10-02T20:59:00Z", "tarde"], // 17:59
+    ["2026-10-02T15:00:00Z", "manhã"], // 12:00 -> ainda manhã (tarde removida)
+    ["2026-10-02T20:59:00Z", "manhã"], // 17:59 -> ainda manhã
     ["2026-10-02T21:00:00Z", "noite"], // 18:00
     ["2026-10-03T02:59:00Z", "noite"], // 23:59 do dia 02
   ];
@@ -128,11 +128,11 @@ test("boletim: um turno por bloco de 6 h no horário de Brasília", () => {
     if (iso.startsWith("2026-10-02")) assert.ok(t.chave.startsWith("2026-10-02:"), t.chave);
     if (iso.startsWith("2026-10-03T02")) assert.ok(t.chave.startsWith("2026-10-02:"), t.chave);
   }
-  assert.equal(TURNOS.length, 4);
+  assert.equal(TURNOS.length, 2);
 });
 
 test("boletim: texto pronto usa só dados reais e cabe na notificação", () => {
-  const t = TURNOS[1]; // manhã
+  const t = TURNOS[0]; // manhã
   const texto = textoBoletimPadrao(previsao(), t);
   assert.match(texto, /^Bom dia!/);
   assert.match(texto, /21°C/);

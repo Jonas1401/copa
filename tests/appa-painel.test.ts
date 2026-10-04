@@ -507,7 +507,7 @@ test("painel: erro detalhado SÓ quando todos os métodos falham", async () => {
   assert.match(r.erro, /OCR/);
   assert.match(r.erro, /Composio/);
   assert.equal(logs.length >= 5, true, "cada tentativa tem a sua linha de log");
-  assert.match(logs[0], /\[radar-appa\] método 1\/5/);
+  assert.match(logs[0], /\[radar-appa[^\]]*\] método 1\/5/);
   assert.match(resumoDasTentativas(r.tentativas), /sem leitura/);
 });
 

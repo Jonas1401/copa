@@ -18,23 +18,35 @@ import {
 } from "@/lib/navios";
 
 /**
- * Avisos de navios de FERTILIZANTES (chamado pelo /api/cron).
+ * Avisos de navios de FERTILIZANTES (chamado pelo /api/cron) — PLANO SEM EXCESSO v2.
  *
  * Três momentos, cada um avisado uma única vez por navio:
- *   1. programado para atracar (APPA → PROGRAMADOS: berço definido);
+ *   1. programado para atracar (APPA → PROGRAMADOS: berço definido + ETB nas próximas 72h);
  *   2. atracação confirmada pela praticagem (SINPRAPAR, manobra EA/AT);
  *   3. atracou (APPA → ATRACADOS).
  * O aviso vira mensagem no chat como "🚢 Navios no Porto" e sai por Web Push
  * (quem silenciou o chat não recebe). O texto é escrito pela IA (Gemini pelo
  * Composio) com tom humano e análise da maré; se a IA falhar, usa um modelo
  * pronto. Na 1ª execução só registra o que já existe (não dispara nada antigo).
+ *
+ * PLANO ANTI-EXCESSO v2 (2026):
+ *   - Antes: intervalo 5min, até 3 avisos separados por ciclo, sem filtro ETB = até ~30/dia.
+ *   - Agora: intervalo 60min, máx 2 por ciclo AGRUPADOS em 1 mensagem, filtro ETB 72h,
+ *     máx 6/dia. Se 2+ navios surgirem juntos, sai 1 resumo em vez de 2-3 notificações.
+ *   - Eficaz: motorista sabe que navio de fertilizante vem, mas sem spam de navio distante.
  */
 
 export const NOME_NAVIOS = "🚢 Navios no Porto";
 const CHAVE_SEMEADO = "navios_semeado";
 const CHAVE_ULTIMA = "navios_ultima_verificacao";
-const INTERVALO_MS = 5 * 60_000;
-const MAX_POR_CICLO = 3;
+/** 60 min entre verificações — navio não muda a cada 5 min (anti-spam). */
+const INTERVALO_MS = 60 * 60_000;
+/** Máx 2 eventos por ciclo, mas agrupados em 1 mensagem (antes 3 separados). */
+const MAX_POR_CICLO = 2;
+/** Só avisa programado com ETB nas próximas 72h (navio distante não gera spam). */
+const ETB_JANELA_H = 72;
+/** Teto diário anti-excesso para navios */
+const MAX_POR_DIA = 6;
 
 export type EventoNavio = {
   chave: string;
@@ -53,6 +65,21 @@ const CONFIRMADA = /CONFIRMADA|PR[ÁA]TICO/i;
  * novidade útil para o motorista. A chave leva o berço, então uma mudança de
  * berço do mesmo navio também vira novidade (avisada uma vez).
  */
+function etbDentroJanela(etb: string | null, horas: number): boolean {
+  if (!etb) return true; // sem ETB informado: não filtra (pode ser relevante)
+  // ETB formato "02/10/2026 08:00" ou "02/10 08:00"
+  const m = etb.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s+(\d{1,2}):(\d{2})/);
+  if (!m) return true;
+  const dia = Number(m[1]); const mes = Number(m[2]); const ano = m[3] ? Number(m[3]) : new Date().getFullYear();
+  const hora = Number(m[4]); const min = Number(m[5]);
+  const dt = new Date(ano, mes - 1, dia, hora, min);
+  if (isNaN(dt.getTime())) return true;
+  const diffH = (dt.getTime() - Date.now()) / 3600000;
+  // Passado = sempre relevante (atraso/ops), futuro só até +janela (72h)
+  if (diffH < 0) return true;
+  return diffH <= horas;
+}
+
 export function eventosFertilizantes(lineup: NavioLineup[], manobras: Manobra[]): EventoNavio[] {
   const vistos = new Set<string>();
   const eventos: EventoNavio[] = [];
@@ -62,8 +89,8 @@ export function eventosFertilizantes(lineup: NavioLineup[], manobras: Manobra[])
     if (vistos.has(id)) continue;
     vistos.add(id);
     const m = manobraDo(n, manobras);
-    // Programado para atracar: só com berço definido pela APPA.
-    if (n.secao === "PROGRAMADOS" && bercoDefinido(n.berco)) {
+    // Programado para atracar: só com berço definido + ETB nas próximas 72h (anti-spam).
+    if (n.secao === "PROGRAMADOS" && bercoDefinido(n.berco) && etbDentroJanela(n.etb ?? null, ETB_JANELA_H)) {
       eventos.push({ chave: `P:${n.programacao}:${n.berco.trim()}`, tipo: "programado", navio: n, manobra: m });
     }
     if (n.secao === "ATRACADOS") eventos.push({ chave: `A:${n.programacao}`, tipo: "atracado", navio: n, manobra: m });
@@ -144,6 +171,33 @@ export function tonelagemConfere(texto: string, navio: Pick<NavioLineup, "tonela
   return citados.every((c) => !Number.isNaN(c) && permitidos.some((p) => Math.abs(p - c) <= 1));
 }
 
+async function escreverResumoNavios(evs: EventoNavio[], mares: Mare[]): Promise<string> {
+  if (evs.length === 1) return escreverAviso(evs[0], mares);
+  const linhas = evs.map(ev => {
+    const n = ev.navio;
+    const carga = n.toneladas != null ? `${n.mercadoria.toLowerCase()} (${fmtTon(n.toneladas)})` : n.mercadoria.toLowerCase();
+    if (ev.tipo === "atracado") return `${n.nome} atracou no ber\u00e7o ${n.berco} com ${carga}`;
+    if (ev.tipo === "manobra") return `${n.nome} atraca\u00e7\u00e3o confirmada ${ev.manobra?.data} ${ev.manobra?.hora} ber\u00e7o ${n.berco}`;
+    return `${n.nome} programado ber\u00e7o ${n.berco} com ${carga}${n.etb ? ` (ETB ${n.etb})` : ""}`;
+  });
+  const base = `\uD83D\uDEA2 ${evs.length} navios de fertilizantes: ${linhas.join("; ")}. Fiquem de olho na escala!`;
+  try {
+    const fatosRes = evs.map(ev => fatos(ev, mares)).join("\n---\n");
+    const { texto } = await geminiViaComposio(
+      SISTEMA,
+      `V\u00e1rios navios de uma vez. Resuma em 2-4 frases, \u00fanica mensagem para o chat, citando todos os navios:\n${fatosRes}\n\nEscreva o resumo.`,
+      { rapido: true, reserva: false, maxTokens: 500, temperatura: 0.6, timeoutMs: 12000 },
+    );
+    const limpo = texto.replace(/^[\"\u201c\u201d']+|[\"\u201c\u201d']+$/g, "").trim();
+    if (limpo.length >= 30) {
+      // Verifica tonelagens de todos
+      const ok = evs.every(ev => tonelagemConfere(limpo, ev.navio));
+      if (ok) return limpo.slice(0, 520);
+    }
+  } catch {}
+  return base.slice(0, 520);
+}
+
 async function escreverAviso(ev: EventoNavio, mares: Mare[]) {
   const base = textoPadrao(ev, mares);
   try {
@@ -200,17 +254,46 @@ export async function verificarNaviosFertilizantes(opcoes: { forcar?: boolean } 
     }
     if (!novos.length) return { rodou: true, motivo: "nada novo", eventos: eventos.length, avisados: [] };
 
+    // Teto diário anti-excesso
+    const [avisosHoje] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(naviosAvisos)
+      .where(sql`${naviosAvisos.criadoEm} > now() - interval '24 hours'`);
+    if ((avisosHoje?.n ?? 0) >= MAX_POR_DIA && !opcoes.forcar) {
+      return { rodou: true, motivo: `limite de ${MAX_POR_DIA} avisos por dia`, eventos: eventos.length, avisados: [] };
+    }
+
     const mares = await lerMares().catch(() => [] as Mare[]);
+    const candidatos = novos.slice(0, MAX_POR_CICLO);
     const avisados: string[] = [];
-    for (const ev of novos.slice(0, MAX_POR_CICLO)) {
-      // Reserva antes de enviar: dois ciclos ao mesmo tempo não duplicam.
-      const [reservado] = await db.insert(naviosAvisos).values({ chave: ev.chave, navio: ev.navio.nome })
-        .onConflictDoNothing().returning({ chave: naviosAvisos.chave });
-      if (!reservado) continue;
-      const texto = await escreverAviso(ev, mares);
-      const [msg] = await db.insert(chatMensagens).values({ motoristaId: 0, nome: NOME_NAVIOS, texto }).returning();
-      await notificarMensagemChat({ id: msg.id, motoristaId: 0, nome: NOME_NAVIOS, texto }).catch(() => null);
-      avisados.push(`${ev.tipo}:${ev.navio.nome}`);
+
+    // AGRUPAMENTO: se 2+ navios novos, manda 1 mensagem resumo (1 notificação em vez de 2-3)
+    if (candidatos.length > 1) {
+      // Reserva todos de uma vez
+      const chaves = candidatos.map((e) => e.chave);
+      for (const ev of candidatos) {
+        await db.insert(naviosAvisos).values({ chave: ev.chave, navio: ev.navio.nome }).onConflictDoNothing();
+      }
+      // Verifica quais realmente reservou (não eram duplicatas de corrida)
+      const ja = new Set((await db.select({ chave: naviosAvisos.chave }).from(naviosAvisos).where(inArray(naviosAvisos.chave, chaves))).map(r=>r.chave));
+      const efetivos = candidatos.filter(c => ja.has(c.chave));
+      if (efetivos.length) {
+        const texto = await escreverResumoNavios(efetivos, mares);
+        const [msg] = await db.insert(chatMensagens).values({ motoristaId: 0, nome: NOME_NAVIOS, texto }).returning();
+        await notificarMensagemChat({ id: msg.id, motoristaId: 0, nome: NOME_NAVIOS, texto }).catch(() => null);
+        for (const ev of efetivos) avisados.push(`${ev.tipo}:${ev.navio.nome}`);
+      }
+    } else {
+      for (const ev of candidatos) {
+        // Reserva antes de enviar: dois ciclos ao mesmo tempo não duplicam.
+        const [reservado] = await db.insert(naviosAvisos).values({ chave: ev.chave, navio: ev.navio.nome })
+          .onConflictDoNothing().returning({ chave: naviosAvisos.chave });
+        if (!reservado) continue;
+        const texto = await escreverAviso(ev, mares);
+        const [msg] = await db.insert(chatMensagens).values({ motoristaId: 0, nome: NOME_NAVIOS, texto }).returning();
+        await notificarMensagemChat({ id: msg.id, motoristaId: 0, nome: NOME_NAVIOS, texto }).catch(() => null);
+        avisados.push(`${ev.tipo}:${ev.navio.nome}`);
+      }
     }
     // Retenção: 60 dias de registros de aviso.
     await db.delete(naviosAvisos).where(sql`${naviosAvisos.criadoEm} < now() - interval '60 days'`);

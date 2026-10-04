@@ -140,13 +140,14 @@ const DESLIGADO = new Set(["0", "off", "false", "nao", "não", "desligado"]);
 /** Configuração do radar (variáveis de ambiente, todas opcionais). */
 export function configRadar(ambiente: Record<string, string | undefined> = process.env): ConfigRadar {
   const sens = String(ambiente.CLIMA_MONITOR_SENSIBILIDADE ?? "").trim().toLowerCase();
+  // PLANO ANTI-EXCESSO v2 (2026): padr\u00f5es sem spam — antes 5/5/20/3 = at\u00e9 72/dia, agora 30/30/90/1 = m\u00e1x 4/dia
   return {
     ativo: !DESLIGADO.has(String(ambiente.CLIMA_MONITOR_ATIVO ?? "1").trim().toLowerCase()),
-    sensibilidade: sens === "baixa" || sens === "alta" ? sens : "media",
-    intervaloMs: numero(ambiente.CLIMA_MONITOR_MIN, 5) * 60_000,
-    painelMs: numero(ambiente.CLIMA_MONITOR_PAINEL_MIN, 5) * 60_000,
-    avisoMinMs: numero(ambiente.CLIMA_MONITOR_AVISO_MIN, 20) * 60_000,
-    maxPorHora: numero(ambiente.CLIMA_MONITOR_MAX_HORA, 3),
+    sensibilidade: sens === "media" || sens === "alta" ? sens : "baixa",
+    intervaloMs: numero(ambiente.CLIMA_MONITOR_MIN, 30) * 60_000,
+    painelMs: numero(ambiente.CLIMA_MONITOR_PAINEL_MIN, 30) * 60_000,
+    avisoMinMs: numero(ambiente.CLIMA_MONITOR_AVISO_MIN, 90) * 60_000,
+    maxPorHora: numero(ambiente.CLIMA_MONITOR_MAX_HORA, 1),
   };
 }
 
@@ -1060,9 +1061,10 @@ function diagnosticoValido(bruto: string | null): DiagnosticoPainel | null {
 }
 
 /**
- * Motivo para não avisar agora (intervalo mínimo / teto por hora) ou null.
+ * Motivo para não avisar agora (intervalo mínimo / teto por hora / teto por dia) ou null.
  * Conta AVISOS PUBLICADOS (linhas com `mensagemId`), não mudanças: um mesmo
  * aviso pode reunir várias mudanças e isso não pode gastar a cota da hora.
+ * PLANO ANTI-EXCESSO v2: 90min entre avisos, 1/h, máx 4/dia (antes 20min/3/h sem limite diário).
  */
 async function limiteDeAvisos(cfg: ConfigRadar): Promise<string | null> {
   const publicados = sql`${climaMudancas.mensagemId} is not null`;
@@ -1081,6 +1083,12 @@ async function limiteDeAvisos(cfg: ConfigRadar): Promise<string | null> {
     .from(climaMudancas)
     .where(sql`${climaMudancas.criadoEm} > now() - interval '1 hour' and ${publicados}`);
   if ((hora?.n ?? 0) >= cfg.maxPorHora) return `limite de ${cfg.maxPorHora} avisos por hora`;
+  // Teto diário anti-excesso: máx 4 avisos do radar por dia (24h)
+  const [dia] = await db
+    .select({ n: sql<number>`count(distinct ${climaMudancas.mensagemId})::int` })
+    .from(climaMudancas)
+    .where(sql`${climaMudancas.criadoEm} > now() - interval '24 hours' and ${publicados}`);
+  if ((dia?.n ?? 0) >= 4) return `limite de 4 avisos por dia`;
   return null;
 }
 
@@ -1172,6 +1180,8 @@ export async function verificarMudancasPrevisao(
     }
 
     const grave = novas.some((m) => m.grave);
+    // Guarda timestamp do último radar (para boletim respeitar silêncio de 90min)
+    if (grave) await gravarConfig("clima_monitor_ultimo_aviso_ts", String(Date.now())).catch(() => null);
     const texto = await escreverAviso(novas, p);
     const [mensagem] = await db
       .insert(chatMensagens)
