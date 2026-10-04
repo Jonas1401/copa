@@ -213,10 +213,20 @@ Pôr do Sol
 const PAINEL_MUDADO = PAINEL.replace("0.1 mm\n\n47%", "6.4 mm\n\n92%").replace("7 nós\n\nENE", "28 nós\n\nENE");
 
 /* ----------------------------------------------------------- instantâneo */
+/** Ícone/descrição de teste conforme a gravidade pedida (0 sol … 7 temporal). */
+function condicaoDaGravidade(g: number | undefined): { icone: Previsao["horas"][number]["icone"]; descricao: string } {
+  if (g === 7) return { icone: "tempestade", descricao: "Trovoadas" };
+  if (g === 6) return { icone: "chuva-forte", descricao: "Chuva forte" };
+  if (g === 5) return { icone: "chuva", descricao: "Chuva" };
+  if (g === 3) return { icone: "neblina", descricao: "Neblina" };
+  return { icone: "sol-nuvem", descricao: "Parcialmente nublado" };
+}
+
 function previsao(opcoes: { chance?: number; rajada?: number; mm?: number; gravidade?: number } = {}): Previsao {
   const chance = opcoes.chance ?? 10;
   const rajada = opcoes.rajada ?? 18;
   const mm = opcoes.mm ?? 0;
+  const cond = condicaoDaGravidade(opcoes.gravidade);
   const base = Math.floor(Date.now() / 1000);
   const horas = Array.from({ length: 30 }, (_, i) => ({
     ts: base + i * 3600,
@@ -231,8 +241,8 @@ function previsao(opcoes: { chance?: number; rajada?: number; mm?: number; gravi
     rajadaKmh: rajada,
     ventoGraus: 135,
     ventoDirecao: "SE",
-    icone: (opcoes.gravidade === 5 ? "chuva" : "sol-nuvem") as Previsao["horas"][number]["icone"],
-    descricao: opcoes.gravidade === 5 ? "Chuva" : "Parcialmente nublado",
+    icone: cond.icone,
+    descricao: cond.descricao,
   }));
   const dia = (max: number, min: number) => ({
     data: "2026-10-02",
@@ -242,8 +252,8 @@ function previsao(opcoes: { chance?: number; rajada?: number; mm?: number; gravi
     min,
     chuvaMm: mm,
     chanceChuva: chance,
-    icone: (opcoes.gravidade === 5 ? "chuva" : "sol-nuvem") as Previsao["dias"][number]["icone"],
-    descricao: opcoes.gravidade === 5 ? "Chuva" : "Parcialmente nublado",
+    icone: cond.icone,
+    descricao: cond.descricao,
     fonte: "simport" as const,
     temHoras: true,
   });
@@ -343,15 +353,18 @@ test("radar: lê o painel da Simport (boletim, chuva, vento, marés e sol)", () 
   assert.equal(parsearPainelSimport("erro 500"), null);
 });
 
-test("radar: detecta a mudança de chuva e vento entre dois instantâneos", () => {
+test("radar: detecta a chuva entrando na previsão (vento e temperatura ficam de fora)", () => {
   const antes = instantaneo({ chance: 10, rajada: 18, mm: 0 });
   const depois = instantaneo({ chance: 75, rajada: 52, mm: 6.5, gravidade: 5 }, Date.now() + 60_000);
   const m = detectarMudancas(antes, depois, "media");
   const tipos = m.map((x) => x.tipo);
   assert.ok(tipos.includes("chuva"), "mudança de chuva detectada");
-  assert.ok(tipos.includes("vento"), "mudança de vento detectada");
   assert.ok(tipos.includes("condicao"), "mudança da condição do tempo detectada");
-  // Chuva forte entrando é grave: a notificação fica na tela até o motorista tocar.
+  // O radar vigia SÓ a previsão de chuva/neblina/tempestade: vento, rajada e
+  // temperatura mudaram junto (18 → 52 km/h) e NÃO viraram aviso.
+  assert.ok(m.every((x) => x.origem === "api"), "só a previsão (WRF) entra no aviso");
+  assert.ok(!m.some((x) => /vento|rajada|temperatura|máxima|mínima/i.test(x.rotulo)), "vento/temperatura de fora");
+  // Chuva entrando é grave: a notificação fica na tela até o motorista tocar.
   assert.ok(m.some((x) => x.grave));
   const chuva = m.find((x) => x.tipo === "chuva");
   assert.ok(chuva?.frase.includes("10%"));
@@ -359,9 +372,54 @@ test("radar: detecta a mudança de chuva e vento entre dois instantâneos", () =
   assert.match(chuva?.assinatura ?? "", /^chuvaProb6h:/);
 });
 
+test("radar: neblina forte e tempestade na previsão também viram aviso", () => {
+  // Neblina forte entrando na previsão das próximas horas.
+  const comNeblina = detectarMudancas(
+    instantaneo({}),
+    instantaneo({ gravidade: 3 }, Date.now() + 60_000),
+    "media",
+  );
+  const neblina = comNeblina.find((x) => x.tipo === "condicao");
+  assert.ok(neblina, "neblina na previsão vira aviso");
+  assert.match(neblina.agora, /neblina/i);
+  // Tempestade entrando na previsão (grave: fica na tela até tocar).
+  const comTempestade = detectarMudancas(
+    instantaneo({}),
+    instantaneo({ gravidade: 7 }, Date.now() + 60_000),
+    "media",
+  );
+  const tempestade = comTempestade.find((x) => x.tipo === "condicao");
+  assert.ok(tempestade, "tempestade na previsão vira aviso");
+  assert.equal(tempestade.grave, true);
+});
+
+test("radar: previsão de tempo bom (ou melhorando) NÃO vira mensagem nem notificação", () => {
+  // Chance de chuva subindo, mas continua baixa (30% → 45%): tempo bom.
+  const aindaBom = detectarMudancas(
+    instantaneo({ chance: 30 }),
+    instantaneo({ chance: 45 }, Date.now() + 60_000),
+    "alta",
+  );
+  assert.equal(aindaBom.length, 0, "chance baixa não avisa em nenhuma sensibilidade");
+  // A chuva SAIU da previsão (75% → 10%, condição volta a sol): silêncio.
+  const melhorou = detectarMudancas(
+    instantaneo({ chance: 75, mm: 6.5, gravidade: 5 }),
+    instantaneo({ chance: 10, mm: 0 }, Date.now() + 60_000),
+    "alta",
+  );
+  assert.equal(melhorou.length, 0, "a previsão melhorando não gera aviso");
+  // Hoje/amanhã com a chance despencando (80% → 20%): tempo bom, sem aviso.
+  const dias = detectarMudancas(
+    instantaneo({ chance: 80, mm: 4 }),
+    instantaneo({ chance: 20, mm: 0 }, Date.now() + 60_000),
+    "media",
+  );
+  assert.equal(dias.filter((x) => /hoje|amanhã/i.test(x.rotulo)).length, 0, "próximos dias bons não avisam");
+});
+
 test("radar: abaixo do limite da sensibilidade não avisa (antispam)", () => {
-  const antes = instantaneo({ chance: 30, rajada: 20 });
-  const depois = instantaneo({ chance: 45, rajada: 28 }, Date.now() + 60_000);
+  const antes = instantaneo({ chance: 55, rajada: 20 });
+  const depois = instantaneo({ chance: 70, rajada: 28 }, Date.now() + 60_000);
   assert.equal(detectarMudancas(antes, depois, "media").length, 0, "média ignora 15 pontos de chance");
   assert.ok(detectarMudancas(antes, depois, "alta").length > 0, "alta pega 15 pontos");
   assert.equal(detectarMudancas(antes, depois, "baixa").length, 0);
@@ -373,7 +431,7 @@ test("radar: abaixo do limite da sensibilidade não avisa (antispam)", () => {
   assert.ok(!semWrf.some((m) => /próximas 24 h/.test(m.rotulo)), "sem WRF não há mudança horária");
 });
 
-test("radar: mudança no painel lido pelo Composio também vira aviso", () => {
+test("radar: mudança de chuva no painel lido pelo Composio também vira aviso", () => {
   const p1 = parsearPainelSimport(PAINEL);
   const p2 = parsearPainelSimport(PAINEL_MUDADO);
   assert.ok(p1 && p2);
@@ -384,7 +442,9 @@ test("radar: mudança no painel lido pelo Composio também vira aviso", () => {
   assert.ok(m.length >= 1, "o painel sozinho sustenta o radar");
   assert.ok(m.every((x) => x.origem === "painel"));
   assert.ok(m.some((x) => x.tipo === "chuva"));
-  assert.ok(m.some((x) => x.tipo === "vento"));
+  // O vento do painel mudou junto (7 → 28 nós) e NÃO vira aviso: o radar só
+  // vigia chuva, neblina e tempestade na previsão.
+  assert.ok(m.every((x) => x.tipo === "chuva"), "só chuva entra no aviso");
 });
 
 test("radar: painel da APPA entrega o formato único (e o método que leu)", () => {
@@ -425,6 +485,34 @@ test("radar: novo alerta meteorológico no painel vira aviso (grave no tempo rui
   assert.equal(detectarMudancas(depois, depois, "alta").filter((x) => x.tipo === "alerta").length, 0);
 });
 
+test("radar: alerta do painel que NÃO é chuva/neblina/tempestade fica em silêncio", () => {
+  const base = parsearPainelSimport(PAINEL);
+  assert.ok(base);
+  const semAlerta = { ...base, alertas: [] };
+  const antes = montarInstantaneo(null, semAlerta, Date.now(), null, "api");
+  // Vendaval (só vento) e ressaca (só mar) não são vigiados pelo radar.
+  const depois = montarInstantaneo(
+    null,
+    { ...base, alertas: ["Vendaval com rajadas de 60 km/h no pátio", "Ressaca com ondas de 3 m no canal"] },
+    Date.now() + 60_000,
+    null,
+    "api",
+  );
+  const m = detectarMudancas(antes, depois, "alta");
+  assert.equal(m.filter((x) => x.tipo === "alerta").length, 0, "alerta fora do escopo não avisa");
+  // Neblina forte como alerta novo do painel: avisa.
+  const comNeblina = montarInstantaneo(
+    null,
+    { ...base, alertas: ["Neblina forte reduz a visibilidade no acesso ao porto"] },
+    Date.now() + 120_000,
+    null,
+    "api",
+  );
+  const alerta = detectarMudancas(antes, comNeblina, "alta").find((x) => x.tipo === "alerta");
+  assert.ok(alerta, "neblina forte vira aviso");
+  assert.match(alerta.agora, /neblina/i);
+});
+
 test("radar: a condição do painel (chuva → chuva forte) também avisa", () => {
   const base = parsearPainelSimport(PAINEL);
   assert.ok(base);
@@ -462,9 +550,18 @@ test("radar: mudança do horário da chuva no painel também avisa", () => {
   // O mesmo horário nas duas leituras não gera aviso.
   const igual = montarInstantaneo(null, comChuva("20:00"), Date.now() + 120_000, null, "api");
   assert.equal(detectarMudancas(depois, igual, "alta").filter((x) => x.tipo === "chuva").length, 0);
+  // A chuva SAIU da previsão do painel (tempo bom): nada de aviso.
+  const semChuva = { ...base, alertas: [], chuva: [] as { hora: string; mm: number; prob: number }[] };
+  const limpo = montarInstantaneo(null, semChuva, Date.now() + 180_000, null, "api");
+  assert.equal(limpo.painel?.inicioChuva, null, "sem chuva prevista no painel");
+  assert.equal(
+    detectarMudancas(depois, limpo, "alta").filter((x) => x.tipo === "chuva" || x.tipo === "condicao").length,
+    0,
+    "chuva saindo da previsão não vira mensagem",
+  );
 });
 
-test("radar: boletim da APPA novo ou revisado entra no aviso", () => {
+test("radar: boletim da APPA com chuva/neblina/tempestade entra no aviso (tempo bom, não)", () => {
   const antes = montarInstantaneo(
     { ...previsao(), boletim: [{ data: "2026-10-02", texto: "Sol com nuvens.", tempoRuim: false }] },
     null,
@@ -472,7 +569,7 @@ test("radar: boletim da APPA novo ou revisado entra no aviso", () => {
   const depois = montarInstantaneo(
     {
       ...previsao(),
-      boletim: [{ data: "2026-10-02", texto: "Chuva forte e vento no porto.", tempoRuim: true }],
+      boletim: [{ data: "2026-10-02", texto: "Chuva forte no porto.", tempoRuim: true }],
     },
     null,
     Date.now() + 60_000,
@@ -487,21 +584,54 @@ test("radar: boletim da APPA novo ou revisado entra no aviso", () => {
   );
   assert.ok(
     boletins.some((x) => x.assinatura.startsWith("boletimRuim:")),
-    "liga/desliga do alerta de tempo ruim",
+    "ligou o alerta de tempo ruim",
   );
-  // Um dia novo de boletim também avisa (assinatura própria).
-  const novoDia = montarInstantaneo(
+  // Boletim revisado com TEMPO BOM (sol, sem chuva): não vira aviso.
+  const ficouBom = montarInstantaneo(
+    {
+      ...previsao(),
+      boletim: [{ data: "2026-10-02", texto: "Céu aberto e tempo firme no porto.", tempoRuim: false }],
+    },
+    null,
+    Date.now() + 90_000,
+  );
+  assert.equal(
+    detectarMudancas(depois, ficouBom, "media").filter((x) => x.tipo === "boletim").length,
+    0,
+    "boletim de tempo bom não gera mensagem",
+  );
+  // Um dia novo de boletim com tempo bom também NÃO avisa…
+  const novoDiaBom = montarInstantaneo(
     {
       ...previsao(),
       boletim: [
-        { data: "2026-10-02", texto: "Chuva forte e vento no porto.", tempoRuim: true },
+        { data: "2026-10-02", texto: "Chuva forte no porto.", tempoRuim: true },
         { data: "2026-10-03", texto: "Tempo firme pela manhã.", tempoRuim: false },
       ],
     },
     null,
     Date.now() + 120_000,
   );
-  assert.ok(detectarMudancas(depois, novoDia, "media").some((x) => x.rotulo.includes("2026-10-03")));
+  assert.ok(
+    !detectarMudancas(depois, novoDiaBom, "media").some((x) => x.rotulo.includes("2026-10-03")),
+    "dia novo de tempo bom não avisa",
+  );
+  // …mas com previsão de chuva/neblina/tempestade, avisa (assinatura própria).
+  const novoDiaRuim = montarInstantaneo(
+    {
+      ...previsao(),
+      boletim: [
+        { data: "2026-10-02", texto: "Chuva forte no porto.", tempoRuim: true },
+        { data: "2026-10-03", texto: "Pancadas de chuva à tarde.", tempoRuim: true },
+      ],
+    },
+    null,
+    Date.now() + 120_000,
+  );
+  assert.ok(
+    detectarMudancas(depois, novoDiaRuim, "media").some((x) => x.rotulo.includes("2026-10-03")),
+    "dia novo com chuva avisa",
+  );
 });
 
 test("radar: texto do aviso usa só dados reais e cabe numa notificação", () => {
@@ -513,9 +643,12 @@ test("radar: texto do aviso usa só dados reais e cabe numa notificação", () =
   assert.match(t, /75%/);
   assert.ok(t.length <= 480, "cabe no corpo da notificação");
   assert.match(t, /SIMPORT/);
-  // Mudança de vento escolhe o emoji de vento quando é o único assunto.
-  const soVento = detectarMudancas(instantaneo({ rajada: 18 }), instantaneo({ rajada: 52 }, Date.now() + 1000), "media");
-  assert.match(textoMudancaPadrao(soVento, null), /💨/);
+  assert.match(t, /🌧️|⛈️/, "chuva na previsão sai com emoji de chuva");
+  // Tempestade e neblina forte escolhem o próprio emoji.
+  const tempestade = detectarMudancas(instantaneo({}), instantaneo({ gravidade: 7 }, Date.now() + 1000), "media");
+  assert.match(textoMudancaPadrao(tempestade, null), /⛈️/);
+  const neblina = detectarMudancas(instantaneo({}), instantaneo({ gravidade: 3 }, Date.now() + 1000), "media");
+  assert.match(textoMudancaPadrao(neblina, null), /🌫️/);
 });
 
 test("composio: extrai o texto da resposta e descreve quando vem vazio", async () => {
@@ -533,7 +666,9 @@ test("composio: extrai o texto da resposta e descreve quando vem vazio", async (
   assert.match(descreverResposta(undefined), /resposta vazia/);
 });
 
-test("radar: a medição PELO COMPOSIO (OpenWeather) também entra na comparação", () => {
+test("radar: a medição do tempo ATUAL (Composio/estação) NÃO vira aviso — só a previsão", () => {
+  // A leitura do Composio (OpenWeather) continua no instantâneo para o
+  // diagnóstico do administrador…
   const cc = {
     temperatura: 21, sensacao: 21, umidade: 80, ventoKmh: 14, rajadaKmh: 24,
     ventoGraus: 135, nuvens: 40, codigo: 802, descricao: "nuvens dispersas",
@@ -544,12 +679,9 @@ test("radar: a medição PELO COMPOSIO (OpenWeather) também entra na comparaç�
   const depois = montarInstantaneo(null, null, Date.now() + 60_000, ccDepois);
   assert.equal(antes.composioAgora?.temperatura, 21);
   assert.equal(depois.composioAgora?.gravidade, 5, "código de chuva do OpenWeather");
-  const m = detectarMudancas(antes, depois, "media");
-  assert.ok(m.length >= 3, "temperatura, rajada e condição pelo Composio");
-  assert.ok(m.every((x) => x.origem === "composio"));
-  assert.ok(m.some((x) => x.rotulo.includes("Temperatura pelo Composio")));
-  assert.ok(m.some((x) => x.grave), "rajada e chuva entrando são graves");
-  // Sem o Composio nas duas leituras, nada muda.
+  // …mas NÃO entra na comparação do radar: tempo atual não é previsão.
+  // Começou a chover agora, esquentou, ventou — nada disso gera mensagem.
+  assert.equal(detectarMudancas(antes, depois, "alta").length, 0, "medição atual não vira aviso");
   assert.equal(detectarMudancas(montarInstantaneo(null, null), montarInstantaneo(null, null), "alta").length, 0);
 });
 
@@ -710,16 +842,27 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     assert.equal((await db.select().from(chatMensagens)).length, 1);
     assert.equal(pushes.length, 1);
 
-    // 4) O alerta/boletim do clima já falou neste minuto: o radar cala a boca,
-    //    mas avança a referência (não avisa de novo no ciclo seguinte).
-    cenario = { chance: 20, rajada: 18, mm: 0, gravidade: 0 };
-    const r4 = await verificarMudancasPrevisao({ forcar: true, registrarSomente: true });
-    assert.equal(r4.postou, false);
-    assert.match(r4.motivo, /já avisou/i);
+    // 4) A previsão FICOU BOA (a chuva saiu, o céu abriu): o radar NÃO manda
+    //    mensagem no chat e NÃO dispara notificação — silêncio total.
+    cenario = { chance: 10, rajada: 14, mm: 0, gravidade: 0 };
+    const r4 = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r4.postou, false, "tempo bom na previsão não posta");
+    assert.match(r4.motivo, /sem mudança/i);
+    assert.equal((await db.select().from(chatMensagens)).length, 1, "nada novo no chat");
+    assert.equal(pushes.length, 1, "nada de notificação com tempo bom");
+
+    // 4b) O alerta/boletim do clima já falou neste minuto e a previsão volta a
+    //     trazer chuva: o radar cala a boca, mas avança a referência (não avisa
+    //     de novo no ciclo seguinte).
+    cenario = { chance: 90, rajada: 60, mm: 8, gravidade: 5 };
+    const r4b = await verificarMudancasPrevisao({ forcar: true, registrarSomente: true });
+    assert.equal(r4b.postou, false);
+    assert.match(r4b.motivo, /já avisou/i);
     assert.equal((await db.select().from(chatMensagens)).length, 1);
 
-    // 5) Mudança nova de verdade (de 20% para 95%) volta a avisar.
-    cenario = { chance: 95, rajada: 70, mm: 12, gravidade: 5 };
+    // 5) Mudança nova de tempo ruim de verdade (volume previsto 8 → 14 mm)
+    //    volta a avisar.
+    cenario = { chance: 97, rajada: 70, mm: 14, gravidade: 5 };
     const r5 = await verificarMudancasPrevisao({ forcar: true });
     assert.equal(r5.postou, true, `motivo: ${r5.motivo}`);
     assert.equal((await db.select().from(chatMensagens)).length, 2);

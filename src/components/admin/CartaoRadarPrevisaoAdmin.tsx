@@ -17,8 +17,12 @@ import { ChevronDown, ChevronUp, Radar, RefreshCw } from "lucide-react";
  * O cartão também mostra o log de diagnóstico da última rodada (uma linha por
  * método tentado, com o motivo da falha) e a última leitura no formato único
  * (`DadosPainelAppa`): chuva, chuva forte, tempestade, vento, umidade, pressão
- * e alertas. Qualquer mudança relevante entra no chat e chega como notificação
- * (Web Push do Chrome), mesmo com o aplicativo fechado.
+ * e alertas.
+ *
+ * O radar vigia SÓ a previsão — próximas horas e próximos dias — e só fala
+ * quando ela traz CHUVA, NEBLINA forte ou TEMPESTADE: aí entra no chat e
+ * chega como notificação (Web Push do Chrome), mesmo com o aplicativo
+ * fechado. Previsão de tempo bom não gera mensagem nem notificação.
  */
 
 export type TentativaPainel = {
@@ -188,7 +192,8 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
             )}
           </h2>
           <p className="mt-0.5 text-[12.5px] text-gelo/60">
-            Monitoramento constante da previsão e do painel da APPA
+            Monitoramento da previsão (próximas horas e próximos dias): avisa chuva, neblina forte e
+            tempestade — tempo bom fica em silêncio
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
@@ -204,11 +209,13 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
           ) : (
             <>
               <p className="px-0.5 text-[13.5px] leading-snug text-gelo/85">
-                O CopaLinks acompanha o SIMPORT® – Dashboard Meteoceanográfico da APPA a cada{" "}
+                O CopaLinks acompanha a previsão do SIMPORT® – Dashboard Meteoceanográfico da APPA a cada{" "}
                 <b className="text-white">{s.intervaloMin} minutos</b>, com o painel relido a cada{" "}
                 <b className="text-white">{s.painelMin} minutos</b> por leitura automática (API → HTML →
-                navegador → OCR → Composio). Qualquer mudança na previsão entra no chat e chega como
-                notificação, mesmo com o aplicativo fechado.
+                navegador → OCR → Composio). O radar vigia <b className="text-white">só a previsão</b> — próximas
+                horas e próximos dias: quando ela traz <b className="text-white">chuva, neblina forte ou
+                tempestade</b>, o aviso entra no chat e chega como notificação, mesmo com o aplicativo fechado.{" "}
+                <b className="text-white">Tempo bom na previsão não gera mensagem nem notificação.</b>
               </p>
 
               <dl className="mt-2.5 space-y-1.5 px-0.5 text-[13px]">
