@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { paginaAppa, paginaSinprapar } from "./navios-fixture";
+import {
+  resumoEvento,
+  textoLotePadrao,
+  type EventoNavio,
+} from "../src/lib/navios-aviso";
+import type { NavioLineup } from "../src/lib/navios";
 
 /**
  * Avisos de navios de fertilizantes de ponta a ponta (cron → chat → Push).
@@ -16,12 +22,77 @@ const local = (() => {
   try { const u = new URL(uri); return (u.hostname === "127.0.0.1" || u.hostname === "localhost") && u.pathname.startsWith("/fila_push_test_"); } catch { return false; }
 })();
 
+/** Navio de fertilizante para os testes puros do lote (sem rede). */
+function navioTeste(extra: Partial<NavioLineup> = {}): NavioLineup {
+  return {
+    programacao: "2",
+    secao: "PROGRAMADOS",
+    porto: "Paranaguá",
+    berco: "211",
+    nome: "LEO. K",
+    imo: "2",
+    dwt: "30000",
+    sentido: "Imp",
+    mercadoria: "MAP",
+    toneladas: 70000,
+    saldoToneladas: null,
+    chegada: "",
+    eta: "",
+    etb: "05/10 08:00",
+    atracacao: "",
+    agencia: "",
+    operador: "",
+    ...extra,
+  };
+}
+
+test("navios: lote de novidades no mesmo ciclo vira UMA mensagem", () => {
+  const eventos: EventoNavio[] = [
+    { chave: "P:2:211", tipo: "programado", navio: navioTeste(), manobra: null },
+    {
+      chave: "A:3",
+      tipo: "atracado",
+      navio: navioTeste({
+        programacao: "3",
+        secao: "ATRACADOS",
+        nome: "ZY IDOL",
+        mercadoria: "UREIA",
+        toneladas: 32219,
+        saldoToneladas: 12000,
+      }),
+      manobra: null,
+    },
+  ];
+  const texto = textoLotePadrao(eventos, [{ hora: "2026-10-05T03:20", tipo: "preamar", alturaM: 1.4 }]);
+  assert.match(texto, /2 novidades/);
+  assert.match(texto, /LEO\. K.*berço 211/);
+  assert.match(texto, /ZY IDOL.*atracou.*berço 211/);
+  assert.match(texto, /preamar por volta das 03:20/);
+  assert.ok(texto.length <= 480, "cabe no corpo da notificação");
+
+  // Sem maré, sai sem a dica — e um evento sozinho não vira "lote".
+  const semMare = textoLotePadrao(eventos);
+  assert.match(semMare, /ZY IDOL/);
+  assert.doesNotMatch(semMare, /preamar/);
+  assert.doesNotMatch(textoLotePadrao([eventos[0]]), /novidades/);
+
+  // Linhas curtas de cada tipo de evento (sem inventar número nenhum).
+  const despachado = resumoEvento({
+    chave: "S:3",
+    tipo: "saiu",
+    navio: navioTeste({ nome: "ZY IDOL", mercadoria: "UREIA" }),
+    manobra: null,
+  });
+  assert.match(despachado, /ZY IDOL foi despachado e deixou Paranaguá/);
+});
+
 test("navios: 1ª leitura não avisa; novo programado avisa 1 vez no chat e por Push; carga comum ignorada", { skip: !local }, async () => {
   const { db, pool } = await import("../src/db");
   const { chatMensagens, motoristas, subscriptions, naviosAvisos } = await import("../src/db/schema");
   const { garantirTabelas } = await import("../src/lib/estado");
   const { limparCacheNavios } = await import("../src/lib/navios");
   const { verificarNaviosFertilizantes, NOME_NAVIOS } = await import("../src/lib/navios-aviso");
+  const { checarCota } = await import("../src/lib/notificacoes-cota");
   const webpush = (await import("web-push")).default;
   process.env.COMPOSIO_API_KEY = "";
   const chaves = webpush.generateVAPIDKeys();
@@ -73,6 +144,30 @@ test("navios: 1ª leitura não avisa; novo programado avisa 1 vez no chat e por 
     assert.equal((await verificarNaviosFertilizantes()).motivo, "aguardando intervalo");
     assert.equal((await db.select().from(chatMensagens)).length, 1);
     assert.equal((await db.select().from(naviosAvisos)).length, 2);
+
+    // DOIS navios de fertilizantes com novidade no MESMO ciclo: sai UMA
+    // mensagem (e UM Push) com os dois — e a cota do assunto é registrada.
+    appa = paginaAppa({
+      ATRACADOS: [{ "Programação": "1", "Berço": "114", "Embarcação": "ZY IDOL", IMO: "1", Mercadoria: "UREIA", Previsto: "32.219,000 Tons." }],
+      PROGRAMADOS: [
+        { "Programação": "2", "Berço": "211", "Embarcação": "LEO. K", IMO: "2", Mercadoria: "MAP", Previsto: "70.000,000 Tons." },
+        { "Programação": "4", "Berço": "212", "Embarcação": "OCEAN PEARL", IMO: "4", Mercadoria: "UREIA", Previsto: "55.000,000 Tons." },
+        { "Programação": "5", "Berço": "213", "Embarcação": "ATLANTIC BAY", IMO: "5", Mercadoria: "KCL", Previsto: "40.000,000 Tons." },
+      ],
+    });
+    limparCacheNavios();
+    const r4 = await verificarNaviosFertilizantes({ forcar: true });
+    assert.deepEqual(r4.avisados, ["programado:OCEAN PEARL", "programado:ATLANTIC BAY"]);
+    const emLote = await db.select().from(chatMensagens);
+    assert.equal(emLote.length, 2, "um lote = uma mensagem");
+    assert.equal(emLote[1].nome, NOME_NAVIOS);
+    assert.match(emLote[1].texto, /2 novidades/);
+    assert.match(emLote[1].texto, /OCEAN PEARL/);
+    assert.match(emLote[1].texto, /ATLANTIC BAY/);
+    assert.deepEqual(pushes, [NOME_NAVIOS, NOME_NAVIOS], "um lote = um Push");
+
+    // A cota do assunto ficou registrada: o próximo aviso não sai colado.
+    assert.equal((await checarCota("navios")).liberado, false, "cota de navios registrada");
   } finally {
     globalThis.fetch = fetchReal;
     await pool.end();

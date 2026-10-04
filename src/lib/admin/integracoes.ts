@@ -185,6 +185,10 @@ export async function listarEstados(): Promise<EstadoIntegracao[]> {
             : "Desligado (CLIMA_MONITOR_ATIVO=0)",
         });
         detalhes.push({
+          rotulo: "Cota de avisos",
+          valor: `${radar.avisoMinMin} min entre avisos · máx. ${radar.maxPorHora}/hora · máx. ${radar.maxPorDia}/dia`,
+        });
+        detalhes.push({
           rotulo: "Última leitura do radar",
           valor: radar.ultimaVerificacao
             ? new Date(radar.ultimaVerificacao).toLocaleString("pt-BR", {

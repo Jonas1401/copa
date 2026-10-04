@@ -5,6 +5,7 @@ import { obterPrevisao, type Previsao } from "@/lib/tempo";
 import { notificarMensagemChat } from "@/lib/chat-push";
 import { geminiViaComposio } from "@/lib/composio";
 import { verificarEPostarBoletimClima } from "@/lib/clima-boletim";
+import { checarCota, registrarAviso } from "@/lib/notificacoes-cota";
 
 /**
  * Leitura inteligente do clima → mensagem no chat (SOMENTE servidor).
@@ -16,8 +17,11 @@ import { verificarEPostarBoletimClima } from "@/lib/clima-boletim";
  * Push para todos os aparelhos. Sem alerta, quem fala é o boletim de previsão
  * do turno (`src/lib/clima-boletim.ts`, "🌤️ Previsão do Porto").
  *
- * Antispam:
- *   - Só posta quando o nível MUDA ou a cada 3 h (lembrete) em alerta ativo.
+ * Antispam (veja também `src/lib/notificacoes-cota.ts`):
+ *   - Só posta quando o nível MUDA ou a cada `CLIMA_ALERTA_MIN` minutos
+ *     (padrão 6 h) de lembrete em alerta ativo — no máximo
+ *     `CLIMA_ALERTA_MAX_DIA` avisos por dia (padrão 4).
+ *   - Mudança de nível é URGENTE: passa na hora, com piso de 15 min.
  *   - Níveis calmos ("tempo-bom", "info") não postam — só limpam o estado.
  *   - O estado fica em `configuracao` (chave clima_ultimo_aviso_chat).
  */
@@ -25,7 +29,6 @@ import { verificarEPostarBoletimClima } from "@/lib/clima-boletim";
 export const NOME_CLIMA = "🌦️ Clima no Porto";
 export const MOTORISTA_SISTEMA = 0;
 const CHAVE = "clima_ultimo_aviso_chat";
-const LEMBRETE_MS = 3 * 60 * 60 * 1000;
 
 type Ultimo = { nivel: string; titulo: string; em: number };
 
@@ -131,9 +134,15 @@ export async function verificarEPostarAlertaClima(
 
     const ultimo = await lerUltimo().catch(() => null);
     const mudou = !ultimo || ultimo.nivel !== nivel;
-    const passouTempo = !ultimo || Date.now() - ultimo.em > LEMBRETE_MS;
-    if (!mudou && !passouTempo && !opcoes.forcar) {
-      return { postou: false, nivel, motivo: "já avisado" };
+    // A cota substitui o antigo lembrete de 3 h: o nível NOVO é urgente (passa
+    // com piso de 15 min) e o lembrete respeita CLIMA_ALERTA_MIN (6 h) e o
+    // teto de CLIMA_ALERTA_MAX_DIA avisos por dia. `forcar` (testes/admin)
+    // ignora a cota.
+    if (!opcoes.forcar) {
+      const cota = await checarCota("clima", { urgente: mudou });
+      if (!cota.liberado) {
+        return { postou: false, nivel, motivo: mudou ? cota.motivo : "já avisado" };
+      }
     }
 
     const texto = await textoInteligente(p, nivel);
@@ -142,6 +151,7 @@ export async function verificarEPostarAlertaClima(
       .values({ motoristaId: MOTORISTA_SISTEMA, nome: NOME_CLIMA, texto })
       .returning();
     await gravarUltimo(nivel, p.alerta.titulo);
+    await registrarAviso("clima");
 
     // Web Push da mensagem do chat (nome do agente + texto) para todos os
     // aparelhos, mesmo com o app fechado. A tag CHAT_<id> evita repetição.
@@ -169,7 +179,15 @@ export async function verificarEPostarAlertaClima(
  */
 export async function verificarClima(
   opcoes: { forcar?: boolean } = {},
-): Promise<{ postou: boolean; nivel: string; motivo: string; tipo: "alerta" | "boletim" | "nenhum"; previsao?: Previsao }> {
+): Promise<{
+  postou: boolean;
+  nivel: string;
+  motivo: string;
+  tipo: "alerta" | "boletim" | "nenhum";
+  /** No boletim: `false` = entrou no chat sem acordar o celular (sem novidade). */
+  push?: boolean;
+  previsao?: Previsao;
+}> {
   // Uma leitura só (com cache de 10 min) para os dois agentes.
   let previsao: Previsao | undefined;
   try {
@@ -186,6 +204,15 @@ export async function verificarClima(
   }
 
   const boletim = await verificarEPostarBoletimClima({ previsao, forcar: opcoes.forcar });
-  if (boletim.postou) return { postou: true, nivel: alerta.nivel, motivo: boletim.motivo, tipo: "boletim", previsao };
+  if (boletim.postou) {
+    return {
+      postou: true,
+      nivel: alerta.nivel,
+      motivo: boletim.motivo,
+      tipo: "boletim",
+      ...(boletim.push !== undefined ? { push: boletim.push } : {}),
+      previsao,
+    };
+  }
   return { postou: false, nivel: alerta.nivel, motivo: boletim.motivo || alerta.motivo, tipo: "nenhum", previsao };
 }

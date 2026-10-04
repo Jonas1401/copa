@@ -26,6 +26,14 @@ import { geminiViaComposio } from "@/lib/composio";
  *   - nunca saem dois boletins com menos de 5 h de diferença;
  *   - em tempo ruim o alerta (src/lib/clima-alerta.ts) assume o lugar do
  *     boletim, então o chat não recebe as duas mensagens juntas.
+ *
+ * PUSH SÓ QUANDO MERECE: o boletim do turno continua entrando no chat (quem
+ * abre o app lê), mas a NOTIFICAÇÃO no celular só sai quando o turno traz
+ * novidade de verdade — chuva, vento forte, frio/calor fora do normal ou
+ * previsão que mudou desde o boletim anterior. Nos turnos tranquilos e
+ * repetidos, o aviso chega ao aparelho no máximo a cada
+ * `CLIMA_BOLETIM_PUSH_MIN` minutos (padrão 12 h) — o motorista tem a previsão
+ * no chat, sem o celular apitar 4 vezes por dia à toa.
  */
 
 export const NOME_BOLETIM = "🌤️ Previsão do Porto";
@@ -35,6 +43,8 @@ const CHAVE = "clima_boletim_chat";
 const FUSO = "America/Sao_Paulo";
 /** Segurança: dois boletins nunca saem com menos deste intervalo. */
 const INTERVALO_MIN_MS = 5 * 60 * 60 * 1000;
+/** Mesmo sem novidade, o aparelho recebe um boletim neste intervalo (min). */
+const PUSH_MIN_SEM_NOVIDADE_MIN = 12 * 60;
 
 export type Turno = {
   /** Hora de início no horário de Brasília. */
@@ -51,7 +61,69 @@ export const TURNOS: Turno[] = [
   { inicio: 18, nome: "noite", saudacao: "Boa noite" },
 ];
 
-type Ultimo = { bloco: string; em: number };
+type Ultimo = {
+  bloco: string;
+  em: number;
+  /** Quando o aparelho recebeu o último Push deste boletim (epoch ms). */
+  pushEm?: number;
+  /** Resumo comparável do turno anterior (para saber se a previsão mudou). */
+  resumo?: ResumoBoletim;
+};
+
+/** O que interessa comparar de um turno para o outro. */
+export type ResumoBoletim = {
+  chuvaProb: number;
+  chuvaMm: number;
+  rajada: number;
+  vento: number;
+  tempMin: number;
+  tempMax: number;
+  condicao: string;
+};
+
+/** Fotografia enxuta da previsão, para comparar turno com turno. */
+export function resumoBoletim(p: Previsao): ResumoBoletim {
+  return {
+    chuvaProb: p.dias[0]?.chanceChuva ?? p.agora.chanceChuva,
+    chuvaMm: p.dias[0]?.chuvaMm ?? 0,
+    rajada: p.agora.rajadaKmh,
+    vento: p.agora.ventoKmh,
+    tempMin: p.dias[0]?.min ?? p.agora.temperatura,
+    tempMax: p.dias[0]?.max ?? p.agora.temperatura,
+    condicao: p.dias[0]?.descricao ?? p.agora.descricao,
+  };
+}
+
+/**
+ * O boletim deste turno merece acordar o celular do motorista?
+ *
+ * Só quando há o que fazer com a informação: chuva, vento forte, frio/calor
+ * fora do normal ou mudança de verdade desde o boletim anterior. Turno
+ * tranquilo e igual ao anterior vira mensagem silenciosa no chat.
+ */
+export function boletimMerecePush(p: Previsao, anterior: ResumoBoletim | null | undefined): boolean {
+  const hoje = p.dias[0];
+  const agora = p.agora;
+  const resumo = resumoBoletim(p);
+
+  if (p.alerta.nivel === "chuva" || p.alerta.nivel === "vento") return true;
+  if (p.boletim.some((b) => b.tempoRuim)) return true;
+  if ((hoje?.chanceChuva ?? 0) >= 50 || (hoje?.chuvaMm ?? 0) >= 1) return true;
+  if (agora.chanceChuva >= 50) return true;
+  if (agora.rajadaKmh >= 40 || agora.ventoKmh >= 30) return true;
+  if ((hoje?.min ?? 99) <= 10 || (hoje?.max ?? 0) >= 33) return true;
+
+  if (!anterior) return true; // 1º boletim depois de reiniciar o estado
+  const mudou =
+    Math.abs(resumo.chuvaProb - anterior.chuvaProb) >= 20 ||
+    Math.abs(resumo.chuvaMm - anterior.chuvaMm) >= 1 ||
+    Math.abs(resumo.rajada - anterior.rajada) >= 10 ||
+    Math.abs(resumo.vento - anterior.vento) >= 8 ||
+    Math.abs(resumo.tempMin - anterior.tempMin) >= 3 ||
+    Math.abs(resumo.tempMax - anterior.tempMax) >= 3 ||
+    resumo.condicao !== anterior.condicao;
+  return mudou;
+}
 
 async function lerUltimo(): Promise<Ultimo | null> {
   const [l] = await db.select().from(configuracao).where(eq(configuracao.chave, CHAVE)).limit(1);
@@ -65,8 +137,15 @@ async function lerUltimo(): Promise<Ultimo | null> {
   }
 }
 
-async function gravarUltimo(bloco: string) {
-  const valor = JSON.stringify({ bloco, em: Date.now() });
+async function gravarUltimo(bloco: string, extras: { push?: boolean; resumo?: ResumoBoletim } = {}) {
+  const anterior = await lerUltimo().catch(() => null);
+  const pushEm = extras.push ? Date.now() : anterior?.pushEm;
+  const valor = JSON.stringify({
+    bloco,
+    em: Date.now(),
+    ...(pushEm ? { pushEm } : {}),
+    ...(extras.resumo ? { resumo: extras.resumo } : {}),
+  });
   await db
     .insert(configuracao)
     .values({ chave: CHAVE, valor })
@@ -174,7 +253,7 @@ async function escreverBoletim(p: Previsao, turno: Turno): Promise<string> {
  */
 export async function verificarEPostarBoletimClima(
   opcoes: { forcar?: boolean; previsao?: Previsao } = {},
-): Promise<{ postou: boolean; motivo: string; turno?: string }> {
+): Promise<{ postou: boolean; motivo: string; turno?: string; push?: boolean }> {
   try {
     const atual = turnoDoDia();
     const ultimo = await lerUltimo().catch(() => null);
@@ -186,28 +265,42 @@ export async function verificarEPostarBoletimClima(
     }
 
     const p = opcoes.previsao ?? (await obterPrevisao());
+    const resumo = resumoBoletim(p);
+
+    // Notificação só quando o turno tem novidade (ou quando já faz tempo demais
+    // desde o último Push, como rede de segurança de quem só olha o celular).
+    const novidade = opcoes.forcar || boletimMerecePush(p, ultimo?.resumo);
+    const limitePushMin = Number(String(process.env.CLIMA_BOLETIM_PUSH_MIN ?? "").trim());
+    const pushMinMs =
+      (Number.isFinite(limitePushMin) && limitePushMin > 0 ? limitePushMin : PUSH_MIN_SEM_NOVIDADE_MIN) * 60_000;
+    const podePush = novidade || !ultimo?.pushEm || Date.now() - ultimo.pushEm >= pushMinMs;
+
     const texto = await escreverBoletim(p, atual.turno);
     const [mensagem] = await db
       .insert(chatMensagens)
       .values({ motoristaId: MOTORISTA_SISTEMA, nome: NOME_BOLETIM, texto })
       .returning();
     // Grava antes do Push: dois ciclos juntos não publicam duas vezes.
-    await gravarUltimo(atual.chave);
+    await gravarUltimo(atual.chave, { push: podePush, resumo });
 
     // Web Push (nome do agente + texto) para todos os aparelhos, inclusive com
-    // o app fechado. A tag CHAT_<id> impede aviso repetido.
+    // o app fechado. A tag CHAT_<id> impede aviso repetido. Turno tranquilo e
+    // repetido fica só no chat: o celular do motorista não apita à toa.
     let push = "não";
-    const r = mensagem
-      ? await notificarMensagemChat({
-          id: mensagem.id,
-          motoristaId: MOTORISTA_SISTEMA,
-          nome: NOME_BOLETIM,
-          texto,
-        }).catch(() => null)
-      : null;
-    if (r && "enviadas" in r && r.enviadas > 0) push = `${r.enviadas} aparelho(s)`;
+    if (podePush) {
+      const r = mensagem
+        ? await notificarMensagemChat({
+            id: mensagem.id,
+            motoristaId: MOTORISTA_SISTEMA,
+            nome: NOME_BOLETIM,
+            texto,
+          }).catch(() => null)
+        : null;
+      if (r && "enviadas" in r && r.enviadas > 0) push = `${r.enviadas} aparelho(s)`;
+    }
 
-    return { postou: true, motivo: `boletim da ${atual.turno.nome} (push: ${push})`, turno: atual.turno.nome };
+    const motivo = `boletim da ${atual.turno.nome} (push: ${push}${!podePush ? ", sem novidade" : ""})`;
+    return { postou: true, motivo, turno: atual.turno.nome, push: podePush };
   } catch {
     return { postou: false, motivo: "falha ao montar o boletim" };
   }

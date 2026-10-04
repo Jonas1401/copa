@@ -55,6 +55,10 @@ export type StatusRadar = {
   sensibilidade: "baixa" | "media" | "alta";
   intervaloMin: number;
   painelMin: number;
+  /** Cota de avisos: intervalo mínimo (minutos), tetos por hora e por dia. */
+  avisoMinMin: number;
+  maxPorHora: number;
+  maxPorDia: number;
   ultimaVerificacao: string | null;
   ultimaMudanca: { em: string; resumo: string; grave: boolean } | null;
   mudancas24h: number;
@@ -207,8 +211,12 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
                 O CopaLinks acompanha o SIMPORT® – Dashboard Meteoceanográfico da APPA a cada{" "}
                 <b className="text-white">{s.intervaloMin} minutos</b>, com o painel relido a cada{" "}
                 <b className="text-white">{s.painelMin} minutos</b> por leitura automática (API → HTML →
-                navegador → OCR → Composio). Qualquer mudança na previsão entra no chat e chega como
-                notificação, mesmo com o aplicativo fechado.
+                navegador → OCR → Composio). Mudança que importa — chuva, vento, condição, alerta e
+                boletim — entra no chat e chega como notificação, mesmo com o aplicativo fechado; no
+                máximo a cada <b className="text-white">{s.avisoMinMin} min</b>,{" "}
+                <b className="text-white">{s.maxPorHora}</b> por hora e{" "}
+                <b className="text-white">{s.maxPorDia}</b> por dia. Mudança grave (temporal, rajada
+                forte) fura o teto, sem colar no aviso anterior.
               </p>
 
               <dl className="mt-2.5 space-y-1.5 px-0.5 text-[13px]">
@@ -251,6 +259,12 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
                 <div className="flex gap-2">
                   <dt className="shrink-0 text-gelo/70">Avisos em 24 h</dt>
                   <dd className="text-white">{s.mudancas24h}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-gelo/70">Cota de avisos</dt>
+                  <dd className="text-white">
+                    {s.avisoMinMin} min entre avisos · máx. {s.maxPorHora}/h · máx. {s.maxPorDia}/dia
+                  </dd>
                 </div>
 
                 {/* ------------------------------- painel da APPA: conectado ou não */}

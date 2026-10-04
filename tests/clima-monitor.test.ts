@@ -2,17 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   LIMIARES,
+  TIPOS_RELEVANTES,
   assinaturaDoDia,
   configRadar,
   detectarMudancas,
   montarInstantaneo,
+  mudancasRelevantes,
   normalizarTexto,
   parsearPainelSimport,
   resetarTickRadar,
   textoMudancaPadrao,
   tickRadar,
   type InstantaneoClima,
+  type Mudanca,
   type PainelSimport,
+  type TipoMudanca,
 } from "../src/lib/clima-monitor";
 import type { Previsao } from "@/lib/tempo";
 
@@ -296,14 +300,41 @@ test("radar: configuração padrão (5 min, painel 5 min, sensibilidade média)"
   // O painel da APPA é relido no MESMO passo do radar (5 min), com fallback
   // automático entre API/JSON, HTML, navegador headless, OCR e Composio.
   assert.equal(c.painelMs, 5 * 60_000);
-  assert.equal(c.avisoMinMs, 20 * 60_000);
-  assert.equal(c.maxPorHora, 3);
+  // Cota de notificações: o radar fala pouco — 45 min entre avisos, no máximo
+  // 2 por hora e 8 por dia; mudança grave tem piso curto de 15 min.
+  assert.equal(c.avisoMinMs, 45 * 60_000);
+  assert.equal(c.maxPorHora, 2);
+  assert.equal(c.maxPorDia, 8);
+  assert.equal(c.minGraveMs, 15 * 60_000);
 
   assert.equal(configRadar({ CLIMA_MONITOR_ATIVO: "0" } as Record<string, string>).ativo, false);
   assert.equal(configRadar({ CLIMA_MONITOR_MIN: "2" } as Record<string, string>).intervaloMs, 120_000);
   assert.equal(configRadar({ CLIMA_MONITOR_SENSIBILIDADE: "alta" } as Record<string, string>).sensibilidade, "alta");
+  assert.equal(configRadar({ CLIMA_MONITOR_MAX_DIA: "4" } as Record<string, string>).maxPorDia, 4);
   // Valores zerados ou inválidos não derrubam o radar: valem os padrões.
   assert.equal(configRadar({ CLIMA_MONITOR_MIN: "0" } as Record<string, string>).intervaloMs, 300_000);
+});
+
+test("radar: só chuva, vento, condição, alerta e boletim acordam o celular", () => {
+  const m = (tipo: TipoMudanca): Mudanca => ({
+    tipo,
+    origem: "api",
+    rotulo: tipo,
+    antes: "a",
+    agora: "b",
+    frase: `${tipo} mudou`,
+    grave: false,
+    assinatura: `teste:${tipo}`,
+    peso: 1,
+  });
+  // Temperatura, maré, horário do sol e medição: registro, sem notificação.
+  assert.equal(mudancasRelevantes([m("temperatura"), m("mare"), m("sol"), m("medicao")]).length, 0);
+  // Basta UMA mudança que importa para o ciclo virar aviso.
+  const mistas = mudancasRelevantes([m("temperatura"), m("chuva"), m("medicao")]);
+  assert.deepEqual(mistas.map((x) => x.tipo), ["chuva"]);
+  for (const tipo of ["chuva", "vento", "condicao", "alerta", "boletim"] as TipoMudanca[]) {
+    assert.ok(TIPOS_RELEVANTES.has(tipo), `${tipo} é relevante`);
+  }
 });
 
 test("radar: lê o painel da Simport (boletim, chuva, vento, marés e sol)", () => {
@@ -598,8 +629,9 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     },
   });
 
-  // Cenário da previsão (mutável): chance de chuva, rajada e condição.
-  let cenario = { chance: 10, rajada: 18, mm: 0, gravidade: 0 };
+  // Cenário da previsão (mutável): chance de chuva, rajada, volume, condição e
+  // temperatura (a medição do porto e o máximo/mínimo do dia saem daqui).
+  let cenario = { chance: 10, rajada: 18, mm: 0, gravidade: 0, temp: 21 };
   const fetchReal = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -622,9 +654,9 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
         ...(url.includes("chanceOfRain")
           ? {
               precipitation: cenario.mm,
-              temperature: 21,
+              temperature: cenario.temp,
               relativeHumidity: 80,
-              thermalSensation: 21,
+              thermalSensation: cenario.temp,
               chanceOfRain: cenario.chance,
               icon: cenario.gravidade === 5 ? 1186 : 1003,
             }
@@ -633,7 +665,7 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
           ? { windSpeed: Math.round((cenario.rajada / 1.852) * 0.6), windGust: Math.round(cenario.rajada / 1.852), windDirection: 135 }
           : {}),
         ...(url.includes("hourlyPrecipitation")
-          ? { temperatureAverage: 21, thermalSensationAverage: 21, humidityAverage: 80, hourlyPrecipitation: 0 }
+          ? { temperatureAverage: cenario.temp, thermalSensationAverage: cenario.temp, humidityAverage: 80, hourlyPrecipitation: 0 }
           : {}),
         ...(url.includes("windDirectionAverage")
           ? { windDirectionAverage: 135, windSpeedAverage: 7 }
@@ -673,6 +705,7 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
         "clima_monitor_ultima",
         "clima_monitor_painel",
         "clima_monitor_semeado",
+        "notificacoes_cota",
       ]),
     );
     await db.delete(subscriptions);
@@ -687,7 +720,7 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     assert.equal(pushes.length, 0);
 
     // 2) A APPA revisa a previsão: entra chuva forte e rajada alta.
-    cenario = { chance: 80, rajada: 55, mm: 6.5, gravidade: 5 };
+    cenario = { ...cenario, chance: 80, rajada: 55, mm: 6.5, gravidade: 5 };
     const r2 = await verificarMudancasPrevisao({ forcar: true });
     assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
     assert.ok(r2.mudancas.length > 0);
@@ -712,18 +745,28 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
 
     // 4) O alerta/boletim do clima já falou neste minuto: o radar cala a boca,
     //    mas avança a referência (não avisa de novo no ciclo seguinte).
-    cenario = { chance: 20, rajada: 18, mm: 0, gravidade: 0 };
+    cenario = { ...cenario, chance: 20, rajada: 18, mm: 0, gravidade: 0 };
     const r4 = await verificarMudancasPrevisao({ forcar: true, registrarSomente: true });
     assert.equal(r4.postou, false);
     assert.match(r4.motivo, /já avisou/i);
     assert.equal((await db.select().from(chatMensagens)).length, 1);
 
     // 5) Mudança nova de verdade (de 20% para 95%) volta a avisar.
-    cenario = { chance: 95, rajada: 70, mm: 12, gravidade: 5 };
+    cenario = { ...cenario, chance: 95, rajada: 70, mm: 12, gravidade: 5 };
     const r5 = await verificarMudancasPrevisao({ forcar: true });
     assert.equal(r5.postou, true, `motivo: ${r5.motivo}`);
     assert.equal((await db.select().from(chatMensagens)).length, 2);
     assert.equal(pushes.length, 2);
+
+    // 5b) Só a temperatura mudou (5°C a mais): não é notícia para quem está
+    //     na estrada — o radar avança a referência sem acordar o celular.
+    cenario = { ...cenario, temp: 26 };
+    const r5b = await verificarMudancasPrevisao({ forcar: true });
+    assert.equal(r5b.postou, false, `motivo: ${r5b.motivo}`);
+    assert.match(r5b.motivo, /baixa relevância/i);
+    assert.ok(r5b.mudancas.length > 0, "a mudança foi detectada e registrada");
+    assert.equal((await db.select().from(chatMensagens)).length, 2, "sem mensagem nova");
+    assert.equal(pushes.length, 2, "sem Push novo");
 
     // 6) Status do radar para a tela Tempo e para o painel.
     const s = await statusRadarClima();
@@ -731,6 +774,9 @@ test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por P
     assert.equal(s.sensibilidade, "media");
     assert.ok(s.ultimaVerificacao);
     assert.equal(s.mudancas24h, (await db.select().from(climaMudancas)).length);
+    assert.equal(s.avisoMinMin, 45, "cota: 45 min entre avisos");
+    assert.equal(s.maxPorHora, 2, "cota: no máximo 2 avisos por hora");
+    assert.equal(s.maxPorDia, 8, "cota: no máximo 8 avisos por dia");
     assert.equal(s.fontes.simport, true);
     assert.equal(s.fontes.painel, true, "o painel lido pelo Composio alimentou o radar");
     assert.equal(s.fontes.composio, false);

@@ -143,10 +143,18 @@ texto pronto montado pelas regras — nunca um palpite:
    boletins por dia, 24 horas por dia: quem pega serviço de madrugada
    também recebe a previsão. A chave do turno fica em `configuracao`
    (`clima_boletim_chat`) e nunca saem dois boletins com menos de 5 h de
-   diferença.
+   diferença. **O Push só sai quando o turno traz novidade** (chuva ≥ 50 %,
+   volume ≥ 1 mm, rajada ≥ 40 km/h, mínima ≤ 10° ou máxima ≥ 33°, boletim
+   ruim da APPA ou previsão revisada desde o turno anterior) — e, mesmo nos
+   turnos tranquilos, há um aviso de segurança a cada
+   `CLIMA_BOLETIM_PUSH_MIN` (12 h). Turno repetido entra **no chat, sem
+   notificação**: a previsão está lá para quem abrir o app, sem o celular
+   apitar 4 vezes por dia à toa.
 2. **🌦️ Clima no Porto** — o alerta de chuva forte ou vento (ou boletim ruim
-   da APPA): assume o lugar do boletim enquanto o tempo estiver ruim e
-   reaparece a cada 3 h (`src/lib/clima-alerta.ts`).
+   da APPA): assume o lugar do boletim enquanto o tempo estiver ruim. O nível
+   NOVO é urgente e sai na hora; o lembrete em alerta ativo reaparece a cada
+   `CLIMA_ALERTA_MIN` (6 h), com no máximo `CLIMA_ALERTA_MAX_DIA` (4) avisos
+   por dia (`src/lib/clima-alerta.ts`).
 
 Um único ponto de entrada decide quem fala: `verificarClima()` tenta o alerta
 primeiro e, com o tempo tranquilo, publica o boletim do turno. Nos dois casos
@@ -229,17 +237,28 @@ máxima/mínima de hoje e de amanhã, boletim da APPA (texto e alerta de tempo
 ruim), **alerta meteorológico novo no painel**, tabelas do painel (chuva, vento
 em nós), marés e horários do sol.
 
-**Antispam:** a 1ª leitura só registra (nada de aviso antigo); a comparação é
-sempre contra o último aviso, então uma mudança lenta é avisada uma vez só;
-cada mudança tem assinatura única por bloco de 3 h (tabela `clima_mudancas`);
-intervalo mínimo de **20 min** entre avisos e no máximo **3 por hora**; se o
-alerta/boletim do clima acabou de falar no mesmo minuto, o radar cala e apenas
-avança a referência; quem silenciou o chat não recebe.
+**Antispam (o radar fala pouco e só quando importa):**
+
+- a 1ª leitura só registra (nada de aviso antigo); a comparação é sempre
+  contra o último aviso, então uma mudança lenta é avisada uma vez só;
+- **só o que importa acorda o celular**: chuva, vento, condição do tempo,
+  alerta e boletim. Oscilação de temperatura, maré e horário do sol apenas
+  avançam a referência, sem notificação;
+- cada mudança tem assinatura única por bloco de 3 h (tabela `clima_mudancas`)
+  e a **cota comum** (`src/lib/notificacoes-cota.ts`) limita os avisos:
+  `CLIMA_MONITOR_AVISO_MIN` (**45 min**) entre avisos,
+  `CLIMA_MONITOR_MAX_HORA` (**2**) por hora e `CLIMA_MONITOR_MAX_DIA` (**8**)
+  por dia, no horário de Brasília;
+- mudança **grave** (chuva forte, temporal, rajada ≥ 40 km/h) passa do teto,
+  mas nunca sai em cima do aviso anterior (piso `CLIMA_MONITOR_MIN_GRAVE`,
+  15 min);
+- se o alerta/boletim do clima acabou de falar no mesmo minuto, o radar cala e
+  apenas avança a referência; quem silenciou o chat não recebe.
 
 Tudo é opcional e configurável por variável de ambiente (veja `.env.example`):
 `CLIMA_MONITOR_ATIVO`, `CLIMA_MONITOR_MIN`, `CLIMA_MONITOR_PAINEL_MIN`,
-`CLIMA_MONITOR_SENSIBILIDADE` (baixa/média/alta), `CLIMA_MONITOR_AVISO_MIN` e
-`CLIMA_MONITOR_MAX_HORA`. A leitura do painel aceita `SIMPORT_PAINEL_URL`
+`CLIMA_MONITOR_SENSIBILIDADE` (baixa/média/alta), `CLIMA_MONITOR_AVISO_MIN`,
+`CLIMA_MONITOR_MAX_HORA`, `CLIMA_MONITOR_MAX_DIA` e `CLIMA_MONITOR_MIN_GRAVE`. A leitura do painel aceita `SIMPORT_PAINEL_URL`
 (endereço do painel), `APPA_DADOS_API`/`APPA_BOLETIM_API`/`SIMPORT_AUTH_TOKEN`
 (API estruturada), `APPA_NAVEGADOR_MODULO`/`APPA_CDP_URL` (navegador headless e
 navegador remoto), `APPA_LEITURA_TIMEOUT_MS`/`APPA_NAVEGADOR_TIMEOUT_MS` e
@@ -248,7 +267,8 @@ funcionando com os métodos diretos (API, HTML, navegador e OCR).
 
 O cartão *Radar da previsão* fica **somente na área do administrador**
 (`/admin`, logo abaixo do atalho do Monitor WhatsApp): mostra se está
-monitorando, a última leitura, a última mudança avisada, as fontes no ar e o
+monitorando, a última leitura, a última mudança avisada, a **cota de avisos**
+(intervalo entre avisos, teto por hora e por dia), as fontes no ar e o
 **Painel APPA: conectado · leitura realizada**, com o **método de leitura**
 (API/endpoint de dados, HTTP + HTML, navegador automático, OCR ou Composio), a
 última leitura normalizada (chuva, chuva forte, tempestade, vento, temperatura,
@@ -405,6 +425,14 @@ descartado e vai o texto pronto — que diz que a quantidade ainda não foi
 divulgada. Sai no chat como **🚢 Navios no Porto** e
 por Web Push (quem silenciou o chat não recebe) — `src/lib/navios-aviso.ts`,
 tabela `navios_avisos`. Na 1ª execução só registra o que já existe.
+
+**Antiexcesso:** quando dois ou mais navios têm novidade no mesmo ciclo, sai
+**UMA mensagem e UMA notificação** com todos (lote) — nada de três avisos
+seguidos no mesmo minuto; o que não couber no lote continua pendente para o
+próximo ciclo. A cota de navios é `NAVIOS_AVISO_MIN` (20 min) entre avisos,
+`NAVIOS_MAX_HORA` (3) por hora e `NAVIOS_MAX_DIA` (8) por dia; **atracou** e
+**despachado** são urgentes e passam do teto (com piso de 15 min entre
+avisos), porque mudam a fila de trabalho de quem está no pátio.
 
 O **Assistente IA** do chat responde sobre qualquer navio (line-up, manobras e
 maré entram no contexto quando a pergunta fala de navio, berço, carga,

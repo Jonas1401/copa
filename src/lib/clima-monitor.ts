@@ -26,6 +26,7 @@ import {
   type TentativaLeituraAppa,
 } from "@/lib/appa-painel";
 import { GRAVIDADE, obterPrevisao, type Previsao } from "@/lib/tempo";
+import { checarCota, registrarAviso } from "@/lib/notificacoes-cota";
 
 /**
  * Reexportados do leitor do painel (`src/lib/appa-painel-texto.ts`), onde os
@@ -75,7 +76,14 @@ export type { DadosPainelAppa, MetodoLeituraAppa, PainelSimport, TentativaLeitur
  *     (ex.: a chuva crescendo aos poucos) é avisada uma única vez;
  *   - cada mudança tem assinatura única por bloco de 3 h (`clima_mudancas`):
  *     o mesmo "de 20% para 75%" não repete na mesma janela;
- *   - intervalo mínimo entre avisos e teto por hora (`CLIMA_MONITOR_*`);
+ *   - SÓ MUDA O QUE IMPORTA PARA O PUSH: chuva, vento, condição do tempo,
+ *     alerta e boletim acordam o celular; oscilação de temperatura, maré e
+ *     horário do sol apenas avançam a referência (ficam registradas para a
+ *     comparação seguinte, sem notificação);
+ *   - a cota comum (`src/lib/notificacoes-cota.ts`) limita os avisos:
+ *     `CLIMA_MONITOR_AVISO_MIN` (padrão 45 min) entre avisos,
+ *     `CLIMA_MONITOR_MAX_HORA` (2) por hora e `CLIMA_MONITOR_MAX_DIA` (8) por
+ *     dia; mudança GRAVE passa do teto com piso de 15 min entre avisos;
  *   - se o alerta/boletim do clima acabou de falar no mesmo minuto, o radar
  *     avança a referência calado (`registrarSomente`);
  *   - quem silenciou o chat não recebe (mesmo caminho dos outros agentes).
@@ -126,8 +134,14 @@ export type ConfigRadar = {
   sensibilidade: Sensibilidade;
   intervaloMs: number;
   painelMs: number;
+  /** Intervalo mínimo entre dois avisos do radar (min). */
   avisoMinMs: number;
+  /** Teto de avisos por hora. */
   maxPorHora: number;
+  /** Teto de avisos por dia (horário de Brasília). */
+  maxPorDia: number;
+  /** Piso entre dois avisos GRAVES (min): mudança séria passa do teto. */
+  minGraveMs: number;
 };
 
 const numero = (v: unknown, padrao: number) => {
@@ -145,9 +159,29 @@ export function configRadar(ambiente: Record<string, string | undefined> = proce
     sensibilidade: sens === "baixa" || sens === "alta" ? sens : "media",
     intervaloMs: numero(ambiente.CLIMA_MONITOR_MIN, 5) * 60_000,
     painelMs: numero(ambiente.CLIMA_MONITOR_PAINEL_MIN, 5) * 60_000,
-    avisoMinMs: numero(ambiente.CLIMA_MONITOR_AVISO_MIN, 20) * 60_000,
-    maxPorHora: numero(ambiente.CLIMA_MONITOR_MAX_HORA, 3),
+    avisoMinMs: numero(ambiente.CLIMA_MONITOR_AVISO_MIN, 45) * 60_000,
+    maxPorHora: numero(ambiente.CLIMA_MONITOR_MAX_HORA, 2),
+    maxPorDia: numero(ambiente.CLIMA_MONITOR_MAX_DIA, 8),
+    minGraveMs: numero(ambiente.CLIMA_MONITOR_MIN_GRAVE, 15) * 60_000,
   };
+}
+
+/**
+ * Tipos de mudança que merecem acordar o celular do motorista. Oscilação de
+ * temperatura, maré e horário do sol ficam registradas para a comparação
+ * seguinte — sem notificação — porque não mudam o que ele faz na estrada.
+ */
+export const TIPOS_RELEVANTES: ReadonlySet<TipoMudanca> = new Set<TipoMudanca>([
+  "chuva",
+  "vento",
+  "condicao",
+  "alerta",
+  "boletim",
+]);
+
+/** Só as mudanças que valem uma notificação (as demais só viram referência). */
+export function mudancasRelevantes(mudancas: Mudanca[]): Mudanca[] {
+  return mudancas.filter((m) => TIPOS_RELEVANTES.has(m.tipo));
 }
 
 /* ------------------------------------------------------------- tipos */
@@ -1059,31 +1093,6 @@ function diagnosticoValido(bruto: string | null): DiagnosticoPainel | null {
   }
 }
 
-/**
- * Motivo para não avisar agora (intervalo mínimo / teto por hora) ou null.
- * Conta AVISOS PUBLICADOS (linhas com `mensagemId`), não mudanças: um mesmo
- * aviso pode reunir várias mudanças e isso não pode gastar a cota da hora.
- */
-async function limiteDeAvisos(cfg: ConfigRadar): Promise<string | null> {
-  const publicados = sql`${climaMudancas.mensagemId} is not null`;
-  const [ultimo] = await db
-    .select({ em: climaMudancas.criadoEm })
-    .from(climaMudancas)
-    .where(publicados)
-    .orderBy(desc(climaMudancas.id))
-    .limit(1);
-  if (ultimo?.em && Date.now() - ultimo.em.getTime() < cfg.avisoMinMs) {
-    const falta = Math.ceil((cfg.avisoMinMs - (Date.now() - ultimo.em.getTime())) / 60_000);
-    return `aguardando ${falta} min do último aviso`;
-  }
-  const [hora] = await db
-    .select({ n: sql<number>`count(distinct ${climaMudancas.mensagemId})::int` })
-    .from(climaMudancas)
-    .where(sql`${climaMudancas.criadoEm} > now() - interval '1 hour' and ${publicados}`);
-  if ((hora?.n ?? 0) >= cfg.maxPorHora) return `limite de ${cfg.maxPorHora} avisos por hora`;
-  return null;
-}
-
 /* ------------------------------------------------------------ radar */
 /**
  * Ciclo do radar: lê de novo, compara com o último aviso e, se a previsão
@@ -1136,6 +1145,17 @@ export async function verificarMudancasPrevisao(
     if (!mudancas.length) {
       return { rodou: true, postou: false, motivo: "previsão sem mudança", mudancas: [] };
     }
+    // Mudança que não muda a vida de quem está na estrada (temperatura, maré,
+    // horário do sol) não vira notificação: avança a referência calada.
+    if (!mudancasRelevantes(mudancas).length) {
+      await gravarInstantaneo(atual);
+      return {
+        rodou: true,
+        postou: false,
+        motivo: "mudança de baixa relevância (só registro)",
+        mudancas: mudancas.map((m) => m.rotulo),
+      };
+    }
 
     // O alerta/boletim do clima acabou de falar neste mesmo minuto: a referência
     // avança calada, para não sair duas mensagens juntas no chat.
@@ -1149,9 +1169,19 @@ export async function verificarMudancasPrevisao(
       };
     }
 
-    const bloqueio = opcoes.forcar ? null : await limiteDeAvisos(cfg);
-    if (bloqueio) {
-      return { rodou: true, postou: false, motivo: bloqueio, mudancas: mudancas.map((m) => m.rotulo) };
+    // Cota de notificações: piso entre avisos, teto por hora e por dia. Uma
+    // mudança GRAVE (chuva forte, temporal, rajada ≥ 40 km/h) é urgente: passa
+    // do teto, mas nunca sai em cima do aviso anterior. `forcar` (testes e
+    // "Verificar agora" do administrador) ignora a cota.
+    const temGrave = mudancas.some((m) => m.grave);
+    if (!opcoes.forcar) {
+      const cota = await checarCota("radar", {
+        urgente: temGrave,
+        pisoUrgenteMin: Math.round(cfg.minGraveMs / 60_000),
+      });
+      if (!cota.liberado) {
+        return { rodou: true, postou: false, motivo: cota.motivo, mudancas: mudancas.map((m) => m.rotulo) };
+      }
     }
 
     // Reserva cada mudança antes de escrever: a mesma mudança não repete no
@@ -1194,6 +1224,8 @@ export async function verificarMudancasPrevisao(
       if (r && "enviadas" in r && r.enviadas > 0) push = `${r.enviadas} aparelho(s)`;
     }
 
+    // A cota é registrada junto com o aviso publicado.
+    await registrarAviso("radar");
     // Só depois de avisar é que a referência avança.
     await gravarInstantaneo(atual);
     // Retenção: 30 dias de histórico de mudanças (o limite é por dia/hora).
@@ -1261,6 +1293,10 @@ export type StatusRadarClima = {
   sensibilidade: Sensibilidade;
   intervaloMin: number;
   painelMin: number;
+  /** Cota de avisos: intervalo mínimo (minutos), tetos por hora e por dia. */
+  avisoMinMin: number;
+  maxPorHora: number;
+  maxPorDia: number;
   ultimaVerificacao: string | null;
   ultimaMudanca: { em: string; resumo: string; grave: boolean } | null;
   mudancas24h: number;
@@ -1295,6 +1331,9 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
     sensibilidade: cfg.sensibilidade,
     intervaloMin: Math.round(cfg.intervaloMs / 60_000),
     painelMin: Math.round(cfg.painelMs / 60_000),
+    avisoMinMin: Math.round(cfg.avisoMinMs / 60_000),
+    maxPorHora: cfg.maxPorHora,
+    maxPorDia: cfg.maxPorDia,
     ultimaVerificacao: null,
     ultimaMudanca: null,
     mudancas24h: 0,
