@@ -14,7 +14,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h); o **Radar da previsão** mostra que o monitoramento está no ar |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima, os avisos do radar (só chuva, neblina forte ou tempestade na previsão — tempo bom fica em silêncio) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) |
 
@@ -213,21 +213,30 @@ O radar tem **dois caminhos** para não parar:
 
 Cada leitura vira um **instantâneo** comparável (números + textos
 normalizados). Quando a comparação com o instantâneo do **último aviso** passa
-do limite da sensibilidade, o radar:
+do limite da sensibilidade — **e a previsão traz tempo ruim** —, o radar:
 
 - publica **uma** mensagem no chat como **📡 Radar da Previsão**
   (`motorista_id = 0`), escrita pela IA (**Gemini pelo Composio**) com os
   números reais — se a IA falhar, vale o texto pronto das regras;
 - dispara **Web Push para todos os aparelhos: a notificação chega mesmo com o
   aplicativo fechado** (quem mostra é o Service Worker) e, ao tocar, abre o
-  chat. Em mudança grave (chuva forte, rajada ≥ 40 km/h ou boletim da APPA com
+  chat. Em aviso grave (chuva forte, tempestade ou boletim/alerta da APPA com
   tempo ruim) o aviso fica na tela até o motorista tocar.
 
-**O que é comparado:** início e intensidade da chuva (6 h e 24 h), chuva forte,
-tempestade, vento e rajada máximos, condição do tempo (na API e no painel),
-máxima/mínima de hoje e de amanhã, boletim da APPA (texto e alerta de tempo
-ruim), **alerta meteorológico novo no painel**, tabelas do painel (chuva, vento
-em nós), marés e horários do sol.
+**O que o radar vigia — só a PREVISÃO:** as **próximas horas** (chance e volume
+de chuva em 6 h e 24 h do modelo WRF, condição do tempo prevista e, no painel
+da APPA, a chuva hora a hora, o início da chuva, o horário da chuva forte, a
+condição prevista e os **alertas novos**) e os **próximos dias** (chance de
+chuva de hoje e de amanhã e o boletim da APPA por dia). Vento, temperatura,
+tábua de marés, horários do sol e a **medição do tempo atual** (estação do
+porto e Composio) continuam na tela Tempo e no diagnóstico do administrador,
+mas **não geram aviso**.
+
+**Quando o radar fala:** somente se a previsão trouxer **chuva** (chance ≥ 50%
+ou volume ≥ 0,5 mm), **neblina forte** ou **tempestade** — inclusive alerta
+novo do painel sobre esses três. **Previsão de tempo bom** (a chuva saiu, a
+chance caiu, o dia ficou firme) **não gera mensagem no chat nem notificação**:
+o radar avança a referência em silêncio.
 
 **Antispam:** a 1ª leitura só registra (nada de aviso antigo); a comparação é
 sempre contra o último aviso, então uma mudança lenta é avisada uma vez só;

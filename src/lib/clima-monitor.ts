@@ -54,20 +54,34 @@ export type { DadosPainelAppa, MetodoLeituraAppa, PainelSimport, TentativaLeitur
  *
  * Cada leitura vira um "instantâneo" (números + textos normalizados) que é
  * comparado com o instantâneo do último aviso. Achou diferença acima do
- * limite da sensibilidade escolhida, o radar:
+ * limite da sensibilidade escolhida — E a previsão traz tempo ruim —, o radar:
  *
  *   - posta UMA mensagem no chat dos motoristas como "📡 Radar da Previsão"
  *     (`motorista_id = 0` = sistema), escrita pela IA (Gemini pelo Composio)
  *     com os números reais — se a IA falhar, vale o texto pronto das regras;
  *   - dispara Web Push para todos os aparelhos: a notificação chega MESMO COM
  *     O APLICATIVO FECHADO (quem exibe é o Service Worker) e, ao tocar, abre o
- *     chat; em mudança grave (chuva forte, tempestade/vendaval, rajada
- *     ≥ 40 km/h ou boletim/alerta da APPA com tempo ruim) o aviso fica na tela
- *     até o motorista tocar.
+ *     chat; em aviso grave (chuva forte, tempestade ou boletim/alerta da APPA
+ *     com tempo ruim) o aviso fica na tela até o motorista tocar.
  *
- * O que entra na comparação (entre outros): começo e intensidade da chuva,
- * chuva forte, tempestade, vento/rajada, condição do tempo, boletim da APPA,
- * ALERTA NOVO no painel e a tábua de marés.
+ * O QUE O RADAR VIGIA — só a PREVISÃO, nada mais:
+ *
+ *   - PRÓXIMAS HORAS: modelo WRF (chance/volume de chuva em 6 h e 24 h,
+ *     condição prevista) e o painel da APPA (chuva hora a hora, início da
+ *     chuva, horário da chuva forte, condição prevista e alertas novos);
+ *   - PRÓXIMOS DIAS: hoje e amanhã (chance de chuva) e o boletim da APPA por
+ *     dia.
+ *
+ * E O QUE NÃO VIRA AVISO: vento/rajada, temperatura, tábua de marés, horários
+ * do sol e a MEDIÇÃO do tempo atual (estação do porto e Composio). Esses dados
+ * continuam na tela Tempo e no diagnóstico do administrador, só não disparam
+ * mensagem.
+ *
+ * QUANDO O RADAR FALA: somente se a previsão trouxer CHUVA (chance ≥ 50% ou
+ * volume ≥ 0,5 mm), NEBLINA forte ou TEMPESTADE — inclusive alerta novo do
+ * painel sobre esses três. Previsão de TEMPO BOM (a chuva saiu, a chance caiu,
+ * o dia ficou firme) NÃO gera mensagem no chat nem notificação: o radar
+ * simplesmente avança a referência em silêncio.
  *
  * Antispam (o radar fala só quando vale a pena):
  *   - 1ª leitura apenas registra o instantâneo, sem avisar nada antigo;
@@ -108,18 +122,41 @@ export const LIMIARES: Record<
   {
     chuvaProb: number; // pontos percentuais
     chuvaMm: number; // mm
-    rajada: number; // km/h
-    vento: number; // km/h
-    ventoNos: number; // nós (painel da APPA)
-    temp: number; // °C (previsão)
-    tempAgora: number; // °C (medição no porto)
     gravidade: number; // níveis de condição (0 sol … 7 temporal)
   }
 > = {
-  baixa: { chuvaProb: 30, chuvaMm: 3, rajada: 15, vento: 15, ventoNos: 8, temp: 5, tempAgora: 6, gravidade: 3 },
-  media: { chuvaProb: 20, chuvaMm: 1, rajada: 10, vento: 10, ventoNos: 5, temp: 3, tempAgora: 4, gravidade: 2 },
-  alta: { chuvaProb: 10, chuvaMm: 0.5, rajada: 6, vento: 6, ventoNos: 3, temp: 2, tempAgora: 2, gravidade: 1 },
+  baixa: { chuvaProb: 30, chuvaMm: 3, gravidade: 3 },
+  media: { chuvaProb: 20, chuvaMm: 1, gravidade: 2 },
+  alta: { chuvaProb: 10, chuvaMm: 0.5, gravidade: 1 },
 };
+
+/* --------------------------- o que o radar vigia (SÓ a previsão de tempo ruim) */
+/**
+ * O radar vigia APENAS a previsão — próximas horas e próximos dias — e só
+ * avisa quando ela traz CHUVA, NEBLINA forte ou TEMPESTADE. Previsão de tempo
+ * bom (ex.: a chuva saiu, a chance caiu) não vira mensagem nem notificação.
+ */
+
+/** Chance de chuva (%) a partir da qual a previsão passa a valer aviso. */
+export const CHANCE_CHUVA_AVISO = 50;
+/** Volume de chuva previsto (mm) a partir do qual vale avisar. */
+export const MM_CHUVA_AVISO = 0.5;
+/** Gravidade mínima da condição prevista que vira aviso: neblina (3) para cima. */
+export const GRAVIDADE_MINIMA_AVISO = GRAVIDADE.neblina;
+
+/** Texto sobre o tempo que o radar vigia: chuva, neblina ou tempestade. */
+export const TEMPO_MONITORADO =
+  /(chuva|garoa|pancada|precipita|neblina|nevoeiro|n[eé]voa|tempestad|trovoad|trov[ãa]o|temporal)/i;
+
+/** A condição prevista merece aviso? (neblina, garoa, chuva, chuva forte ou tempestade.) */
+export const condicaoMereceAviso = (gravidade: number) => gravidade >= GRAVIDADE_MINIMA_AVISO;
+
+/** A chuva prevista merece aviso? (chance ≥ 50% ou volume ≥ 0,5 mm.) */
+export const chuvaMereceAviso = (chance: number, mm: number) =>
+  chance >= CHANCE_CHUVA_AVISO || mm >= MM_CHUVA_AVISO;
+
+/** O texto (alerta do painel, boletim da APPA) fala de chuva, neblina ou tempestade? */
+export const textoMereceAviso = (texto: string) => TEMPO_MONITORADO.test(texto);
 
 export type ConfigRadar = {
   ativo: boolean;
@@ -151,11 +188,17 @@ export function configRadar(ambiente: Record<string, string | undefined> = proce
 }
 
 /* ------------------------------------------------------------- tipos */
-/** Fotografia comparável da previsão (só o que pode mudar e interessa). */
+/**
+ * Fotografia da previsão guardada a cada ciclo. SÓ os campos de PREVISÃO
+ * (`api`, `hoje`, `amanha`, `boletim` e `painel`) entram na comparação do
+ * radar; vento, marés/sol e as medições do tempo atual (`agora`,
+ * `composioAgora`) ficam no instantâneo apenas para o diagnóstico do
+ * administrador — não disparam aviso.
+ */
 export type InstantaneoClima = {
   em: number;
   fontes: { simport: boolean; estacao: boolean; openMeteo: boolean; composio: boolean; painel: boolean };
-  /** Modelo WRF da APPA (próximas 24 h). */
+  /** Modelo WRF da APPA (próximas 24 h). Vento/rajada: só diagnóstico. */
   api: {
     chuvaProb6h: number;
     chuvaProb24h: number;
@@ -171,8 +214,10 @@ export type InstantaneoClima = {
   boletim: { fonte: "api" | "painel"; ruim: boolean; porDia: Record<string, string> } | null;
   /**
    * Painel público da APPA lido pelo radar (API/JSON, HTML, navegador, OCR ou
-   * Composio — quem conseguir). `alertas`, `condicao` e `gravidade` entram na
-   * detecção de mudança; `leitura` é o FORMATO ÚNICO que o app consome.
+   * Composio — quem conseguir). `chuvaProb24h`, `chuvaMm24h`, `alertas`,
+   * `condicao`, `gravidade`, `inicioChuva` e `chuvaForteHora` entram na
+   * detecção de mudança (vento/marés/sol, não); `leitura` é o FORMATO ÚNICO
+   * que o app consome.
    */
   painel: {
     chuvaProb24h: number;
@@ -191,7 +236,7 @@ export type InstantaneoClima = {
     metodo?: MetodoLeituraAppa | null;
     leitura?: DadosPainelAppa | null;
   } | null;
-  /** Medição no porto (estação da APPA ou OpenWeather pelo Composio). */
+  /** Medição no porto (estação da APPA ou OpenWeather pelo Composio). SÓ diagnóstico — não vira aviso. */
   agora: {
     fonte: string;
     temperatura: number;
@@ -202,8 +247,8 @@ export type InstantaneoClima = {
   } | null;
   /**
    * Medição independente lida PELO COMPOSIO (ferramenta WEATHERMAP_WEATHER /
-   * OpenWeather). É a segunda opinião do radar: cobre o tempo atual mesmo
-   * quando a estação da APPA e o WRF falham.
+   * OpenWeather). Aparece no diagnóstico do administrador; como o radar vigia
+   * só a PREVISÃO, a medição atual não dispara aviso.
    */
   composioAgora: {
     temperatura: number;
@@ -216,25 +261,22 @@ export type InstantaneoClima = {
   } | null;
 };
 
-export type TipoMudanca =
-  | "chuva"
-  | "vento"
-  | "temperatura"
-  | "condicao"
-  | "boletim"
-  | "alerta"
-  | "mare"
-  | "sol"
-  | "medicao";
+/**
+ * O radar só trata de mudança na PREVISÃO de tempo ruim:
+ *   - chuva    — chance/volume de chuva previsto (próximas horas ou próximos dias);
+ *   - condicao — a condição prevista piorou para neblina, garoa, chuva ou tempestade;
+ *   - boletim  — boletim da APPA (próximos dias) falando de chuva/neblina/tempestade;
+ *   - alerta   — alerta novo no painel da APPA sobre chuva, neblina ou tempestade.
+ */
+export type TipoMudanca = "chuva" | "condicao" | "boletim" | "alerta";
 
 export type Mudanca = {
   tipo: TipoMudanca;
   /**
-   * De onde veio o dado: api = WRF/estação · painel = página da APPA lida pelo
-   * Composio · composio = medição do Composio (OpenWeather) · agora = estação
-   * do porto · boletim = boletim da APPA.
+   * De onde veio o dado: api = WRF/previsão estruturada (próximas horas e
+   * dias) · painel = painel público da APPA · boletim = boletim da APPA.
    */
-  origem: "api" | "painel" | "composio" | "boletim" | "agora";
+  origem: "api" | "painel" | "boletim";
   rotulo: string;
   antes: string;
   agora: string;
@@ -414,16 +456,21 @@ export function gravidadeOpenWeather(codigo: number): number {
 
 /* ------------------------------------------------------ comparação */
 const fmtPct = (n: number) => `${Math.round(n)}%`;
-const fmtKm = (n: number) => `${Math.round(n)} km/h`;
-const fmtGrau = (n: number) => `${Math.round(n)}°C`;
 const fmtMm = (n: number) => `${r1(n).toString().replace(".", ",")} mm`;
-const fmtNos = (n: number) => `${r1(n).toString().replace(".", ",")} nós`;
 
 /**
- * Compara dois instantâneos e devolve as mudanças que passaram do limite da
- * sensibilidade. Só compara o que existe nos DOIS lados (fonte fora do ar não
- * vira mudança) e nunca repete o mesmo fato por duas fontes: quando a API
- * estruturada já acusou o tipo (ex.: chuva), o painel não repete.
+ * Compara dois instantâneos e devolve as mudanças que merecem aviso. Regras:
+ *
+ *   - SÓ A PREVISÃO entra na comparação: próximas horas (WRF 6 h/24 h e o
+ *     painel da APPA) e próximos dias (hoje, amanhã e o boletim). Vento,
+ *     temperatura, maré, sol e a medição do tempo ATUAL não viram aviso;
+ *   - SÓ TEMPO RUIM vira aviso: chuva (chance ≥ 50% ou volume ≥ 0,5 mm),
+ *     neblina forte ou tempestade na previsão — inclusive alerta novo do
+ *     painel sobre esses três. Previsão melhorando ou de tempo bom NÃO gera
+ *     mensagem no chat nem notificação;
+ *   - Só compara o que existe nos DOIS lados (fonte fora do ar não vira
+ *     mudança) e nunca repete o mesmo fato por duas fontes: quando a API
+ *     estruturada já acusou o tipo (ex.: chuva), o painel não repete.
  */
 export function detectarMudancas(
   antes: InstantaneoClima,
@@ -443,11 +490,18 @@ export function detectarMudancas(
     delta: number;
     formato: (n: number) => string;
     peso: number;
+    /**
+     * Só avisa quando o valor NOVO é previsão de tempo ruim (chuva, neblina
+     * ou tempestade). Valor novo de tempo bom = silêncio.
+     */
+    avisavel: (agora: number) => boolean;
     grave?: (antes: number, agora: number) => boolean;
   }) {
     const a = opcoes.antes;
     const b = opcoes.agora;
     if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) return;
+    // Tempo bom na previsão nova (ou a previsão melhorando): sem aviso.
+    if (!opcoes.avisavel(b)) return;
     const dif = b - a;
     if (Math.abs(dif) < opcoes.delta) return;
     achadas.push({
@@ -463,38 +517,31 @@ export function detectarMudancas(
     });
   }
 
-  /* ------------------------------------- previsão WRF (API estruturada) */
+  /* ------------------- previsão das PRÓXIMAS HORAS (WRF, API estruturada) */
   if (antes.api && agora.api) {
     compararNumero({
       tipo: "chuva", origem: "api", chave: "chuvaProb6h", rotulo: "Chance de chuva nas próximas 6 h",
       antes: antes.api.chuvaProb6h, agora: agora.api.chuvaProb6h, delta: l.chuvaProb, formato: fmtPct, peso: 10,
+      avisavel: (b) => chuvaMereceAviso(b, agora.api?.chuvaMm24h ?? 0),
       grave: (a, b) => b >= 60 && a < 60,
     });
     compararNumero({
       tipo: "chuva", origem: "api", chave: "chuvaProb24h", rotulo: "Chance de chuva nas próximas 24 h",
       antes: antes.api.chuvaProb24h, agora: agora.api.chuvaProb24h, delta: l.chuvaProb, formato: fmtPct, peso: 12,
+      avisavel: (b) => chuvaMereceAviso(b, agora.api?.chuvaMm24h ?? 0),
       grave: (a, b) => b >= 70 && a < 70,
     });
     compararNumero({
       tipo: "chuva", origem: "api", chave: "chuvaMm24h", rotulo: "Volume de chuva previsto em 24 h",
       antes: antes.api.chuvaMm24h, agora: agora.api.chuvaMm24h, delta: l.chuvaMm, formato: fmtMm, peso: 14,
+      avisavel: (b) => chuvaMereceAviso(agora.api?.chuvaProb24h ?? 0, b),
       grave: (a, b) => b >= 5 && a < 5,
     });
-    compararNumero({
-      tipo: "vento", origem: "api", chave: "rajadaMax", rotulo: "Rajada máxima prevista em 24 h",
-      antes: antes.api.rajadaMax, agora: agora.api.rajadaMax, delta: l.rajada, formato: fmtKm, peso: 20,
-      grave: (a, b) => b >= 40 && a < 40,
-    });
-    compararNumero({
-      tipo: "vento", origem: "api", chave: "ventoMax", rotulo: "Vento máximo previsto em 24 h",
-      antes: antes.api.ventoMax, agora: agora.api.ventoMax, delta: l.vento, formato: fmtKm, peso: 22,
-      grave: (a, b) => b >= 30 && a < 30,
-    });
-    // Condição do tempo: o número é a gravidade (0 sol … 7 temporal), mas o
-    // que o motorista lê é o nome ("Parcialmente nublado" → "Chuva forte").
+    // Condição do tempo prevista (0 sol … 7 temporal): só avisa quando a
+    // previsão NOVA é de tempo ruim (neblina, garoa, chuva ou tempestade).
     const gA = antes.api.gravidade;
     const gB = agora.api.gravidade;
-    if (Math.abs(gB - gA) >= l.gravidade) {
+    if (condicaoMereceAviso(gB) && Math.abs(gB - gA) >= l.gravidade) {
       achadas.push({
         tipo: "condicao",
         origem: "api",
@@ -509,32 +556,28 @@ export function detectarMudancas(
     }
   }
 
-  /* -------------------------------------------------- hoje e amanhã */
-  for (const [chave, rotulo, a, b] of [
-    ["hoje", "Hoje", antes.hoje, agora.hoje],
-    ["amanha", "Amanhã", antes.amanha, agora.amanha],
+  /* ---------------------- previsão dos PRÓXIMOS DIAS (hoje e amanhã) */
+  for (const [chave, a, b] of [
+    ["hoje", antes.hoje, agora.hoje],
+    ["amanha", antes.amanha, agora.amanha],
   ] as const) {
     if (!a || !b) continue;
     compararNumero({
-      tipo: "temperatura", origem: "api", chave: `${chave}.max`, rotulo: `Máxima de ${rotulo.toLowerCase()}`,
-      antes: a.max, agora: b.max, delta: l.temp, formato: fmtGrau, peso: chave === "hoje" ? 40 : 50,
-    });
-    compararNumero({
-      tipo: "temperatura", origem: "api", chave: `${chave}.min`, rotulo: `Mínima de ${rotulo.toLowerCase()}`,
-      antes: a.min, agora: b.min, delta: l.temp, formato: fmtGrau, peso: chave === "hoje" ? 42 : 52,
-    });
-    compararNumero({
       tipo: "chuva", origem: "api", chave: `${chave}.chance`, rotulo: `Chance de chuva ${chave === "hoje" ? "hoje" : "amanhã"}`,
       antes: a.chance, agora: b.chance, delta: l.chuvaProb, formato: fmtPct, peso: chave === "hoje" ? 44 : 54,
+      avisavel: (y) => chuvaMereceAviso(y, b.mm),
       grave: (x, y) => y >= 70 && x < 70,
     });
   }
 
-  /* ---------------------------------------------- boletim da APPA */
+  /* --------------------- boletim da APPA (previsão dos próximos dias) */
   if (antes.boletim && agora.boletim && antes.boletim.fonte === agora.boletim.fonte) {
     for (const [dia, texto] of Object.entries(agora.boletim.porDia)) {
       const anterior = antes.boletim.porDia[dia];
       if (anterior === texto) continue;
+      // Só avisa quando o boletim DO DIA fala de chuva, neblina ou tempestade.
+      // Boletim de tempo bom (ou fora desses três): silêncio.
+      if (!textoMereceAviso(texto)) continue;
       const novo = anterior == null;
       achadas.push({
         tipo: "boletim",
@@ -550,73 +593,47 @@ export function detectarMudancas(
         peso: novo ? 5 : 6,
       });
     }
-    if (antes.boletim.ruim !== agora.boletim.ruim) {
+    // O sinal de "tempo ruim" da APPA LIGANDO vira aviso — desde que o boletim
+    // fale de chuva, neblina ou tempestade (o radar não vigia outro assunto);
+    // desligando (a previsão ficou boa) não gera mensagem nem notificação.
+    const textoMonitorado = Object.values(agora.boletim.porDia).some(textoMereceAviso);
+    if (!antes.boletim.ruim && agora.boletim.ruim && textoMonitorado) {
       achadas.push({
         tipo: "boletim",
         origem: "boletim",
         rotulo: "Alerta de tempo ruim da APPA",
-        antes: antes.boletim.ruim ? "ativo" : "desligado",
-        agora: agora.boletim.ruim ? "ativo" : "desligado",
-        frase: agora.boletim.ruim
-          ? "a APPA marcou tempo ruim no boletim do porto"
-          : "a APPA retirou o aviso de tempo ruim do boletim",
-        grave: agora.boletim.ruim,
-        assinatura: `boletimRuim:${agora.boletim.ruim ? "1" : "0"}`,
+        antes: "desligado",
+        agora: "ativo",
+        frase: "a APPA marcou tempo ruim no boletim do porto",
+        grave: true,
+        assinatura: "boletimRuim:1",
         peso: 4,
       });
     }
   }
 
-  /* ----------------------------------- painel público lido pelo Composio */
+  /* --------------- painel da APPA (previsão das próximas horas) */
   if (antes.painel && agora.painel) {
     compararNumero({
       tipo: "chuva", origem: "painel", chave: "painel.chuvaProb", rotulo: "Chuva no painel da APPA (24 h)",
       antes: antes.painel.chuvaProb24h, agora: agora.painel.chuvaProb24h, delta: l.chuvaProb, formato: fmtPct,
-      peso: 60, grave: (a, b) => b >= 70 && a < 70,
+      peso: 60, avisavel: (b) => chuvaMereceAviso(b, agora.painel?.chuvaMm24h ?? 0),
+      grave: (a, b) => b >= 70 && a < 70,
     });
     compararNumero({
       tipo: "chuva", origem: "painel", chave: "painel.chuvaMm", rotulo: "Volume de chuva no painel da APPA",
       antes: antes.painel.chuvaMm24h, agora: agora.painel.chuvaMm24h, delta: l.chuvaMm, formato: fmtMm, peso: 61,
+      avisavel: (b) => chuvaMereceAviso(agora.painel?.chuvaProb24h ?? 0, b),
     });
-    compararNumero({
-      tipo: "vento", origem: "painel", chave: "painel.vento", rotulo: "Vento no painel da APPA (24 h)",
-      antes: antes.painel.ventoNosMax, agora: agora.painel.ventoNosMax, delta: l.ventoNos, formato: fmtNos,
-      peso: 62, grave: (a, b) => b >= 25 && a < 25,
-    });
-    if (antes.painel.mares && agora.painel.mares && antes.painel.mares !== agora.painel.mares) {
-      achadas.push({
-        tipo: "mare",
-        origem: "painel",
-        rotulo: "Tábua de marés da APPA",
-        antes: antes.painel.mares.slice(0, 120),
-        agora: agora.painel.mares.slice(0, 160),
-        frase: `a tábua de marés do painel da APPA mudou (${agora.painel.mares.slice(0, 140)})`,
-        grave: false,
-        assinatura: `mares:${curtas8(agora.painel.mares)}`,
-        peso: 70,
-      });
-    }
-    if (antes.painel.sol && agora.painel.sol && antes.painel.sol !== agora.painel.sol) {
-      achadas.push({
-        tipo: "sol",
-        origem: "painel",
-        rotulo: "Horários do sol",
-        antes: antes.painel.sol,
-        agora: agora.painel.sol,
-        frase: `os horários do sol mudaram (${antes.painel.sol} → ${agora.painel.sol})`,
-        grave: false,
-        assinatura: `sol:${agora.painel.sol.replace(/[^0-9]/g, "")}`,
-        peso: 90,
-      });
-    }
 
-    /* ------------------------- alertas e condição do painel da APPA */
-    // Alerta meteorológico NOVO no painel (tempestade, chuva forte, vendaval,
-    // ressaca…) vira aviso — e sai como grave quando é tempo ruim de verdade.
+    /* ----- alertas novos do painel (só chuva, neblina ou tempestade) */
     const alertasAntes = new Set((antes.painel.alertas ?? []).map(normalizarTexto));
     for (const alerta of agora.painel.alertas ?? []) {
       const chave = normalizarTexto(alerta);
       if (!chave || alertasAntes.has(chave)) continue;
+      // O radar só vigia chuva, neblina e tempestade: alerta de outro assunto
+      // (vento, maré, ressaca…) não vira mensagem nem notificação.
+      if (!textoMereceAviso(alerta)) continue;
       achadas.push({
         tipo: "alerta",
         origem: "painel",
@@ -631,21 +648,20 @@ export function detectarMudancas(
     }
 
     // Horário da chuva no painel: "começa às 14h" → "começa às 20h" é mudança
-    // de previsão de verdade (e não repete enquanto o horário não mudar).
+    // de previsão de chuva de verdade. A chuva SAINDO da previsão (tempo bom)
+    // não vira aviso.
     const inicioA = antes.painel.inicioChuva ?? null;
     const inicioB = agora.painel.inicioChuva ?? null;
-    if (inicioA !== inicioB && (inicioA || inicioB)) {
+    if (inicioA !== inicioB && inicioB) {
       achadas.push({
         tipo: "chuva",
         origem: "painel",
         rotulo: "Horário da chuva no painel da APPA",
         antes: inicioA ?? "sem chuva prevista",
-        agora: inicioB ?? "sem chuva prevista",
-        frase: inicioB
-          ? `a chuva no painel da APPA mudou de horário (${inicioA ?? "sem previsão"} → ${inicioB})`
-          : `o painel da APPA tirou a chuva da previsão (era ${inicioA})`,
+        agora: inicioB,
+        frase: `a chuva no painel da APPA mudou de horário (${inicioA ?? "sem previsão"} → ${inicioB})`,
         grave: false,
-        assinatura: `painelHoraChuva:${inicioA ?? "-"}>${inicioB ?? "-"}`,
+        assinatura: `painelHoraChuva:${inicioA ?? "-"}>${inicioB}`,
         peso: 63,
       });
     }
@@ -666,10 +682,12 @@ export function detectarMudancas(
       });
     }
 
-    // Condição do painel (sem chuva → chuva → chuva forte → tempestade).
+    // Condição prevista no painel: só avisa quando a previsão NOVA é de tempo
+    // ruim (garoa/chuva, chuva forte ou tempestade). Ficou bom? Silêncio.
     const gPainelA = antes.painel.gravidade ?? 0;
     const gPainelB = agora.painel.gravidade ?? 0;
     if (
+      condicaoMereceAviso(gPainelB) &&
       Math.abs(gPainelB - gPainelA) >= Math.max(1, l.gravidade) &&
       (antes.painel.condicao ?? "") !== (agora.painel.condicao ?? "")
     ) {
@@ -687,65 +705,12 @@ export function detectarMudancas(
     }
   }
 
-  /* ------------------------------- medição independente PELO COMPOSIO */
-  if (antes.composioAgora && agora.composioAgora) {
-    const c = "composio" as const;
-    compararNumero({
-      tipo: "medicao", origem: c, chave: "composio.temp", rotulo: "Temperatura pelo Composio",
-      antes: antes.composioAgora.temperatura, agora: agora.composioAgora.temperatura,
-      delta: l.tempAgora, formato: fmtGrau, peso: 84,
-    });
-    compararNumero({
-      tipo: "vento", origem: c, chave: "composio.rajada", rotulo: "Rajada pelo Composio",
-      antes: antes.composioAgora.rajada, agora: agora.composioAgora.rajada,
-      delta: l.rajada, formato: fmtKm, peso: 24, grave: (a, b) => b >= 40 && a < 40,
-    });
-    compararNumero({
-      tipo: "vento", origem: c, chave: "composio.vento", rotulo: "Vento pelo Composio",
-      antes: antes.composioAgora.vento, agora: agora.composioAgora.vento,
-      delta: l.vento, formato: fmtKm, peso: 26,
-    });
-    compararNumero({
-      tipo: "chuva", origem: c, chave: "composio.umidade", rotulo: "Umidade pelo Composio",
-      antes: antes.composioAgora.umidade, agora: agora.composioAgora.umidade,
-      delta: 15, formato: (n) => `${Math.round(n)}%`, peso: 64,
-    });
-    const gA = antes.composioAgora.gravidade;
-    const gB = agora.composioAgora.gravidade;
-    if (Math.abs(gB - gA) >= Math.max(1, l.gravidade)) {
-      achadas.push({
-        tipo: "condicao",
-        origem: c,
-        rotulo: "Condição medida pelo Composio",
-        antes: antes.composioAgora.descricao,
-        agora: agora.composioAgora.descricao,
-        frase: `o Composio mudou a condição de ${antes.composioAgora.descricao.toLowerCase()} para ${agora.composioAgora.descricao.toLowerCase()}`,
-        grave: gB >= GRAVIDADE.chuva && gA < GRAVIDADE.chuva,
-        assinatura: `composioCondicao:${gA}>${gB}`,
-        peso: 32,
-      });
-    }
-  }
-
-  /* ---------------------------------------------- medição no porto */
-  if (antes.agora && agora.agora && antes.agora.fonte === agora.agora.fonte) {
-    compararNumero({
-      tipo: "medicao", origem: "agora", chave: "agora.temp", rotulo: "Temperatura medida no porto",
-      antes: antes.agora.temperatura, agora: agora.agora.temperatura, delta: l.tempAgora, formato: fmtGrau, peso: 80,
-    });
-    compararNumero({
-      tipo: "medicao", origem: "agora", chave: "agora.rajada", rotulo: "Rajada medida no porto",
-      antes: antes.agora.rajada, agora: agora.agora.rajada, delta: l.rajada, formato: fmtKm, peso: 82,
-      grave: (a, b) => b >= 40 && a < 40,
-    });
-  }
-
   /* ------------------------------------------------- ordena e deduplica */
-  // Quando a API estruturada já contou a mesma história, o painel e o Composio
-  // não repetem: elas entram como segunda opinião quando a API está fora do ar.
+  // Quando a API estruturada já contou a mesma história, o painel não repete:
+  // ele entra como segunda opinião quando a API está fora do ar.
   const tiposDaApi = new Set(achadas.filter((m) => m.origem === "api").map((m) => m.tipo));
   return achadas
-    .filter((m) => !((m.origem === "painel" || m.origem === "composio") && tiposDaApi.has(m.tipo)))
+    .filter((m) => !(m.origem === "painel" && tiposDaApi.has(m.tipo)))
     .sort((a, b) => Number(b.grave) - Number(a.grave) || a.peso - b.peso);
 }
 
@@ -753,13 +718,16 @@ export function detectarMudancas(
 /** Texto pronto (só dados reais), usado quando a IA não responde. */
 export function textoMudancaPadrao(mudancas: Mudanca[], p: Previsao | null): string {
   const principais = mudancas.slice(0, 4).map((m) => m.frase);
-  const emoji = mudancas.some((m) => m.tipo === "chuva")
-    ? "🌧️"
-    : mudancas.some((m) => m.tipo === "vento")
-      ? "💨"
-      : mudancas.some((m) => m.tipo === "alerta" || m.tipo === "boletim")
-        ? "📣"
-        : "🔄";
+  const junto = mudancas.map((m) => `${m.rotulo} ${m.agora} ${m.frase}`).join(" ");
+  const emoji = /tempestad|trovoad|temporal/i.test(junto)
+    ? "⛈️"
+    : /neblina|nevoeiro|n[eé]voa/i.test(junto)
+      ? "🌫️"
+      : mudancas.some((m) => m.tipo === "chuva")
+        ? "🌧️"
+        : mudancas.some((m) => m.tipo === "alerta" || m.tipo === "boletim")
+          ? "📣"
+          : "🔄";
   const partes = [`${emoji} A previsão do porto mudou: ${principais.join("; ")}.`];
   if (p) {
     const a = p.agora;
@@ -773,11 +741,11 @@ export function textoMudancaPadrao(mudancas: Mudanca[], p: Previsao | null): str
   return partes.join(" ").slice(0, 480);
 }
 
-const SISTEMA_RADAR = `Você avisa os caminhoneiros do Porto de Paranaguá (PR), no chat do app CopaLinks, quando a PREVISÃO DO TEMPO MUDA.
+const SISTEMA_RADAR = `Você avisa os caminhoneiros do Porto de Paranaguá (PR), no chat do app CopaLinks, quando a PREVISÃO traz chuva, neblina forte ou tempestade para as próximas horas ou para os próximos dias.
 Regras:
 - Português do Brasil, tom de colega de trabalho, claro e sem alarmismo; 2 a 4 frases; no máximo 440 caracteres; comece com um emoji do tempo.
 - Use SOMENTE as mudanças e os dados fornecidos. Nunca invente número, horário ou volume de chuva.
-- Diga o que mudou (de → para), em que período vale e o que o motorista deve fazer na prática (lona amarrada, pista molhada e distância maior, freios, faróis, vento na carreta vazia, maré para quem espera no pátio).
+- Diga o que a previsão traz (de → para), em que período vale e o que o motorista deve fazer na prática (lona amarrada, pista molhada e distância maior, freios, faróis acesos na neblina, atenção redobrada na tempestade).
 - Sem título, sem hashtags, sem aspas e sem lista com travessão.`;
 
 /** Aviso escrito pela IA (Gemini pelo Composio) com as mudanças reais. */
@@ -1086,9 +1054,12 @@ async function limiteDeAvisos(cfg: ConfigRadar): Promise<string | null> {
 
 /* ------------------------------------------------------------ radar */
 /**
- * Ciclo do radar: lê de novo, compara com o último aviso e, se a previsão
- * mudou de verdade, posta no chat + Web Push (app fechado inclusive).
- * Nunca joga erro para cima — o cron não pode quebrar por causa do clima.
+ * Ciclo do radar: relê a previsão (próximas horas e próximos dias), compara
+ * com o último aviso e — SOMENTE se ela trouxer chuva, neblina forte ou
+ * tempestade — posta no chat + Web Push (app fechado inclusive). Previsão de
+ * tempo bom não gera mensagem nem notificação (a referência avança em
+ * silêncio). Nunca joga erro para cima — o cron não pode quebrar por causa do
+ * clima.
  */
 export async function verificarMudancasPrevisao(
   opcoes: {
@@ -1118,7 +1089,9 @@ export async function verificarMudancasPrevisao(
       return { rodou: true, postou: false, motivo: "fontes do tempo indisponíveis", mudancas: [] };
     }
     const atual = montarInstantaneo(p, painel, Date.now(), cc, painelLido.metodo);
-    if (!atual.api && !atual.painel && !atual.boletim && !atual.agora && !atual.composioAgora) {
+    // O radar só vigia a previsão: sem previsão nenhuma (WRF, painel e
+    // boletim), não há o que comparar — a medição do tempo atual não conta.
+    if (!atual.api && !atual.painel && !atual.boletim) {
       return { rodou: true, postou: false, motivo: "leitura incompleta", mudancas: [] };
     }
 
