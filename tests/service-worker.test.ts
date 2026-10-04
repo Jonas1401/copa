@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 
 test("Service Worker mostra Push sem janela do app e abre o monitor ao tocar", async () => {
   type Evento = { data?: { json(): unknown }; waitUntil(p: Promise<unknown>): void };
-  type Notificacao = { body: string; tag: string; requireInteraction: boolean; data: { url: string } };
+  type Notificacao = { body: string; tag: string; requireInteraction: boolean; badge?: string; data: { url: string } };
   const handlers = new Map<string, (evento: Evento & Record<string, unknown>) => void>();
   const mostradas: { titulo: string; opcoes: Notificacao }[] = [];
   const janelasAbertas: string[] = [];
@@ -47,6 +47,7 @@ test("Service Worker mostra Push sem janela do app e abre o monitor ao tocar", a
   assert.match(mostradas[0].opcoes.body, /Último Escalado/);
   assert.equal(mostradas[0].opcoes.requireInteraction, true);
   assert.equal(mostradas[0].opcoes.tag, "SAIU_CAVALO_LIVRO_A_A184_A187_M1");
+  assert.equal(mostradas[0].opcoes.badge, "/icons/public/icons/copalinks-badge-72.png?v=5");
 
   let aguardaClique: Promise<unknown> | null = null;
   const click = handlers.get("notificationclick");
