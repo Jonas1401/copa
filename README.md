@@ -74,7 +74,8 @@ no máximo 2 minutos. O app corrige a diferença entre o relógio do celular e o
 do servidor (`servidorAgora`), para um relógio atrasado não travar o contador
 em "0s". Teste: `tests/leitura-horario.test.ts` (banco `fila_push_test_*`).
 
-Regressões unitárias: `./node_modules/.bin/tsx --test tests/fila.test.ts tests/service-worker.test.ts`.
+Regressões unitárias: `./node_modules/.bin/tsx --test tests/fila.test.ts tests/service-worker.test.ts tests/badge.test.ts`
+(o do badge confere o PNG da notificação: 72x72, branco puro, cantos transparentes).
 O teste do cron/Push usa **somente** um PostgreSQL local descartável com
 `DATABASE_URL=TEST_DATABASE_URL` e nome `fila_push_test_*` (ver
 `tests/cron-push.test.ts`); nunca roda no banco de produção.
@@ -543,13 +544,45 @@ Gera `public/images/fundo-app.webp` (otimizada e na orientação certa) e atuali
 `src/lib/fundo.ts`. A foto aparece no início, nas boas-vindas, no frete e nos
 contatos, sempre com a camada escura por cima para o texto continuar legível.
 
+## Trocar o badge da notificação
+
+O **badge** é o ícone pequeno que aparece na barra de status do Android, ao lado
+do relógio, quando chega um aviso do monitor. A arte de origem é
+`assets/caminhao-badge-fonte.png` (o caminhão branco sobre fundo transparente,
+fora do `public/` para não ser servido pelo site). Para trocar:
+
+```bash
+node scripts/gerar-badge.mjs                                  # usa assets/caminhao-badge-fonte.png
+node scripts/gerar-badge.mjs https://link-direto-da-arte.png  # outra arte, por link
+```
+
+O script recorta o caminhão, reduz para **72x72** com 3 px de respiro nas bordas,
+força a silhueta para **branco puro sobre transparente** e grava os dois nomes
+que o projeto usa — `public/icons/copalinks-badge-72.png` (citado em
+`public/icons/badge.svg`) e `public/icons/copalinks-badge-72-4.png` (usado por
+`public/sw.js`) — e confere sozinho as regras do Android antes de gravar. Se a
+arte tiver **fundo claro**, o script para com aviso: não dá para separar o
+desenho do fundo.
+
+Regras que o Android impõe (e o motivo de o badge não poder ser um print da
+logo): o sistema usa o arquivo como **máscara** e pinta com a cor dele. Só vale
+**branco (#ffffff) sobre transparente** em **72x72**; qualquer outra cor — por
+exemplo o desenho preto, ou branco com fundo branco — faz o Android desenhar um
+**quadradinho cinza** no lugar do caminhão.
+
+Depois de trocar a arte, **aumente o `?v=N` do `BADGE` em `public/sw.js`**: sem
+isso o celular continua mostrando o badge antigo guardado no cache. Confira com
+`npx tsx --test tests/badge.test.ts`, que trava as regras acima (tamanho, branco
+puro, cantos transparentes e o endereço no Service Worker).
+
 ## Estrutura
 
 ```
 src/app        rotas e páginas (/, /tempo, /frete, /contatos, /admin, /api)
 src/components telas (início, tempo, frete, chat, admin)
 src/lib        monitoramento do ponto, push, clima, integrações
-scripts        exportar/importar o banco
+scripts        gerar logo/fundo/badge + exportar/importar o banco
+assets         artes originais (não são servidas pelo site)
 ```
 
 

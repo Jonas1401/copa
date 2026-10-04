@@ -3,9 +3,14 @@
     Badge monocromático (o Android pinta de uma cor só): caminhão da CopaLinks.
     Regra obrigatória: somente BRANCO (#ffffff) sobre TRANSPARENTE. Qualquer
     outra cor faz o Android desenhar um quadrado cinza na barra de status.
-    Este SVG é a fonte em vetor; o arquivo usado na notificação é o
-    /icons/copalinks-badge-72.png (72x72, branco sobre transparente).
+    Atenção: este SVG é só o desenho simples, para conferência rápida da regra —
+    NÃO é o arquivo usado na notificação. O badge oficial, tirado da arte do
+    caminhão (assets/caminhao-badge-fonte.png), é gerado por:
+        node scripts/gerar-badge.mjs
+    que grava /icons/copalinks-badge-72.png e /icons/copalinks-badge-72-4.png
+    (72x72, branco sobre transparente) citados por public/sw.js.
   -->
+  <title>Badge da notificação (referência: só branco sobre transparente)</title>
   <g fill="#ffffff">
     <!-- carreta -->
     <path d="M10 28 H56 V62 H10 Z"/>

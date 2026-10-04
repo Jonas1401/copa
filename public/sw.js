@@ -12,8 +12,11 @@ const ICONE = "/icons/copalinks-192.png";
 // O Android/Chrome só aceita PNG monocromático BRANCO sobre transparente em
 // 72x72: se a imagem tiver cor (ex.: desenho preto), o sistema não consegue
 // aplicar a máscara e desenha um quadradinho cinza no lugar do badge.
-// O ?v=2 é para o celular não reaproveitar o arquivo antigo em cache.
-const BADGE = "/icons/copalinks-badge-72-4.png?v=3";
+// Quem gera o arquivo é scripts/gerar-badge.mjs, a partir da arte em
+// assets/caminhao-badge-fonte.png.
+// O ?v=4 é para o celular não reaproveitar o arquivo antigo em cache: ao trocar
+// a arte do badge, aumente este número.
+const BADGE = "/icons/copalinks-badge-72.png?v=4";
 const ACAO_PADRAO = [{ action: "ver-monitor", title: "Ver monitor" }];
 
 self.addEventListener("install", (evento) => {
