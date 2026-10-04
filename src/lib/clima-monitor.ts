@@ -70,10 +70,29 @@ export type { DadosPainelAppa, MetodoLeituraAppa, PainelSimport, TentativaLeitur
  * chuva forte, tempestade, vento/rajada, condição do tempo, boletim da APPA,
  * ALERTA NOVO no painel e a tábua de marés.
  *
+ * SITUAÇÃO DA CHUVA — a chuva é tratada como ESTADO (chovendo / sem chuva),
+ * não como número:
+ *   - estava SEM CHUVA e a previsão passa a indicar chuva → avisa;
+ *   - está CHOVENDO e a previsão indica que vai limpar/parar → avisa;
+ *   - continua chovendo e a previsão segue chuvosa → NÃO avisa de novo;
+ *   - continua sem chuva → NÃO avisa de novo;
+ *   - a situação notificada fica registrada (`clima_estado_chuva`) e o radar
+ *     só volta a falar de chuva quando houver uma nova virada de verdade;
+ *   - HISTERESE contra oscilação: para ENTRAR na chuva a evidência precisa ser
+ *     forte (chance ≥ 50%, volume ≥ 0,5 mm, condição de chuva ou chovendo
+ *     agora); para SAIR, todas as fontes precisam mostrar tempo firme (chance
+ *     ≤ 30% e sem volume). Entre as duas faixas o estado não mexe — previsão
+ *     oscilando em volta do limite não gera aviso pingado;
+ *   - oscilação REAL (virou de verdade) ainda passa pela cota comum e pela
+ *     assinatura por bloco de 3 h, que seguram o excesso.
+ *
  * Antispam (o radar fala só quando vale a pena):
  *   - 1ª leitura apenas registra o instantâneo, sem avisar nada antigo;
  *   - a comparação é sempre contra o ÚLTIMO AVISO, então uma mudança lenta
  *     (ex.: a chuva crescendo aos poucos) é avisada uma única vez;
+ *   - número de chuva (probabilidade, volume, horário) só vira aviso junto com
+ *     a virada da SITUAÇÃO DA CHUVA — enquanto a situação não vira, essas
+ *     oscilações ficam registradas sem notificação;
  *   - cada mudança tem assinatura única por bloco de 3 h (`clima_mudancas`):
  *     o mesmo "de 20% para 75%" não repete na mesma janela;
  *   - SÓ MUDA O QUE IMPORTA PARA O PUSH: chuva, vento, condição do tempo,
@@ -287,6 +306,171 @@ export type ResultadoRadar = {
   motivo: string;
   mudancas: string[];
 };
+
+/* --------------------------------------------- situação da chuva (estado) */
+/**
+ * A chuva é tratada como ESTADO, não como número. O radar só fala de chuva
+ * quando a situação VIRA (sem-chuva → chuva ou chuva → sem-chuva); enquanto
+ * persiste, toda oscilação da previsão fica registrada sem notificação.
+ *
+ * HISTERESE contra previsão oscilante: entrar na chuva exige evidência forte;
+ * sair exige que TODAS as fontes mostrem tempo firme. Entre as duas faixas o
+ * estado não mexe — probabilidade pingando em volta do limite não gera aviso.
+ */
+export type EstadoChuva = "chuva" | "sem-chuva";
+
+/** Situação notificada por último — persistida em `configuracao`. */
+export type RegistroEstadoChuva = {
+  estado: EstadoChuva;
+  /** Quando o estado atual foi registrado (epoch ms). */
+  desde: number;
+  /** Quantas viradas já foram registradas (diagnóstico). */
+  transicoes: number;
+  /** Quando foi a última virada registrada (epoch ms; null = nenhuma). */
+  ultimaTransicaoEm: number | null;
+};
+
+const CHAVE_ESTADO_CHUVA = "clima_estado_chuva";
+
+/** Chance de chuva (6 h / 24 h) a partir da qual a previsão "indica chuva". */
+export const PROB_ENTRA_CHUVA = 50;
+/** Chance máxima (6 h / 24 h) para confirmar que o tempo "abriu". */
+export const PROB_SAI_CHUVA = 30;
+/** Volume previsto em 24 h (mm) que, sozinho, já indica chuva. */
+export const MM_MIN_CHUVA = 0.5;
+
+/** Descrição do tempo que conta como chuva caindo/agora. */
+const TEXTO_CHUVA = /chov|chuva|garoa|pancada|trovoa|tempestade|temporal|chuvisc|drizzle|rain|shower/i;
+
+/** Alguma fonte mostra chuva DE VERDADE (evidência forte)? */
+export function evidenciaChuva(i: InstantaneoClima): boolean {
+  const { api, painel, composioAgora, agora } = i;
+  if (api && (api.gravidade >= 5 || api.chuvaMm24h >= MM_MIN_CHUVA || api.chuvaProb6h >= PROB_ENTRA_CHUVA)) {
+    return true;
+  }
+  if (
+    painel &&
+    (painel.gravidade >= 5 ||
+      painel.chuvaMm24h >= MM_MIN_CHUVA ||
+      painel.chuvaProb24h >= PROB_ENTRA_CHUVA ||
+      painel.inicioChuva ||
+      painel.chuvaForteHora)
+  ) {
+    return true;
+  }
+  if (composioAgora && composioAgora.gravidade >= 5) return true;
+  if (agora?.descricao && TEXTO_CHUVA.test(agora.descricao)) return true;
+  return false;
+}
+
+/**
+ * TODAS as fontes disponíveis mostram tempo firme (evidência forte de
+ * sem-chuva)? Exige ao menos uma fonte de previsão (API ou painel) — sem
+ * previsão não dá para afirmar que "vai limpar".
+ */
+export function evidenciaSemChuva(i: InstantaneoClima): boolean {
+  const { api, painel, composioAgora, agora } = i;
+  let temPrevisao = false;
+  if (api) {
+    temPrevisao = true;
+    if (api.gravidade >= 4 || api.chuvaProb6h > PROB_SAI_CHUVA || api.chuvaMm24h >= MM_MIN_CHUVA) return false;
+  }
+  if (painel) {
+    temPrevisao = true;
+    if (
+      painel.gravidade >= 4 ||
+      painel.chuvaProb24h > PROB_SAI_CHUVA ||
+      painel.chuvaMm24h >= MM_MIN_CHUVA ||
+      painel.inicioChuva ||
+      painel.chuvaForteHora
+    ) {
+      return false;
+    }
+  }
+  if (composioAgora && composioAgora.gravidade >= 4) return false;
+  if (agora?.descricao && TEXTO_CHUVA.test(agora.descricao)) return false;
+  return temPrevisao;
+}
+
+/**
+ * Próxima situação da chuva com HISTERESE: partindo de "sem-chuva", só vira
+ * "chuva" com evidência forte; partindo de "chuva", só vira "sem-chuva" com
+ * todas as fontes firmes no tempo bom. Sem estado registrado, adota o que as
+ * fontes disserem com clareza (null = fontes indecisas, não registra nada).
+ */
+export function proximoEstadoChuva(i: InstantaneoClima, atual: EstadoChuva | null): EstadoChuva | null {
+  if (atual === "chuva") return evidenciaSemChuva(i) ? "sem-chuva" : "chuva";
+  if (atual === "sem-chuva") return evidenciaChuva(i) ? "chuva" : "sem-chuva";
+  if (evidenciaChuva(i)) return "chuva";
+  if (evidenciaSemChuva(i)) return "sem-chuva";
+  return null;
+}
+
+/** Registro persistido da situação da chuva (null quando ainda não existe). */
+export function parseRegistroEstadoChuva(bruto: string | null): RegistroEstadoChuva | null {
+  if (!bruto) return null;
+  try {
+    const j = JSON.parse(bruto) as RegistroEstadoChuva;
+    if (j?.estado !== "chuva" && j?.estado !== "sem-chuva") return null;
+    if (typeof j.desde !== "number") return null;
+    return {
+      estado: j.estado,
+      desde: j.desde,
+      transicoes: Number(j.transicoes ?? 0) || 0,
+      ultimaTransicaoEm: typeof j.ultimaTransicaoEm === "number" ? j.ultimaTransicaoEm : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fonte que sustentou a leitura da situação (aparece no diagnóstico). */
+function origemDaSituacao(i: InstantaneoClima): Mudanca["origem"] {
+  if (i.api) return "api";
+  if (i.painel) return "painel";
+  if (i.composioAgora) return "composio";
+  return "agora";
+}
+
+/** Frase curta com a prova da situação (números reais, sem inventar). */
+export function resumoEvidenciaChuva(i: InstantaneoClima, para: EstadoChuva): string {
+  const partes: string[] = [];
+  if (para === "chuva") {
+    if (i.api && i.api.chuvaProb6h >= PROB_ENTRA_CHUVA) partes.push(`${Math.round(i.api.chuvaProb6h)}% de chance em 6 h`);
+    if (i.api && i.api.chuvaMm24h >= MM_MIN_CHUVA) partes.push(`${fmtMm(i.api.chuvaMm24h)} previstos em 24 h`);
+    if (i.painel?.inicioChuva) partes.push(`início previsto para ${i.painel.inicioChuva}`);
+    if (i.composioAgora && i.composioAgora.gravidade >= 5) partes.push(`chovendo agora (${i.composioAgora.descricao})`);
+  } else {
+    if (i.api) partes.push(`só ${Math.round(i.api.chuvaProb6h)}% de chance em 6 h`);
+    if (i.painel && i.painel.chuvaProb24h <= PROB_SAI_CHUVA) partes.push(`${Math.round(i.painel.chuvaProb24h)}% no painel da APPA`);
+  }
+  return partes.slice(0, 2).join(", ");
+}
+
+/**
+ * A mudança que representa a VIRADA da situação da chuva (é o que o chat e o
+ * Push levam). O que impede repetição é o registro em `clima_estado_chuva`
+ * (só avisa quando a situação VIRA); a assinatura leva um sufixo de ciclo
+ * para cada virada ficar registrada no histórico — quem segura a frequência
+ * das viradas é a cota comum (piso de 15 min entre avisos urgentes).
+ */
+export function mudancaDeTransicaoChuva(de: EstadoChuva, para: EstadoChuva, i: InstantaneoClima): Mudanca {
+  const entra = para === "chuva";
+  const evidencia = resumoEvidenciaChuva(i, para);
+  return {
+    tipo: "chuva",
+    origem: origemDaSituacao(i),
+    rotulo: entra ? "A previsão passou a indicar chuva" : "A previsão indica que a chuva vai parar",
+    antes: de === "chuva" ? "previsão com chuva" : "previsão sem chuva",
+    agora: para === "chuva" ? "previsão com chuva" : "previsão de tempo limpo",
+    frase: entra
+      ? `a previsão virou: estava sem chuva e agora indica chuva${evidencia ? ` (${evidencia})` : ""}`
+      : `a previsão virou: estava chovendo e agora indica que o tempo abre${evidencia ? ` (${evidencia})` : ""}`,
+    grave: entra,
+    assinatura: `chuvaEstado:${de}>${para}#${Date.now()}`,
+    peso: 2,
+  };
+}
 
 /* ---------------------------------------- leitura do painel (com fallback) */
 /**
@@ -787,8 +971,11 @@ export function detectarMudancas(
 /** Texto pronto (só dados reais), usado quando a IA não responde. */
 export function textoMudancaPadrao(mudancas: Mudanca[], p: Previsao | null): string {
   const principais = mudancas.slice(0, 4).map((m) => m.frase);
+  const chuvaLimpa = mudancas.some((m) => m.assinatura.startsWith("chuvaEstado:chuva>sem-chuva"));
   const emoji = mudancas.some((m) => m.tipo === "chuva")
-    ? "🌧️"
+    ? chuvaLimpa
+      ? "☀️"
+      : "🌧️"
     : mudancas.some((m) => m.tipo === "vento")
       ? "💨"
       : mudancas.some((m) => m.tipo === "alerta" || m.tipo === "boletim")
@@ -812,6 +999,7 @@ Regras:
 - Português do Brasil, tom de colega de trabalho, claro e sem alarmismo; 2 a 4 frases; no máximo 440 caracteres; comece com um emoji do tempo.
 - Use SOMENTE as mudanças e os dados fornecidos. Nunca invente número, horário ou volume de chuva.
 - Diga o que mudou (de → para), em que período vale e o que o motorista deve fazer na prática (lona amarrada, pista molhada e distância maior, freios, faróis, vento na carreta vazia, maré para quem espera no pátio).
+- Se a mudança for a SITUAÇÃO DA CHUVA ("A previsão passou a indicar chuva" ou "A previsão indica que a chuva vai parar"), deixe o antes e o depois bem claros logo na primeira frase: estava sem chuva e agora a previsão traz chuva, ou estava chovendo e a previsão é de tempo abrindo.
 - Sem título, sem hashtags, sem aspas e sem lista com travessão.`;
 
 /** Aviso escrito pela IA (Gemini pelo Composio) com as mudanças reais. */
@@ -1132,14 +1320,44 @@ export async function verificarMudancasPrevisao(
     }
 
     const anterior = await lerInstantaneo();
+
+    // SITUAÇÃO DA CHUVA: o radar deriva o estado (chovendo / sem chuva) das
+    // fontes e compara com a última situação REGISTRADA. A chuva só vira aviso
+    // na virada; enquanto a situação persiste, as oscilações ficam caladas.
+    const registroChuva = parseRegistroEstadoChuva(await lerConfig(CHAVE_ESTADO_CHUVA).catch(() => null));
+    const estadoChuva = proximoEstadoChuva(atual, registroChuva?.estado ?? null);
+    /** Grava a situação da chuva (`transicoes: 1` quando houve virada). */
+    const gravarChuva = async (estado: EstadoChuva, comVirada = false) => {
+      const valor: RegistroEstadoChuva = {
+        estado,
+        desde: Date.now(),
+        transicoes: (registroChuva?.transicoes ?? 0) + (comVirada ? 1 : 0),
+        ultimaTransicaoEm: comVirada ? Date.now() : registroChuva?.ultimaTransicaoEm ?? null,
+      };
+      await gravarConfig(CHAVE_ESTADO_CHUVA, JSON.stringify(valor));
+    };
+
     if (!anterior) {
-      // 1ª leitura: registra o que já existe e não avisa coisa antiga.
+      // 1ª leitura: registra o que já existe e não avisa coisa antiga — nem de
+      // chuva (a situação inicial fica registrada para as próximas viradas).
       await gravarInstantaneo(atual);
       if (!(await lerConfig(CHAVE_SEMEADO))) await gravarConfig(CHAVE_SEMEADO, new Date().toISOString());
+      if (!registroChuva && estadoChuva) await gravarChuva(estadoChuva).catch(() => null);
       return { rodou: true, postou: false, motivo: "primeira leitura registrada", mudancas: [] };
     }
 
-    const mudancas = detectarMudancas(anterior, atual, cfg.sensibilidade);
+    const detectadas = detectarMudancas(anterior, atual, cfg.sensibilidade);
+    // Número de chuva (probabilidade, volume, horário) só vira aviso junto com
+    // a virada da situação: "continua chovendo e a previsão segue chuvosa" não
+    // avisa de novo, e "continua sem chuva" também não.
+    const transicaoChuva = registroChuva !== null && estadoChuva !== null && registroChuva.estado !== estadoChuva;
+    const mudancas: Mudanca[] = transicaoChuva
+      ? [
+          mudancaDeTransicaoChuva(registroChuva.estado, estadoChuva, atual),
+          ...detectadas.filter((m) => m.tipo !== "chuva"),
+        ]
+      : detectadas.filter((m) => m.tipo !== "chuva");
+
     // Sem mudança: mantém o instantâneo do último aviso como referência, para
     // uma mudança lenta (chuva crescendo aos poucos) ser avisada uma vez só.
     if (!mudancas.length) {
@@ -1158,9 +1376,13 @@ export async function verificarMudancasPrevisao(
     }
 
     // O alerta/boletim do clima acabou de falar neste mesmo minuto: a referência
-    // avança calada, para não sair duas mensagens juntas no chat.
+    // avança calada, para não sair duas mensagens juntas no chat — e a situação
+    // da chuva avança junto (o tempo já foi assunto da outra mensagem).
     if (opcoes.registrarSomente) {
       await gravarInstantaneo(atual);
+      if (estadoChuva && (!registroChuva || registroChuva.estado !== estadoChuva)) {
+        await gravarChuva(estadoChuva, transicaoChuva).catch(() => null);
+      }
       return {
         rodou: true,
         postou: false,
@@ -1170,13 +1392,13 @@ export async function verificarMudancasPrevisao(
     }
 
     // Cota de notificações: piso entre avisos, teto por hora e por dia. Uma
-    // mudança GRAVE (chuva forte, temporal, rajada ≥ 40 km/h) é urgente: passa
-    // do teto, mas nunca sai em cima do aviso anterior. `forcar` (testes e
-    // "Verificar agora" do administrador) ignora a cota.
+    // mudança GRAVE (chuva forte, temporal, rajada ≥ 40 km/h) ou a VIRADA da
+    // situação da chuva são urgentes: passam do teto, mas nunca saem em cima
+    // do aviso anterior. `forcar` (testes e "Verificar agora") ignora a cota.
     const temGrave = mudancas.some((m) => m.grave);
     if (!opcoes.forcar) {
       const cota = await checarCota("radar", {
-        urgente: temGrave,
+        urgente: temGrave || transicaoChuva,
         pisoUrgenteMin: Math.round(cfg.minGraveMs / 60_000),
       });
       if (!cota.liberado) {
@@ -1198,6 +1420,9 @@ export async function verificarMudancasPrevisao(
     }
     if (!novas.length) {
       await gravarInstantaneo(atual);
+      // A virada já estava reservada neste bloco de 3 h (já foi avisada):
+      // considera comunicada e avança a situação, para não ficar insistindo.
+      if (transicaoChuva && estadoChuva) await gravarChuva(estadoChuva, true).catch(() => null);
       return { rodou: true, postou: false, motivo: "mudanças já avisadas hoje", mudancas: [] };
     }
 
@@ -1226,8 +1451,13 @@ export async function verificarMudancasPrevisao(
 
     // A cota é registrada junto com o aviso publicado.
     await registrarAviso("radar");
-    // Só depois de avisar é que a referência avança.
+    // Só depois de avisar é que a referência avança — e a situação da chuva
+    // fica registrada: o radar só volta a falar de chuva na próxima virada.
+    // (Se a situação ainda não existia, adota a atual como ponto de partida.)
     await gravarInstantaneo(atual);
+    if (estadoChuva && (transicaoChuva || !registroChuva)) {
+      await gravarChuva(estadoChuva, transicaoChuva).catch(() => null);
+    }
     // Retenção: 30 dias de histórico de mudanças (o limite é por dia/hora).
     await db
       .delete(climaMudancas)
@@ -1237,7 +1467,9 @@ export async function verificarMudancasPrevisao(
     return {
       rodou: true,
       postou: true,
-      motivo: `${novas.length} mudança(s) avisada(s) no chat (push: ${push})`,
+      motivo: `${novas.length} mudança(s) avisada(s) no chat (push: ${push})${
+        transicaoChuva ? ` · chuva: ${registroChuva.estado} → ${estadoChuva}` : ""
+      }`,
       mudancas: novas.map((m) => m.rotulo),
     };
   } catch (e) {
@@ -1293,6 +1525,16 @@ export type StatusRadarClima = {
   sensibilidade: Sensibilidade;
   intervaloMin: number;
   painelMin: number;
+  /**
+   * Situação da chuva registrada pelo radar (a última que foi notificada ou
+   * semeada). O aviso só sai de novo quando a situação VIRAR.
+   */
+  chuva: {
+    estado: EstadoChuva | null;
+    desde: string | null;
+    transicoes: number;
+    ultimaTransicao: string | null;
+  };
   /** Cota de avisos: intervalo mínimo (minutos), tetos por hora e por dia. */
   avisoMinMin: number;
   maxPorHora: number;
@@ -1331,6 +1573,7 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
     sensibilidade: cfg.sensibilidade,
     intervaloMin: Math.round(cfg.intervaloMs / 60_000),
     painelMin: Math.round(cfg.painelMs / 60_000),
+    chuva: { estado: null, desde: null, transicoes: 0, ultimaTransicao: null },
     avisoMinMin: Math.round(cfg.avisoMinMs / 60_000),
     maxPorHora: cfg.maxPorHora,
     maxPorDia: cfg.maxPorDia,
@@ -1352,7 +1595,7 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
     composioErro: null,
   };
   try {
-    const [ultima, instantaneo, [mudanca], [total], composio, painelBruto, erroPainel, diagBruto, erroComposio] =
+    const [ultima, instantaneo, [mudanca], [total], composio, painelBruto, erroPainel, diagBruto, erroComposio, chuvaBruto] =
       await Promise.all([
         lerConfig(CHAVE_ULTIMA),
         lerInstantaneo(),
@@ -1370,7 +1613,9 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
         lerConfig(CHAVE_PAINEL_ERRO),
         lerConfig(CHAVE_PAINEL_DIAG),
         lerConfig(CHAVE_COMPOSIO_ERRO),
+        lerConfig(CHAVE_ESTADO_CHUVA),
       ]);
+    const registroChuva = parseRegistroEstadoChuva(chuvaBruto);
     const guardado = instantaneoValidoPainel(painelBruto);
     const diag = diagnosticoValido(diagBruto);
     // Conectado = houve leitura por ALGUM método e nenhuma falha total depois.
@@ -1380,6 +1625,14 @@ export async function statusRadarClima(): Promise<StatusRadarClima> {
     const resumo = diag?.resumo ?? null;
     return {
       ...padrao,
+      chuva: {
+        estado: registroChuva?.estado ?? null,
+        desde: registroChuva ? new Date(registroChuva.desde).toISOString() : null,
+        transicoes: registroChuva?.transicoes ?? 0,
+        ultimaTransicao: registroChuva?.ultimaTransicaoEm
+          ? new Date(registroChuva.ultimaTransicaoEm).toISOString()
+          : null,
+      },
       ultimaVerificacao: ultima ? new Date(Number(ultima)).toISOString() : null,
       ultimaMudanca: mudanca
         ? { em: mudanca.em.toISOString(), resumo: mudanca.resumo, grave: mudanca.grave === 1 }
