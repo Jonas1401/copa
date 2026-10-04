@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TURNOS, textoBoletimPadrao, turnoDoDia } from "../src/lib/clima-boletim";
+import {
+  TURNOS,
+  boletimMerecePush,
+  resumoBoletim,
+  textoBoletimPadrao,
+  turnoDoDia,
+} from "../src/lib/clima-boletim";
 import type { Previsao } from "@/lib/tempo";
 
 /**
@@ -80,7 +86,7 @@ function previsao(opcoes: { nivel?: Previsao["alerta"]["nivel"]; tempoRuim?: boo
         dataCurta: "2 de outubro",
         max: 26,
         min: 18,
-        chuvaMm: 4.2,
+        chuvaMm: chance >= 60 ? 4.2 : 0,
         chanceChuva: chance,
         icone: "sol-nuvem",
         descricao: "Parcialmente nublado",
@@ -146,6 +152,36 @@ test("boletim: texto pronto usa só dados reais e cabe na notificação", () => 
   assert.match(comChuva, /lona/i);
 });
 
+test("boletim: push só quando o turno traz novidade de verdade", () => {
+  // Turno tranquilo e igual ao anterior: fica no chat, sem acordar o celular.
+  const calmo = previsao();
+  const resumoCalmo = resumoBoletim(calmo);
+  assert.equal(boletimMerecePush(calmo, resumoCalmo), false);
+  // Primeiro boletim (sem referência anterior): avisa, para o motorista
+  // saber que o app está de olho no tempo.
+  assert.equal(boletimMerecePush(calmo, null), true);
+
+  // Chuva prevista (50% ou 1 mm), vento forte, frio/calor fora do normal e
+  // boletim ruim da APPA merecem a notificação.
+  assert.equal(boletimMerecePush(previsao({ chanceChuva: 80 }), resumoCalmo), true);
+  assert.equal(boletimMerecePush(previsao({ tempoRuim: true }), resumoCalmo), true);
+  const ventando = previsao();
+  ventando.agora.rajadaKmh = 55;
+  assert.equal(boletimMerecePush(ventando, resumoCalmo), true);
+  const gelado = previsao();
+  gelado.dias[0].min = 7;
+  assert.equal(boletimMerecePush(gelado, resumoCalmo), true);
+
+  // Previsão revisada de verdade (chuva de 10% → 60%): avisa mesmo que o
+  // turno esteja calmo hoje.
+  const virou = previsao({ chanceChuva: 60 });
+  assert.equal(boletimMerecePush(virou, resumoCalmo), true);
+  // Só a condição mudou (sol → nublado): também é novidade.
+  const nublou = previsao();
+  nublou.dias[0].descricao = "Nublado";
+  assert.equal(boletimMerecePush(nublou, resumoCalmo), true);
+});
+
 test("boletim: sai 1 vez por turno no chat e por Push; alerta assume em tempo ruim", { skip: !local }, async () => {
   const { db, pool } = await import("@/db");
   const { sql } = await import("drizzle-orm");
@@ -171,7 +207,9 @@ test("boletim: sai 1 vez por turno no chat e por Push; alerta assume em tempo ru
     await garantirTabelas();
     await db.execute(sql`truncate chat_mensagens, notificacoes, subscriptions restart identity`);
     await db.execute(sql`delete from motoristas`);
-    await db.execute(sql`delete from configuracao where chave in ('clima_boletim_chat', 'clima_ultimo_aviso_chat')`);
+    await db.execute(
+      sql`delete from configuracao where chave in ('clima_boletim_chat', 'clima_ultimo_aviso_chat', 'notificacoes_cota')`,
+    );
 
     const [ana] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
     await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: ana.id });
@@ -179,6 +217,7 @@ test("boletim: sai 1 vez por turno no chat e por Push; alerta assume em tempo ru
     // 1) Boletim da vez: mensagem no chat + Push para o aparelho da Ana.
     const r1 = await verificarEPostarBoletimClima({ previsao: previsao() });
     assert.equal(r1.postou, true);
+    assert.equal(r1.push, true, "1º boletim do estado: avisa o aparelho");
     const msgs = await db.select().from(chatMensagens);
     assert.equal(msgs.length, 1);
     assert.equal(msgs[0].nome, NOME_BOLETIM);

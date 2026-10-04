@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { chatMensagens, configuracao, naviosAvisos } from "@/db/schema";
 import { notificarMensagemChat } from "@/lib/chat-push";
 import { geminiViaComposio } from "@/lib/composio";
+import { checarCota, registrarAviso } from "@/lib/notificacoes-cota";
 import {
   bercoDefinido,
   ehFertilizante,
@@ -28,6 +29,17 @@ import {
  * (quem silenciou o chat não recebe). O texto é escrito pela IA (Gemini pelo
  * Composio) com tom humano e análise da maré; se a IA falhar, usa um modelo
  * pronto. Na 1ª execução só registra o que já existe (não dispara nada antigo).
+ *
+ * ANTIESCESSO (veja também `src/lib/notificacoes-cota.ts`):
+ *   - LOTE: quando dois ou mais navios têm novidade no mesmo ciclo, sai UMA
+ *     mensagem (e UMA notificação) com todos eles — nada de três avisos
+ *     seguidos no mesmo minuto;
+ *   - COTA: `NAVIOS_AVISO_MIN` (padrão 20 min) entre avisos, no máximo
+ *     `NAVIOS_MAX_HORA` (3) por hora e `NAVIOS_MAX_DIA` (8) por dia;
+ *   - URGENTE: "atracou" e "despachado" (o navio já está no berço ou já saiu)
+ *     passam do teto, com piso de 15 min — o motorista não perde o que muda a
+ *     fila dele;
+ *   - o que não coube no lote continua pendente e sai no próximo ciclo.
  */
 
 export const NOME_NAVIOS = "🚢 Navios no Porto";
@@ -111,6 +123,36 @@ export function textoPadrao(ev: EventoNavio, mares: Mare[]) {
   }
   const etb = n.etb ? ` Previsão de atracação (ETB) ${n.etb}.` : "";
   return `🚢 Berço definido! O ${n.nome} está programado para atracar em ${onde} com ${carga}.${etb}${dicaMare} Assim que a praticagem confirmar o horário, eu aviso.`;
+}
+
+/** Linha curta de UM evento, para o lote de vários navios no mesmo ciclo. */
+export function resumoEvento(ev: EventoNavio): string {
+  const n = ev.navio;
+  const carga = `${n.mercadoria.toLowerCase()}${n.toneladas != null ? ` (${fmtTon(n.toneladas)})` : ""}`;
+  const onde = `${n.porto}, berço ${n.berco || "a definir"}`;
+  const m = ev.manobra;
+  if (ev.tipo === "saiu") {
+    return `${n.nome} foi despachado e deixou ${n.porto} — a descarga de ${n.mercadoria.toLowerCase()} encerrou`;
+  }
+  if (ev.tipo === "atracado") {
+    return `${n.nome} já atracou em ${onde} com ${carga}${n.saldoToneladas != null ? ` (faltam ${fmtTon(n.saldoToneladas)})` : ""}`;
+  }
+  if (ev.tipo === "manobra" && m) {
+    return `${n.nome} (${carga}) com atracação confirmada para ${m.data} às ${m.hora}, em ${onde}`;
+  }
+  return `${n.nome} (${carga}) programado para atracar em ${onde}${n.etb ? ` (ETB ${n.etb})` : ""}`;
+}
+
+/**
+ * Texto pronto do LOTE (sem IA): várias novidades em UMA mensagem, na ordem
+ * dos eventos, terminando com a próxima preamar quando houver.
+ */
+export function textoLotePadrao(evs: EventoNavio[], mares: Mare[] = []): string {
+  const cabeca = evs.length === 1 ? "" : `🚢 ${evs.length} novidades nos navios de fertilizantes: `;
+  const corpo = evs.map((e, i) => `${evs.length === 1 ? "" : `${i + 1}) `}${resumoEvento(e)}.`).join(" ");
+  const mare = mares.find((x) => x.tipo === "preamar");
+  const dica = mare ? ` Próxima preamar por volta das ${mare.hora.slice(11, 16)}.` : "";
+  return `${cabeca}${corpo}${dica}`.replace(/\s+/g, " ").trim().slice(0, 480);
 }
 
 const SISTEMA = `Você avisa os caminhoneiros do Porto de Paranaguá (PR), no chat do app CopaLinks, sobre navios de FERTILIZANTES.
@@ -200,18 +242,43 @@ export async function verificarNaviosFertilizantes(opcoes: { forcar?: boolean } 
     }
     if (!novos.length) return { rodou: true, motivo: "nada novo", eventos: eventos.length, avisados: [] };
 
-    const mares = await lerMares().catch(() => [] as Mare[]);
-    const avisados: string[] = [];
-    for (const ev of novos.slice(0, MAX_POR_CICLO)) {
-      // Reserva antes de enviar: dois ciclos ao mesmo tempo não duplicam.
-      const [reservado] = await db.insert(naviosAvisos).values({ chave: ev.chave, navio: ev.navio.nome })
-        .onConflictDoNothing().returning({ chave: naviosAvisos.chave });
-      if (!reservado) continue;
-      const texto = await escreverAviso(ev, mares);
-      const [msg] = await db.insert(chatMensagens).values({ motoristaId: 0, nome: NOME_NAVIOS, texto }).returning();
-      await notificarMensagemChat({ id: msg.id, motoristaId: 0, nome: NOME_NAVIOS, texto }).catch(() => null);
-      avisados.push(`${ev.tipo}:${ev.navio.nome}`);
+    // Um lote por ciclo: várias novidades viram UMA mensagem e UMA notificação.
+    const lote = novos.slice(0, MAX_POR_CICLO);
+    // "Atracou" e "despachado" mudam a fila de trabalho: são urgentes e não
+    // esperam a cota (só não saem em cima do aviso anterior).
+    const urgente = lote.some((e) => e.tipo === "atracado" || e.tipo === "saiu");
+    if (!opcoes.forcar) {
+      const cota = await checarCota("navios", { urgente });
+      if (!cota.liberado) {
+        // Nada é reservado: as novidades seguem pendentes para o próximo ciclo.
+        return {
+          rodou: true,
+          motivo: `aguardando cota: ${cota.motivo}`,
+          eventos: eventos.length,
+          avisados: [],
+        };
+      }
     }
+
+    // Reserva antes de enviar: dois ciclos ao mesmo tempo não duplicam.
+    const reservados = await db
+      .insert(naviosAvisos)
+      .values(lote.map((e) => ({ chave: e.chave, navio: e.navio.nome })))
+      .onConflictDoNothing()
+      .returning({ chave: naviosAvisos.chave });
+    const chavesReservadas = new Set(reservados.map((r) => r.chave));
+    const confirmados = lote.filter((e) => chavesReservadas.has(e.chave));
+    if (!confirmados.length) return { rodou: true, motivo: "nada novo", eventos: eventos.length, avisados: [] };
+
+    const mares = await lerMares().catch(() => [] as Mare[]);
+    const texto =
+      confirmados.length === 1 ? await escreverAviso(confirmados[0], mares) : textoLotePadrao(confirmados, mares);
+    const [msg] = await db.insert(chatMensagens).values({ motoristaId: 0, nome: NOME_NAVIOS, texto }).returning();
+    if (msg) {
+      await notificarMensagemChat({ id: msg.id, motoristaId: 0, nome: NOME_NAVIOS, texto }).catch(() => null);
+    }
+    await registrarAviso("navios");
+    const avisados = confirmados.map((e) => `${e.tipo}:${e.navio.nome}`);
     // Retenção: 60 dias de registros de aviso.
     await db.delete(naviosAvisos).where(sql`${naviosAvisos.criadoEm} < now() - interval '60 days'`);
     return { rodou: true, motivo: `${avisados.length} aviso(s)`, eventos: eventos.length, avisados };
