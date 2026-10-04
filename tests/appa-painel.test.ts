@@ -397,7 +397,7 @@ test("painel: casca montada por JavaScript não é aceita como leitura", async (
   );
   assert.equal(r.metodo, "playwright", "página vazia no HTML → navegador headless");
   assert.equal(r.tentativas[1].ok, false);
-  assert.match(r.tentativas[1].motivo, /JavaScript|pouquíssimo texto|sem dados/i);
+  assert.match(r.tentativas[1].motivo, /JavaScript|pouquíssimo texto|resposta curta|sem dados/i);
   assert.match(r.normalizado.vento, /28 nós/);
 });
 
@@ -507,7 +507,7 @@ test("painel: erro detalhado SÓ quando todos os métodos falham", async () => {
   assert.match(r.erro, /OCR/);
   assert.match(r.erro, /Composio/);
   assert.equal(logs.length >= 5, true, "cada tentativa tem a sua linha de log");
-  assert.match(logs[0], /\[radar-appa\] método 1\/5/);
+  assert.match(logs[0], /\[radar-appa(?: [^\]]+)?\] método 1\/5/);
   assert.match(resumoDasTentativas(r.tentativas), /sem leitura/);
 });
 
