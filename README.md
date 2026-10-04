@@ -543,13 +543,53 @@ Gera `public/images/fundo-app.webp` (otimizada e na orientação certa) e atuali
 `src/lib/fundo.ts`. A foto aparece no início, nas boas-vindas, no frete e nos
 contatos, sempre com a camada escura por cima para o texto continuar legível.
 
+## Trocar o badge da notificação
+
+O badge é o **ícone pequeno da barra de status**, ao lado do relógio. O Android
+não mostra o arquivo como ele é: usa o PNG como **máscara** e pinta com a cor
+do sistema. Por isso o arquivo precisa ser, sempre:
+
+- **72x72**, com transparência;
+- **branco puro** nos pixels visíveis — desenho preto é mascarado ao contrário
+  e vira um quadradinho cinza no lugar do caminhão;
+- transparente nas bordas, com respiro em volta (o sistema recorta o ícone).
+
+O badge do app é gerado do vetor `public/icons/badge.svg`:
+
+```bash
+node scripts/gerar-badge.mjs
+```
+
+O script converte para branco sobre transparente, **confere todas as regras
+acima antes de gravar** (recusa arte com fundo opaco, desenho colorido ou
+cheio nas bordas) e escreve `public/icons/copalinks-badge-72.png`.
+
+Para usar outra arte, deixe a silhueta do caminhão branca sobre transparente em
+72x72 e passe o arquivo:
+
+```bash
+node scripts/gerar-badge.mjs --fonte=assets/minha-arte.png
+```
+
+Depois de trocar a arte, **aumente o `?v=`** do `BADGE` em `public/sw.js`
+(ex.: `?v=6` para `?v=7`) e faça o push: sem isso o celular que já recebeu
+notificação continua com o badge antigo guardado pelo Service Worker.
+
+Quem garante que isso não volta a quebrar é `tests/badge.test.ts`: ele lê o
+caminho do próprio `public/sw.js`, confere que o arquivo existe e valida o PNG
+(branco puro, 72x72, cantos transparentes):
+
+```bash
+./node_modules/.bin/tsx --test tests/badge.test.ts
+```
+
 ## Estrutura
 
 ```
 src/app        rotas e páginas (/, /tempo, /frete, /contatos, /admin, /api)
 src/components telas (início, tempo, frete, chat, admin)
 src/lib        monitoramento do ponto, push, clima, integrações
-scripts        exportar/importar o banco
+scripts        geradores de imagem (logo, fundo, badge) e banco
 ```
 
 

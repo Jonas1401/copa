@@ -47,7 +47,12 @@ test("Service Worker mostra Push sem janela do app e abre o monitor ao tocar", a
   assert.match(mostradas[0].opcoes.body, /Último Escalado/);
   assert.equal(mostradas[0].opcoes.requireInteraction, true);
   assert.equal(mostradas[0].opcoes.tag, "SAIU_CAVALO_LIVRO_A_A184_A187_M1");
-  assert.equal(mostradas[0].opcoes.badge, "/icons/public/icons/copalinks-badge-72.png?v=5");
+  // O caminho do badge é o MESMO declarado no Worker (quem decide é ele):
+  // escrever o caminho à mão aqui já deixou o teste "verde" apontando para um
+  // arquivo 404. A validade do PNG em si é conferida em tests/badge.test.ts.
+  const badgeDeclarado = readFileSync("public/sw.js", "utf8").match(/const BADGE\s*=\s*"([^"]+)"/)?.[1];
+  assert.ok(badgeDeclarado, "public/sw.js precisa declarar const BADGE");
+  assert.equal(mostradas[0].opcoes.badge, badgeDeclarado);
 
   let aguardaClique: Promise<unknown> | null = null;
   const click = handlers.get("notificationclick");
