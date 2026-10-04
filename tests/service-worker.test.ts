@@ -47,7 +47,7 @@ test("Service Worker mostra Push sem janela do app e abre o monitor ao tocar", a
   assert.match(mostradas[0].opcoes.body, /Último Escalado/);
   assert.equal(mostradas[0].opcoes.requireInteraction, true);
   assert.equal(mostradas[0].opcoes.tag, "SAIU_CAVALO_LIVRO_A_A184_A187_M1");
-  assert.equal(mostradas[0].opcoes.badge, "/icons/copalinks-badge-72-2.png?v=4");
+  assert.equal(mostradas[0].opcoes.badge, "/icons/public/icons/copalinks-badge-72.png?v=5");
 
   let aguardaClique: Promise<unknown> | null = null;
   const click = handlers.get("notificationclick");

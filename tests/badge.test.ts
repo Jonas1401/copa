@@ -17,7 +17,7 @@ import sharp from "sharp";
  *   ./node_modules/.bin/tsx --test tests/badge.test.ts
  */
 
-const BADGE = "public/icons/copalinks-badge-72-2.png";
+const BADGE = "public/icons/public/icons/copalinks-badge-72.png";
 
 test("badge da notificação é branco sobre transparente, em 72x72", async () => {
   const { data, info } = await sharp(BADGE)
@@ -62,8 +62,8 @@ test("badge da notificação é branco sobre transparente, em 72x72", async () =
 
 test("o Service Worker aponta para o badge monocromático", () => {
   const sw = readFileSync("public/sw.js", "utf8");
-  assert.match(sw, /const BADGE\s*=\s*"\/icons\/copalinks-badge-72-2\.png\?v=\d+"/);
+  assert.match(sw, /const BADGE\s*=\s*"\/icons\/public\/icons\/copalinks-badge-72\.png\?v=\d+"/);
   // Sem ?v= o celular pode continuar usando o arquivo antigo em cache.
-  assert.match(sw, /copalinks-badge-72-2\.png\?v=\d+/);
+  assert.match(sw, /\/icons\/public\/icons\/copalinks-badge-72\.png\?v=\d+/);
   assert.match(sw, /badge:\s*dados\.badge \|\| BADGE/);
 });
