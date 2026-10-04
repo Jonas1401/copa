@@ -6,7 +6,7 @@ import { notificarMensagemChat } from "@/lib/chat-push";
 import { geminiViaComposio } from "@/lib/composio";
 
 /**
- * Boletim de PREVISÃO DO TEMPO no chat, 24 horas por dia (SOMENTE servidor).
+ * Boletim de PREVISÃO DO TEMPO no chat — PLANO SEM EXCESSO (SOMENTE servidor).
  *
  * O cron (/api/cron) chama `verificarEPostarBoletimClima()` quando não há
  * alerta de tempo ruim pendente. O servidor publica UM boletim por turno no
@@ -15,17 +15,23 @@ import { geminiViaComposio } from "@/lib/composio";
  * aplicativo fechado recebe o aviso pelo Service Worker e, ao tocar, cai
  * direto no chat.
  *
- * Turnos (horário de Brasília), um boletim em cada:
- *   00h madrugada · 06h manhã · 12h tarde · 18h noite.
- * Ou seja, a previsão é renovada 4 vezes por dia, a qualquer hora — quem
- * pega serviço de madrugada também recebe.
+ * PLANO ANTI-EXCESSO (v2 — 2026):
+ *   - Antes: 4 boletins/dia (00h, 06h, 12h, 18h) + alerta 3h + radar 3/h = até 80/dia.
+ *   - Agora: 2 boletins/dia (06h manhã · 18h noite) — madrugada 00h removida
+ *     (ninguém vê) e tarde 12h removida (redundante se manhã já avisou e
+ *     radar cobre mudanças graves). Janela útil cobre ida e volta do porto.
+ *   - Intervalo mínimo entre boletins: 10 h (antes 5 h) — garante no máximo 2/dia.
+ *   - Em tempo ruim o alerta (src/lib/clima-alerta.ts) assume o lugar do
+ *     boletim, então o chat não recebe as duas mensagens juntas.
+ *   - Se o radar acabou de avisar mudança grave (<90 min), o boletim aguarda
+ *     (evita dupla notificação no mesmo período).
  *
  * Antispam:
  *   - a chave do turno (`2026-10-02:manhã`) fica em `configuracao`
  *     (chave clima_boletim_chat) e impede dois boletins no mesmo turno;
- *   - nunca saem dois boletins com menos de 5 h de diferença;
- *   - em tempo ruim o alerta (src/lib/clima-alerta.ts) assume o lugar do
- *     boletim, então o chat não recebe as duas mensagens juntas.
+ *   - nunca saem dois boletins com menos de 10 h de diferença;
+ *   - em tempo ruim o alerta assume o lugar do boletim;
+ *   - silêncio de 90 min pós-radar grave.
  */
 
 export const NOME_BOLETIM = "🌤️ Previsão do Porto";
@@ -33,21 +39,22 @@ export const NOME_BOLETIM = "🌤️ Previsão do Porto";
 const MOTORISTA_SISTEMA = 0;
 const CHAVE = "clima_boletim_chat";
 const FUSO = "America/Sao_Paulo";
-/** Segurança: dois boletins nunca saem com menos deste intervalo. */
-const INTERVALO_MIN_MS = 5 * 60 * 60 * 1000;
+/** Segurança: dois boletins nunca saem com menos deste intervalo — 10h = máx 2/dia. */
+const INTERVALO_MIN_MS = 10 * 60 * 60 * 1000;
+/** Janela de silêncio pós-radar grave: evita boletim logo após radar (90 min). */
+const SILENCIO_POS_RADAR_MS = 90 * 60 * 1000;
+const CHAVE_RADAR_ULTIMO_AVISO = "clima_monitor_ultimo_aviso_ts";
 
 export type Turno = {
   /** Hora de início no horário de Brasília. */
   inicio: number;
-  nome: "madrugada" | "manhã" | "tarde" | "noite";
+  nome: "manhã" | "noite";
   saudacao: string;
 };
 
-/** Um boletim por turno: 00h, 06h, 12h e 18h (horário de Brasília). */
+/** Dois boletins por dia: 06h manhã · 18h noite (horário de Brasília). */
 export const TURNOS: Turno[] = [
-  { inicio: 0, nome: "madrugada", saudacao: "Boa madrugada" },
   { inicio: 6, nome: "manhã", saudacao: "Bom dia" },
-  { inicio: 12, nome: "tarde", saudacao: "Boa tarde" },
   { inicio: 18, nome: "noite", saudacao: "Boa noite" },
 ];
 
@@ -93,7 +100,7 @@ function local(agora: Date) {
 /** Turno atual: chave única do boletim (ex.: "2026-10-02:manhã"). */
 export function turnoDoDia(agora: Date = new Date()) {
   const { data, hora } = local(agora);
-  const turno = [...TURNOS].reverse().find((t) => hora >= t.inicio) ?? TURNOS[0];
+  const turno = [...TURNOS].reverse().find((t) => hora >= t.inicio) ?? TURNOS[TURNOS.length - 1];
   return { chave: `${data}:${turno.nome}`, turno, hora };
 }
 
@@ -183,6 +190,17 @@ export async function verificarEPostarBoletimClima(
     }
     if (!opcoes.forcar && ultimo && Date.now() - ultimo.em < INTERVALO_MIN_MS) {
       return { postou: false, motivo: "aguardando o próximo turno" };
+    }
+    // Anti-excesso: se o radar grave acabou de avisar (<90 min), segura o boletim
+    if (!opcoes.forcar) {
+      try {
+        const [rv] = await db.select().from(configuracao).where(eq(configuracao.chave, CHAVE_RADAR_ULTIMO_AVISO)).limit(1);
+        const ts = rv ? Number(rv.valor) : 0;
+        if (ts && Date.now() - ts < SILENCIO_POS_RADAR_MS) {
+          const falta = Math.ceil((SILENCIO_POS_RADAR_MS - (Date.now() - ts)) / 60_000);
+          return { postou: false, motivo: `radar grave há ${90 - falta} min — boletim aguarda ${falta} min` };
+        }
+      } catch {}
     }
 
     const p = opcoes.previsao ?? (await obterPrevisao());

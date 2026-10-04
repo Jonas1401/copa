@@ -16,8 +16,10 @@ import { verificarEPostarBoletimClima } from "@/lib/clima-boletim";
  * Push para todos os aparelhos. Sem alerta, quem fala é o boletim de previsão
  * do turno (`src/lib/clima-boletim.ts`, "🌤️ Previsão do Porto").
  *
- * Antispam:
- *   - Só posta quando o nível MUDA ou a cada 3 h (lembrete) em alerta ativo.
+ * PLANO ANTI-EXCESSO (v2 — 2026):
+ *   - Antes: repetia a cada 3 h enquanto alerta ativo (até 8x/dia).
+ *   - Agora: só posta quando o nível MUDA. Se persistir, 1 lembrete após 6 h
+ *     (não a cada 3 h) e depois silêncio até mudar de nível. Máx 2-3/dia.
  *   - Níveis calmos ("tempo-bom", "info") não postam — só limpam o estado.
  *   - O estado fica em `configuracao` (chave clima_ultimo_aviso_chat).
  */
@@ -25,7 +27,8 @@ import { verificarEPostarBoletimClima } from "@/lib/clima-boletim";
 export const NOME_CLIMA = "🌦️ Clima no Porto";
 export const MOTORISTA_SISTEMA = 0;
 const CHAVE = "clima_ultimo_aviso_chat";
-const LEMBRETE_MS = 3 * 60 * 60 * 1000;
+/** Lembrete do mesmo nível: só após 6 h (antes 3 h) — anti-spam. */
+const LEMBRETE_MS = 6 * 60 * 60 * 1000;
 
 type Ultimo = { nivel: string; titulo: string; em: number };
 

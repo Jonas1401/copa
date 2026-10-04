@@ -288,22 +288,24 @@ const instantaneo = (
 
 /* ------------------------------------------------------------ puros */
 
-test("radar: configuração padrão (5 min, painel 5 min, sensibilidade média)", () => {
+test("radar: configuração padrão (30 min, painel 30 min, sensibilidade baixa, anti-spam v2)", () => {
   const c = configRadar({} as Record<string, string>);
   assert.equal(c.ativo, true);
-  assert.equal(c.sensibilidade, "media");
-  assert.equal(c.intervaloMs, 5 * 60_000);
-  // O painel da APPA é relido no MESMO passo do radar (5 min), com fallback
+  assert.equal(c.sensibilidade, "baixa");
+  assert.equal(c.intervaloMs, 30 * 60_000);
+  // O painel da APPA é relido no MESMO passo do radar (30 min v2), com fallback
   // automático entre API/JSON, HTML, navegador headless, OCR e Composio.
-  assert.equal(c.painelMs, 5 * 60_000);
-  assert.equal(c.avisoMinMs, 20 * 60_000);
-  assert.equal(c.maxPorHora, 3);
+  assert.equal(c.painelMs, 30 * 60_000);
+  assert.equal(c.avisoMinMs, 90 * 60_000);
+  assert.equal(c.maxPorHora, 1);
 
   assert.equal(configRadar({ CLIMA_MONITOR_ATIVO: "0" } as Record<string, string>).ativo, false);
   assert.equal(configRadar({ CLIMA_MONITOR_MIN: "2" } as Record<string, string>).intervaloMs, 120_000);
   assert.equal(configRadar({ CLIMA_MONITOR_SENSIBILIDADE: "alta" } as Record<string, string>).sensibilidade, "alta");
-  // Valores zerados ou inválidos não derrubam o radar: valem os padrões.
-  assert.equal(configRadar({ CLIMA_MONITOR_MIN: "0" } as Record<string, string>).intervaloMs, 300_000);
+  // media ainda respeitada se explicitada
+  assert.equal(configRadar({ CLIMA_MONITOR_SENSIBILIDADE: "media" } as Record<string, string>).sensibilidade, "media");
+  // Valores zerados ou inválidos não derrubam o radar: valem os padrões v2.
+  assert.equal(configRadar({ CLIMA_MONITOR_MIN: "0" } as Record<string, string>).intervaloMs, 30 * 60_000);
 });
 
 test("radar: lê o painel da Simport (boletim, chuva, vento, marés e sol)", () => {
