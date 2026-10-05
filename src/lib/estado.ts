@@ -856,8 +856,20 @@ export async function garantirTabelas() {
         motorista_id INTEGER NOT NULL,
         nome TEXT NOT NULL,
         texto TEXT NOT NULL,
+        tipo TEXT NOT NULL DEFAULT 'texto',
+        media_nome TEXT,
+        media_tipo TEXT,
+        media_dados TEXT,
+        duracao_segundos INTEGER,
         criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
+      -- Migração aditiva: mantém compatibilidade com mensagens já gravadas.
+      ALTER TABLE chat_mensagens
+        ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'texto',
+        ADD COLUMN IF NOT EXISTS media_nome TEXT,
+        ADD COLUMN IF NOT EXISTS media_tipo TEXT,
+        ADD COLUMN IF NOT EXISTS media_dados TEXT,
+        ADD COLUMN IF NOT EXISTS duracao_segundos INTEGER;
       CREATE TABLE IF NOT EXISTS testes_push (
         id SERIAL PRIMARY KEY,
         endpoint TEXT NOT NULL,
