@@ -248,6 +248,12 @@ export const chatMensagens = pgTable("chat_mensagens", {
   motoristaId: integer("motorista_id").notNull(),
   nome: text("nome").notNull(),
   texto: text("texto").notNull(),
+  tipo: text("tipo").default("texto").notNull(), // texto | audio | imagem | arquivo
+  mediaNome: text("media_nome"),
+  mediaTipo: text("media_tipo"),
+  // Base64 compacto para anexos pequenos do chat; a listagem nunca devolve este campo.
+  mediaDados: text("media_dados"),
+  duracaoSegundos: integer("duracao_segundos"),
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 

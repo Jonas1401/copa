@@ -12,15 +12,41 @@ export const maxDuration = 30;
 /** Mensagens ficam 7 dias; depois somem sozinhas. */
 const DIAS_GUARDADOS = 7;
 const TAMANHO_MAX = 500;
+const TAMANHO_MAX_MIDIA = 4 * 1024 * 1024;
 
-type Linha = typeof chatMensagens.$inferSelect;
-const paraTela = (m: Linha) => ({
+type LinhaTela = Pick<
+  typeof chatMensagens.$inferSelect,
+  "id" | "motoristaId" | "nome" | "texto" | "tipo" | "mediaNome" | "mediaTipo" | "duracaoSegundos" | "criadoEm"
+>;
+
+/**
+ * Nunca inclui os bytes do anexo na lista/polling. Arquivos são servidos em
+ * /api/chat/:id/media, permitindo que mensagens antigas continuem leves.
+ */
+const paraTela = (m: LinhaTela) => ({
   id: m.id,
   motoristaId: m.motoristaId,
   nome: m.nome,
   texto: m.texto,
+  tipo: m.tipo || "texto",
+  mediaNome: m.mediaNome,
+  mediaTipo: m.mediaTipo,
+  mediaUrl: m.mediaTipo ? `/api/chat/${m.id}/media` : null,
+  duracaoSegundos: m.duracaoSegundos,
   criadoEm: m.criadoEm.toISOString(),
 });
+
+const camposTela = {
+  id: chatMensagens.id,
+  motoristaId: chatMensagens.motoristaId,
+  nome: chatMensagens.nome,
+  texto: chatMensagens.texto,
+  tipo: chatMensagens.tipo,
+  mediaNome: chatMensagens.mediaNome,
+  mediaTipo: chatMensagens.mediaTipo,
+  duracaoSegundos: chatMensagens.duracaoSegundos,
+  criadoEm: chatMensagens.criadoEm,
+};
 
 /**
  * GET /api/chat              → últimas 80 mensagens
@@ -50,7 +76,7 @@ export async function GET(req: Request) {
   const depois = Number(url.searchParams.get("depois"));
   if (Number.isFinite(depois) && depois > 0) {
     const novas = await db
-      .select()
+      .select(camposTela)
       .from(chatMensagens)
       .where(gt(chatMensagens.id, depois))
       .orderBy(asc(chatMensagens.id))
@@ -58,7 +84,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ mensagens: novas.map(paraTela) }, { headers: cab });
   }
 
-  const ultimas = await db.select().from(chatMensagens).orderBy(desc(chatMensagens.id)).limit(80);
+  const ultimas = await db.select(camposTela).from(chatMensagens).orderBy(desc(chatMensagens.id)).limit(80);
   return NextResponse.json({ mensagens: ultimas.reverse().map(paraTela) }, { headers: cab });
 }
 
@@ -73,15 +99,116 @@ function podeEnviar(id: number) {
   return true;
 }
 
+const TIPOS_MIDIA = {
+  audio: new Set(["audio/webm", "audio/ogg", "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/aac", "audio/3gpp"]),
+  imagem: new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"]),
+  arquivo: new Set([
+    "application/pdf",
+    "text/plain",
+    "text/csv",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/msword",
+    "application/vnd.ms-excel",
+  ]),
+} as const;
+
+type TipoMidia = keyof typeof TIPOS_MIDIA;
+
+const MIME_POR_EXTENSAO: Record<string, string> = {
+  aac: "audio/aac",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  csv: "text/csv",
+  gif: "image/gif",
+  heic: "image/heic",
+  heif: "image/heif",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  m4a: "audio/mp4",
+  mp3: "audio/mpeg",
+  mp4: "audio/mp4",
+  ogg: "audio/ogg",
+  pdf: "application/pdf",
+  png: "image/png",
+  txt: "text/plain",
+  wav: "audio/wav",
+  webm: "audio/webm",
+  webp: "image/webp",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+function mimeSeguro(tipoRecebido: string, nome: string) {
+  const informado = tipoRecebido.toLowerCase().split(";")[0].trim();
+  if (informado && informado !== "application/octet-stream") return informado;
+  const extensao = nome.split(".").at(-1)?.toLowerCase() ?? "";
+  return MIME_POR_EXTENSAO[extensao] ?? informado;
+}
+
+function nomeSeguro(nome: string) {
+  return nome
+    .replace(/[\\/\u0000-\u001f\u007f]/g, "_")
+    .replace(/[<>:"|?*]/g, "_")
+    .trim()
+    .slice(0, 120) || "anexo";
+}
+
 export async function POST(req: Request) {
   await garantirTabelas();
-  const corpo = await req.json().catch(() => ({}));
-  const motoristaId = Number(corpo?.motoristaId);
-  const texto = String(corpo?.texto ?? "")
-    .replace(/\r/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, TAMANHO_MAX);
+
+  let motoristaId = 0;
+  let texto = "";
+  let tipo: TipoMidia | "texto" = "texto";
+  let mediaNome: string | null = null;
+  let mediaTipo: string | null = null;
+  let mediaDados: string | null = null;
+  let duracaoSegundos: number | null = null;
+
+  if (req.headers.get("content-type")?.toLowerCase().includes("multipart/form-data")) {
+    const tamanhoPedido = Number(req.headers.get("content-length"));
+    if (Number.isFinite(tamanhoPedido) && tamanhoPedido > TAMANHO_MAX_MIDIA + 128 * 1024) {
+      return NextResponse.json({ erro: "O anexo precisa ter até 4 MB." }, { status: 413 });
+    }
+    const form = await req.formData().catch(() => null);
+    if (!form) return NextResponse.json({ erro: "Não foi possível ler o anexo." }, { status: 400 });
+    motoristaId = Number(form.get("motoristaId"));
+    const tipoTexto = String(form.get("tipo") ?? "");
+    const arquivo = form.get("arquivo");
+    if (!(Object.prototype.hasOwnProperty.call(TIPOS_MIDIA, tipoTexto)) || !(arquivo instanceof File)) {
+      return NextResponse.json({ erro: "Escolha um arquivo compatível para enviar." }, { status: 400 });
+    }
+    const tipoInformado = tipoTexto as TipoMidia;
+    if (!arquivo.size || arquivo.size > TAMANHO_MAX_MIDIA) {
+      return NextResponse.json({ erro: "O arquivo precisa ter até 4 MB." }, { status: 413 });
+    }
+
+    const nome = nomeSeguro(arquivo.name || (tipoInformado === "audio" ? "recado-audio.webm" : "anexo"));
+    const mime = mimeSeguro(arquivo.type, nome);
+    const formatosAceitos: ReadonlySet<string> = TIPOS_MIDIA[tipoInformado];
+    if (!formatosAceitos.has(mime)) {
+      return NextResponse.json({ erro: "Formato não compatível. Envie áudio, imagem ou documento permitido." }, { status: 415 });
+    }
+
+    tipo = tipoInformado;
+    mediaNome = nome;
+    mediaTipo = mime;
+    mediaDados = Buffer.from(await arquivo.arrayBuffer()).toString("base64");
+    const valorDuracao = form.get("duracaoSegundos");
+    const duracaoRecebida = valorDuracao === null ? Number.NaN : Number(valorDuracao);
+    duracaoSegundos = tipo === "audio" && Number.isFinite(duracaoRecebida) && duracaoRecebida > 0
+      ? Math.min(60 * 60, Math.max(1, Math.round(duracaoRecebida)))
+      : null;
+    texto = tipo === "audio" ? "🎙️ Mensagem de áudio" : tipo === "imagem" ? `📷 ${nome}` : `📎 ${nome}`;
+  } else {
+    const corpo = await req.json().catch(() => ({}));
+    motoristaId = Number(corpo?.motoristaId);
+    texto = String(corpo?.texto ?? "")
+      .replace(/\r/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, TAMANHO_MAX);
+  }
 
   if (!texto) return NextResponse.json({ erro: "Escreva a mensagem." }, { status: 400 });
   if (!Number.isInteger(motoristaId) || motoristaId <= 0) {
@@ -93,14 +220,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ erro: "Muitas mensagens seguidas. Aguarde um minuto." }, { status: 429 });
   }
 
-  const [nova] = await db.insert(chatMensagens).values({ motoristaId: m.id, nome: m.nome, texto }).returning();
+  const [nova] = await db
+    .insert(chatMensagens)
+    .values({
+      motoristaId: m.id,
+      nome: m.nome,
+      texto,
+      tipo,
+      mediaNome,
+      mediaTipo,
+      mediaDados,
+      duracaoSegundos,
+    })
+    .returning(camposTela);
   await db
     .delete(chatMensagens)
     .where(lt(chatMensagens.criadoEm, sql`now() - make_interval(days => ${DIAS_GUARDADOS})`));
 
-  // Web Push "nome + mensagem" para os outros aparelhos, mesmo com o app
-  // fechado. Aguardamos o envio (na Vercel a função encerra ao responder);
-  // uma falha no Push nunca impede a mensagem de ser publicada.
+  // Web Push leva somente um resumo, nunca os bytes do arquivo.
   const push = await notificarMensagemChat({
     id: nova.id,
     motoristaId: nova.motoristaId,
