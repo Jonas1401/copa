@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent } from "react";
 import { motion } from "framer-motion";
 import NextImage from "next/image";
 import {
@@ -36,6 +36,14 @@ import {
   X,
 } from "lucide-react";
 import { EMOJIS, FIGURINHAS, figurinhaDe, soEmojis, textoDaFigurinha } from "@/lib/figurinhas";
+import {
+  aplicarVelocidade,
+  assinarVelocidade,
+  ciclarVelocidade,
+  rotuloVelocidade,
+  velocidadeAtual,
+  velocidadeNoServidor,
+} from "@/lib/audio-velocidade";
 import AssistenteIA from "@/components/chat/AssistenteIA";
 
 export type MensagemChat = {
@@ -1026,11 +1034,22 @@ function AcaoAnexo({ icone: Icone, rotulo, onClick }: { icone: typeof Camera; ro
   );
 }
 
+/**
+ * Player do recado de voz: play/pausa, onda e a etiqueta de velocidade.
+ * A etiqueta mostra 1x, 1,5x ou 2x e, a cada toque, passa para a próxima —
+ * a troca vale na hora (sem reiniciar o áudio) e fica salva no aparelho.
+ */
 function PlayerAudio({ mensagem }: { mensagem: MensagemChat }) {
   const audio = useRef<HTMLAudioElement>(null);
   const [tocando, setTocando] = useState(false);
   const [tempoAtual, setTempoAtual] = useState(0);
   const [duracaoReal, setDuracaoReal] = useState(0);
+  // Velocidade do aparelho: 1× no servidor, 1,5×/2× assim que o cliente assume
+  // a preferência (useSyncExternalStore, sem divergência de hidratação).
+  const velocidade = useSyncExternalStore(assinarVelocidade, velocidadeAtual, velocidadeNoServidor);
+  // A velocidade também é reaplicada quando o arquivo carrega: alguns motores
+  // (Safari) ignoram o playbackRate definido antes do áudio ter metadados.
+  const velocidadeRef = useRef(velocidade);
   const barras = useMemo(() => ALTURAS_ONDA.map((altura, indice) => {
     const deslocamento = Math.abs(((mensagem.id * 11 + indice * 17) % 13) - 6);
     return Math.max(5, altura + deslocamento - 3);
@@ -1044,19 +1063,32 @@ function PlayerAudio({ mensagem }: { mensagem: MensagemChat }) {
     const terminou = () => { setTocando(false); setTempoAtual(0); };
     const pausado = () => setTocando(false);
     const pausarOutro = () => { if (!elemento.paused) elemento.pause(); };
+    const garantirVelocidade = () => aplicarVelocidade(elemento, velocidadeRef.current);
     elemento.addEventListener("timeupdate", atualizarTempo);
     elemento.addEventListener("loadedmetadata", carregarDuracao);
+    elemento.addEventListener("loadedmetadata", garantirVelocidade);
+    elemento.addEventListener("play", garantirVelocidade);
     elemento.addEventListener("ended", terminou);
     elemento.addEventListener("pause", pausado);
     window.addEventListener("copalinks-pausar-outros-audios", pausarOutro);
     return () => {
       elemento.removeEventListener("timeupdate", atualizarTempo);
       elemento.removeEventListener("loadedmetadata", carregarDuracao);
+      elemento.removeEventListener("loadedmetadata", garantirVelocidade);
+      elemento.removeEventListener("play", garantirVelocidade);
       elemento.removeEventListener("ended", terminou);
       elemento.removeEventListener("pause", pausado);
       window.removeEventListener("copalinks-pausar-outros-audios", pausarOutro);
     };
   }, []);
+
+  // A velocidade entra no <audio> sem reiniciar: quem já está ouvindo passa a
+  // ouvir mais rápido na hora, mantendo o ponto em que estava.
+  useEffect(() => {
+    velocidadeRef.current = velocidade;
+    const elemento = audio.current;
+    if (elemento) aplicarVelocidade(elemento, velocidade);
+  }, [velocidade]);
 
   const duracao = mensagem.duracaoSegundos || duracaoReal;
   const progresso = duracao > 0 ? Math.min(1, tempoAtual / duracao) : 0;
@@ -1102,7 +1134,22 @@ function PlayerAudio({ mensagem }: { mensagem: MensagemChat }) {
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2 text-[10px] tabular text-gelo/55">
           <span>{tocando ? formatarDuracao(tempoAtual) : formatarDuracao(duracao)}</span>
-          <span className="flex shrink-0 items-center gap-1"><AudioLines size={12} /> Áudio</span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <span className="flex items-center gap-1"><AudioLines size={12} /> Áudio</span>
+            <button
+              type="button"
+              onClick={() => ciclarVelocidade(velocidade)}
+              aria-label={`Velocidade do áudio: ${rotuloVelocidade(velocidade)}. Toque para mudar (1,5x ou 2x)`}
+              title="Velocidade do áudio (1x, 1,5x, 2x)"
+              className={`relative grid h-6 min-w-[34px] place-items-center rounded-full border px-1.5 font-display text-[10.5px] font-extrabold tabular transition-colors after:absolute after:-inset-2 after:content-[''] active:scale-95 ${
+                velocidade > 1
+                  ? "border-[#6fe7df]/55 bg-[#6fe7df]/15 text-[#8ff0e7]"
+                  : "border-white/15 bg-white/[.06] text-gelo/70 hover:bg-white/[.12]"
+              }`}
+            >
+              {rotuloVelocidade(velocidade)}
+            </button>
+          </span>
         </div>
       </div>
     </div>
