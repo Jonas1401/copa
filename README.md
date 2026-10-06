@@ -14,7 +14,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h); o **Radar da previsão** mostra que o monitoramento está no ar |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente; o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) |
 
@@ -102,6 +102,16 @@ Figurinha é uma mensagem de texto normal ("☕ Bom dia, motoristas!") que o cha
 desenha grande; mensagens só com 1 a 3 emojis também aparecem grandes. Para
 criar figurinhas, edite `FIGURINHAS` em `src/lib/figurinhas.ts`. Testes:
 `tests/figurinhas.test.ts` e `tests/chat-silencio.test.ts`.
+
+**Chat — velocidade dos áudios:** todo recado de voz tem a etiqueta de
+velocidade ao lado de "Áudio": cada toque passa para a próxima
+(**1x → 1,5x → 2x → 1x**, mostrada como "1,5x" e "2x" no player). A troca
+vale na hora e **sem reiniciar o áudio** — quem já está ouvindo continua do
+mesmo ponto, mais rápido, e a voz continua natural (o tom é preservado). A
+escolha fica lembrada **no aparelho** (`localStorage`,
+`src/lib/audio-velocidade.ts`), então os próximos áudios do chat já abrem na
+velocidade escolhida; nada é gravado no servidor e a velocidade de uma pessoa
+não muda a dos outros. Teste: `tests/audio-velocidade.test.ts`.
 
 **Administrador:** em `/admin` há o card "Motoristas", com nome e pontos de
 todos os cadastrados, situação/posição e aparelhos com avisos ativos. A rota
