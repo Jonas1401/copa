@@ -761,7 +761,10 @@ export default function ChatMotoristas({
           }}
           className="barra-rolagem largura-aparelho relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 sm:px-5"
         >
-          <div className="mx-auto flex min-h-full w-full max-w-[728px] flex-col gap-2.5 py-3.5 sm:py-5">
+          {/* Sem gap no empilhamento: a distância entre as bolhas é dada por
+              cada recado (5 px na mesma conversa, 8 px de um para o outro),
+              como numa conversa de aplicativo de mensagens. */}
+          <div className="mx-auto flex min-h-full w-full max-w-[728px] flex-col py-3.5 sm:py-5">
             {!carregado && msgs.length === 0 && (
               <div className="flex flex-1 items-center justify-center py-12 text-center text-[13px] text-gelo/55">
                 <span className="inline-flex items-center gap-2"><LoaderCircle size={17} className="animate-spin text-[#7fb6f0]" /> Carregando recados…</span>
@@ -790,8 +793,24 @@ export default function ChatMotoristas({
               const meu = !sistema && motorista?.id === mensagem.motoristaId;
               const seguida = !sistema && !novoDia && anterior?.motoristaId === mensagem.motoristaId &&
                 new Date(mensagem.criadoEm).getTime() - new Date(anterior.criadoEm).getTime() < 5 * 60_000;
+              const tipo = mensagem.tipo ?? "texto";
+              const temImagem = tipo === "imagem" && Boolean(mensagem.mediaUrl);
+              const temAudio = tipo === "audio";
+              const temArquivo = tipo === "arquivo" && Boolean(mensagem.mediaUrl);
+              const temMidia = temImagem || temArquivo || temAudio;
+              // Só emojis: a bolha acompanha o tamanho deles — o rodapé desce
+              // para a linha de baixo em vez de esticar a bolha na horizontal.
+              const soEmoji = !temMidia && tipo === "texto" && soEmojis(mensagem.texto);
+              // Bolha compacta: a largura acompanha o conteúdo (w-fit) e para no
+              // teto de 80% da coluna de mensagens (≈75% da tela) — nada de bolha ocupando a linha inteira.
+              // Áudio e imagem precisam de largura própria para o player/foto
+              // caberem sem esticar a bolha além do necessário.
+              const larguraBolha =
+                temImagem ? { width: "min(80%, 330px)" } : temAudio ? { width: "min(80%, 272px)" } : undefined;
+              const classesLargura = larguraBolha ? "" : "w-fit max-w-[80%]";
+              const recuo = novoDia ? "" : seguida ? "mt-[5px]" : "mt-2";
               return (
-                <div key={mensagem.id}>
+                <div key={mensagem.id} className={recuo}>
                   {novoDia && (
                     <div className="my-2.5 flex justify-center">
                       <span className="rounded-full border border-white/[.06] bg-[#071b3b]/85 px-3.5 py-1 text-[11px] font-bold capitalize tracking-wide text-gelo/65 shadow-sm">
@@ -800,9 +819,9 @@ export default function ChatMotoristas({
                     </div>
                   )}
                   {sistema ? (
-                    <div className={`mt-1 flex max-w-full items-end gap-2 ${oficial ? "" : "opacity-95"}`}>
+                    <div className={`flex max-w-full items-end gap-2 ${oficial ? "" : "opacity-95"}`}>
                       <AvatarCopa tamanho={35} robo={oficial} classe={oficial ? "border-[#6fb8ff]/55" : "border-white/10 opacity-85"} />
-                      <div className={`relative min-w-0 flex-1 overflow-hidden rounded-[19px] border px-3.5 pt-2.5 pb-2 ${oficial ? "border-[#3477c1]/55 bg-[linear-gradient(135deg,rgba(11,38,83,.98),rgba(7,25,58,.96))] shadow-[0_10px_26px_-24px_rgba(65,158,255,.8)]" : "border-[#2a5bb0]/45 bg-[#091d43]/85"}`}>
+                      <div className={`relative min-w-0 w-fit max-w-[80%] overflow-hidden rounded-[20px] border px-3 pt-2.5 pb-2 ${oficial ? "border-[#3477c1]/55 bg-[linear-gradient(135deg,rgba(11,38,83,.98),rgba(7,25,58,.96))] shadow-[0_10px_26px_-24px_rgba(65,158,255,.8)]" : "border-[#2a5bb0]/45 bg-[#091d43]/85"}`}>
                         {oficial && <span aria-hidden className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#6fe7df,#2f8cf0)]" />}
                         <div className="flex items-center gap-1.5 pl-1">
                           {oficial ? (
@@ -815,53 +834,67 @@ export default function ChatMotoristas({
                             <span className="font-display text-[12.5px] font-bold text-[#9bc5f1]">{mensagem.nome}</span>
                           )}
                         </div>
-                        <div className="mt-1.5 pl-1 text-[14px] leading-[1.48] break-words whitespace-pre-wrap text-gelo"><ConteudoMensagem texto={mensagem.texto} meu={false} /></div>
-                        <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[10.5px] text-gelo/45">
-                          <span>{hora(mensagem.criadoEm)}</span>
+                        <div className="mt-1 flex flex-wrap items-end gap-x-2 pl-1">
+                          <div className="min-w-0"><ConteudoMensagem texto={mensagem.texto} meu={false} /></div>
+                          <MetaMensagem mensagem={mensagem} meu={false} className="ml-auto" />
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className={`flex w-full items-end gap-2 ${meu ? "flex-row-reverse" : ""} ${seguida ? "mt-0.5" : "mt-1"}`}>
+                    <div className={`flex w-full items-end gap-2 ${meu ? "flex-row-reverse" : ""}`}>
                       <AvatarMotorista nome={mensagem.nome} id={mensagem.motoristaId} />
-                      <div className={`min-w-0 flex-1 rounded-[19px] border px-3.5 pt-2.5 pb-2 shadow-[0_8px_22px_-20px_rgba(0,0,0,.9)] ${meu ? "border-[#4c92e8]/45 bg-[linear-gradient(145deg,rgba(19,64,129,.93),rgba(10,43,91,.95))]" : "border-[#2a5bb0]/55 bg-[linear-gradient(145deg,rgba(10,31,70,.97),rgba(7,24,57,.96))]"}`}>
-                        {!seguida && <div className={`mb-1 font-display text-[12.5px] font-extrabold ${meu ? "text-[#a9dbff]" : CORES_NOME[Math.abs(mensagem.motoristaId) % CORES_NOME.length]}`}>{meu ? "Você" : mensagem.nome}</div>}
-                        {mensagem.tipo === "audio" ? (
-                          <PlayerAudio mensagem={mensagem} />
-                        ) : mensagem.tipo === "imagem" && mensagem.mediaUrl ? (
-                          <div>
-                            <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[14px] border border-white/10 bg-black/20">
-                              <span className="relative block h-[220px] w-full sm:h-[270px]">
-                                <NextImage src={mensagem.mediaUrl} alt={mensagem.mediaNome || "Imagem enviada ao chat"} fill sizes="(max-width: 640px) 80vw, 640px" unoptimized className="object-contain" />
-                              </span>
+                      <div
+                        style={larguraBolha}
+                        className={`${classesLargura} min-w-0 rounded-[20px] border shadow-[0_8px_22px_-20px_rgba(0,0,0,.9)] ${temMidia ? "px-2.5 pt-2.5 pb-2" : "px-3 pt-2.5 pb-2"} ${meu ? "border-[#4c92e8]/45 bg-[linear-gradient(145deg,rgba(19,64,129,.93),rgba(10,43,91,.95))]" : "border-[#2a5bb0]/55 bg-[linear-gradient(145deg,rgba(10,31,70,.97),rgba(7,24,57,.96))]"}`}
+                      >
+                        {!seguida && <div className={`mb-1 font-display text-[12px] leading-tight font-extrabold ${meu ? "text-[#a9dbff]" : CORES_NOME[Math.abs(mensagem.motoristaId) % CORES_NOME.length]}`}>{meu ? "Você" : mensagem.nome}</div>}
+                        {temAudio ? (
+                          <>
+                            <PlayerAudio mensagem={mensagem} />
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="mt-1" />
+                          </>
+                        ) : temImagem && mensagem.mediaUrl ? (
+                          <>
+                            <div>
+                              <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[14px] border border-white/10 bg-black/20">
+                                <span className="relative block h-[220px] w-full sm:h-[270px]">
+                                  <NextImage src={mensagem.mediaUrl} alt={mensagem.mediaNome || "Imagem enviada ao chat"} fill sizes="(max-width: 640px) 80vw, 640px" unoptimized className="object-contain" />
+                                </span>
+                              </a>
+                              {mensagem.mediaNome && <p className="mt-1 truncate text-[11px] text-gelo/60">{mensagem.mediaNome}</p>}
+                            </div>
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="mt-1" />
+                          </>
+                        ) : temArquivo && mensagem.mediaUrl ? (
+                          <>
+                            <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-[14px] border border-[#6fa7e7]/20 bg-[#071b3b]/65 p-2.5 transition-colors hover:bg-[#0d2b58]">
+                              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-[#2f8cf0]/15 text-[#9bd7ff]"><FileText size={19} /></span>
+                              <span className="min-w-0 flex-1"><span className="block truncate text-[12.5px] font-bold text-white">{mensagem.mediaNome || "Arquivo"}</span><span className="mt-0.5 block text-[10.5px] text-gelo/50">Toque para abrir ou baixar</span></span>
+                              <ExternalLink size={15} className="shrink-0 text-gelo/45" />
                             </a>
-                            {mensagem.mediaNome && <p className="mt-1.5 truncate text-[11px] text-gelo/60">{mensagem.mediaNome}</p>}
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="mt-1" />
+                          </>
+                        ) : soEmoji ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="min-w-0"><ConteudoMensagem texto={mensagem.texto} meu={meu} /></div>
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} />
                           </div>
-                        ) : mensagem.tipo === "arquivo" && mensagem.mediaUrl ? (
-                          <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-[14px] border border-[#6fa7e7]/20 bg-[#071b3b]/65 p-2.5 transition-colors hover:bg-[#0d2b58]">
-                            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-[#2f8cf0]/15 text-[#9bd7ff]"><FileText size={19} /></span>
-                            <span className="min-w-0 flex-1"><span className="block truncate text-[12.5px] font-bold text-white">{mensagem.mediaNome || "Arquivo"}</span><span className="mt-0.5 block text-[10.5px] text-gelo/50">Toque para abrir ou baixar</span></span>
-                            <ExternalLink size={15} className="shrink-0 text-gelo/45" />
-                          </a>
                         ) : (
-                          <ConteudoMensagem texto={mensagem.texto} meu={meu} />
+                          // Texto, figurinha ou localização: o horário sobe para a
+                          // mesma linha quando sobra espaço (bolha curta não ganha
+                          // uma linha extra só para o rodapé).
+                          <div className="flex flex-wrap items-end gap-x-2">
+                            <div className="min-w-0"><ConteudoMensagem texto={mensagem.texto} meu={meu} /></div>
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="ml-auto" />
+                          </div>
                         )}
-                        <div className={`mt-1.5 flex items-center justify-end gap-2 text-[10.5px] ${meu ? "text-[#d6eaff]/55" : "text-gelo/45"}`}>
-                          {meu && (
-                            <button type="button" onClick={() => void apagar(mensagem)} aria-label="Apagar minha mensagem" className="inline-flex min-h-[24px] items-center gap-1 rounded-full px-1.5 transition-colors hover:bg-white/10 hover:text-white">
-                              <Trash2 size={11} /> apagar
-                            </button>
-                          )}
-                          <span className="tabular">{hora(mensagem.criadoEm)}</span>
-                          {meu && <Check size={13} className="text-[#8ed8ff]" aria-label="Enviada" />}
-                        </div>
                       </div>
                     </div>
                   )}
                 </div>
               );
             })}
-            {erro && !motorista && <p role="status" className="rounded-xl border border-amber-300/20 bg-amber-300/[.07] px-3 py-2 text-center text-[12px] text-amber-100/85">{erro}</p>}
+            {erro && !motorista && <p role="status" className="mt-2 rounded-xl border border-amber-300/20 bg-amber-300/[.07] px-3 py-2 text-center text-[12px] text-amber-100/85">{erro}</p>}
           </div>
         </div>
         {mensagensNovas > 0 && (
@@ -1035,6 +1068,43 @@ function AcaoAnexo({ icone: Icone, rotulo, onClick }: { icone: typeof Camera; ro
 }
 
 /**
+ * Rodapé da bolha: apagar (só nas minhas), horário e a confirmação de envio.
+ * Fica no canto inferior direito e ocupa o mínimo: quando a mensagem é curta,
+ * sobe para a mesma linha do texto e a bolha não ganha altura por causa dele —
+ * o mesmo desenho das bolhas dos aplicativos de mensagem.
+ */
+function MetaMensagem({
+  mensagem,
+  meu,
+  onApagar,
+  className = "",
+}: {
+  mensagem: MensagemChat;
+  meu: boolean;
+  onApagar?: (mensagem: MensagemChat) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`flex shrink-0 items-center justify-end gap-1.5 text-[10.5px] leading-none ${meu ? "text-[#d6eaff]/60" : "text-gelo/45"} ${className}`}>
+      {meu && onApagar && (
+        <button
+          type="button"
+          onClick={() => void onApagar(mensagem)}
+          aria-label="Apagar minha mensagem"
+          // O botão é baixinho para não engrossar a bolha; o toque continua
+          // folgado por conta da área extra acima e abaixo (after).
+          className="relative inline-flex min-h-[18px] items-center gap-1 rounded-full px-1.5 transition-colors after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] hover:bg-white/10 hover:text-white"
+        >
+          <Trash2 size={11} /> apagar
+        </button>
+      )}
+      <span className="tabular">{hora(mensagem.criadoEm)}</span>
+      {meu && <Check size={13} className="text-[#8ed8ff]" aria-label="Enviada" />}
+    </div>
+  );
+}
+
+/**
  * Player do recado de voz: play/pausa, onda e a etiqueta de velocidade.
  * A etiqueta mostra 1x, 1,5x ou 2x e, a cada toque, passa para a próxima —
  * a troca vale na hora (sem reiniciar o áudio) e fica salva no aparelho.
@@ -1167,7 +1237,8 @@ function ConteudoMensagem({ texto, meu }: { texto: string; meu: boolean }) {
       </div>
     );
   }
-  if (soEmojis(texto)) return <div className="py-0.5 text-[40px] leading-tight">{texto.trim()}</div>;
+  // Só emojis: a bolha cresce junto dos emojis, sem a caixa sobrando em volta.
+  if (soEmojis(texto)) return <div className="text-[40px] leading-[1.15] break-words">{texto.trim()}</div>;
 
   const localizacao = texto.match(/📍\s*Localização compartilhada:\s*\n?(https:\/\/www\.google\.com\/maps\?q=[-\d.,]+)/i);
   if (localizacao) {
@@ -1179,5 +1250,5 @@ function ConteudoMensagem({ texto, meu }: { texto: string; meu: boolean }) {
     );
   }
 
-  return <div className="text-[14px] leading-[1.48] break-words whitespace-pre-wrap text-gelo">{texto}</div>;
+  return <div className="text-[14px] leading-[1.45] break-words whitespace-pre-wrap text-gelo">{texto}</div>;
 }
