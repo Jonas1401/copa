@@ -36,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import { EMOJIS, FIGURINHAS, figurinhaDe, soEmojis, textoDaFigurinha } from "@/lib/figurinhas";
+import { REACOES_RAPIDAS, type ReacaoChat } from "@/lib/reacoes";
 import {
   aplicarVelocidade,
   assinarVelocidade,
@@ -57,6 +58,8 @@ export type MensagemChat = {
   mediaTipo?: string | null;
   mediaUrl?: string | null;
   duracaoSegundos?: number | null;
+  /** Curtidas com emoji (vêm junto na lista e atualizam no polling). */
+  reacoes?: ReacaoChat[];
 };
 
 export const CHAVE_CHAT_LIDO = "copalinks-chat-lido";
@@ -159,6 +162,9 @@ export default function ChatMotoristas({
   onLido: (ultimoId: number) => void;
 }) {
   const [msgs, setMsgs] = useState<MensagemChat[]>([]);
+  const [reacoes, setReacoes] = useState<Record<number, ReacaoChat[]>>({});
+  const [seletorReacao, setSeletorReacao] = useState<number | null>(null);
+  const [detalheReacao, setDetalheReacao] = useState<number | null>(null);
   const [carregado, setCarregado] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -181,6 +187,7 @@ export default function ChatMotoristas({
   const campo = useRef<HTMLTextAreaElement>(null);
   const ultimoId = useRef(0);
   const idsConhecidos = useRef(new Set<number>());
+  const reagindo = useRef(new Set<number>());
   const colado = useRef(true);
   const lista = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -192,6 +199,20 @@ export default function ChatMotoristas({
   const audioInput = useRef<HTMLInputElement>(null);
   const motoristaId = motorista?.id;
 
+  // Guarda as curtidas que vêm junto das mensagens (lista inicial e polling).
+  const guardarReacoes = useCallback((lista: MensagemChat[]) => {
+    setReacoes((atual) => {
+      let mudou = false;
+      const proximo = { ...atual };
+      for (const mensagem of lista) {
+        if (!mensagem.reacoes) continue;
+        proximo[mensagem.id] = mensagem.reacoes;
+        mudou = true;
+      }
+      return mudou ? proximo : atual;
+    });
+  }, []);
+
   const juntar = useCallback((novas: MensagemChat[]) => {
     const unicas = novas.filter((mensagem) => {
       if (idsConhecidos.current.has(mensagem.id)) return false;
@@ -202,7 +223,8 @@ export default function ChatMotoristas({
     ultimoId.current = Math.max(ultimoId.current, ...unicas.map((mensagem) => mensagem.id));
     if (!colado.current) setMensagensNovas((quantidade) => quantidade + unicas.length);
     setMsgs((atual) => [...atual, ...unicas].sort((a, b) => a.id - b.id).slice(-200));
-  }, []);
+    guardarReacoes(unicas);
+  }, [guardarReacoes]);
 
   // A viewport visual encolhe ao abrir o teclado no iOS/Android. Usá-la como
   // altura do diálogo mantém o compositor acima do teclado, sem rolar a página.
@@ -251,6 +273,7 @@ export default function ChatMotoristas({
         idsConhecidos.current = new Set(iniciais.map((mensagem) => mensagem.id));
         ultimoId.current = iniciais.at(-1)?.id ?? 0;
         setMsgs(iniciais);
+        guardarReacoes(iniciais);
         setErro("");
       } catch {
         if (vivo) setErro("Sem conexão com o chat. Vou tentar novamente em instantes.");
@@ -270,6 +293,22 @@ export default function ChatMotoristas({
       } catch {
         // Uma indisponibilidade momentânea não interrompe as próximas consultas.
       }
+      // Curtidas novas nas mensagens que já estão na tela (silenciosas, sem push).
+      try {
+        const visiveis = [...idsConhecidos.current].slice(-80);
+        if (!visiveis.length) return;
+        const resposta = await fetch(`/api/chat/reacoes?ids=${visiveis.join(",")}`, { cache: "no-store" });
+        if (!resposta.ok) return;
+        const dados = await resposta.json();
+        if (!vivo || !dados.reacoes) return;
+        const vindas = dados.reacoes as Record<number, ReacaoChat[]>;
+        // Quem está com curtida voando para o servidor não é sobrescrito aqui:
+        // a confirmação do POST atualiza logo em seguida.
+        for (const id of reagindo.current) delete vindas[id];
+        setReacoes((atual) => ({ ...atual, ...vindas }));
+      } catch {
+        // Reação é detalhe: nunca quebra o polling das mensagens.
+      }
     }, 4000);
 
     return () => {
@@ -277,7 +316,7 @@ export default function ChatMotoristas({
       controller.abort();
       clearInterval(intervalo);
     };
-  }, [aberto, iaAberta, juntar]);
+  }, [aberto, iaAberta, juntar, guardarReacoes]);
 
   // Estado do "silenciar chat" deste motorista, sincronizado entre aparelhos.
   useEffect(() => {
@@ -332,6 +371,28 @@ export default function ChatMotoristas({
       document.removeEventListener("keydown", esc);
     };
   }, [menuAberto]);
+
+  // Fecha o seletor de reação e a lista de "quem curtiu" com Esc/clique fora.
+  useEffect(() => {
+    if (seletorReacao === null && detalheReacao === null) return;
+    const fora = (evento: PointerEvent) => {
+      if (!(evento.target instanceof Node)) return;
+      const alvo = evento.target as HTMLElement;
+      // Clique dentro da área da reação (bolha, pílula, seletor, lista): mantém aberto.
+      if (alvo.closest?.("[data-reacao-area]") || alvo.closest?.("[data-botao-reacao]")) return;
+      setSeletorReacao(null);
+      setDetalheReacao(null);
+    };
+    const esc = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") { setSeletorReacao(null); setDetalheReacao(null); }
+    };
+    document.addEventListener("pointerdown", fora);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", fora);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [seletorReacao, detalheReacao]);
 
   useEffect(() => {
     if (!gravando) return;
@@ -605,8 +666,51 @@ export default function ChatMotoristas({
       if (!resposta.ok) throw new Error();
       idsConhecidos.current.delete(mensagem.id);
       setMsgs((anteriores) => anteriores.filter((item) => item.id !== mensagem.id));
+      setReacoes((anteriores) => {
+        const proximo = { ...anteriores };
+        delete proximo[mensagem.id];
+        return proximo;
+      });
     } catch {
       setErro("Não foi possível apagar a mensagem.");
+    }
+  }
+
+  /**
+   * Curte com emoji (ou descurte, se repetir). Otimista: a pílula atualiza na
+   * hora e o servidor confirma em seguida — sem push e sem mensagem nova.
+   */
+  async function reagir(mensagem: MensagemChat, emoji: string | null) {
+    if (!motorista || reagindo.current.has(mensagem.id)) return;
+    const lista = reacoes[mensagem.id] ?? [];
+    const minhaAtual = lista.find((r) => r.motoristaId === motorista.id)?.emoji ?? null;
+    const vaiFicar = emoji && emoji !== minhaAtual ? emoji : null;
+    reagindo.current.add(mensagem.id);
+    setSeletorReacao(null);
+    setDetalheReacao(null);
+    setReacoes((atual) => {
+      const semMim = (atual[mensagem.id] ?? []).filter((r) => r.motoristaId !== motorista.id);
+      return {
+        ...atual,
+        [mensagem.id]: vaiFicar ? [...semMim, { emoji: vaiFicar, motoristaId: motorista.id, nome: motorista.nome }] : semMim,
+      };
+    });
+    try {
+      const resposta = await fetch("/api/chat/reacoes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mensagemId: mensagem.id, motoristaId: motorista.id, emoji: vaiFicar ?? "" }),
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (!resposta.ok) throw new Error(dados.erro || "Falha ao curtir.");
+      setReacoes((atual) => ({ ...atual, [mensagem.id]: (dados.reacoes ?? []) as ReacaoChat[] }));
+    } catch {
+      // Volta ao que estava: a curtida não foi gravada.
+      setReacoes((atual) => ({ ...atual, [mensagem.id]: lista }));
+      setAviso("Não foi possível curtir agora. Tente novamente.");
+      setTimeout(() => setAviso(""), 2500);
+    } finally {
+      reagindo.current.delete(mensagem.id);
     }
   }
 
@@ -624,12 +728,23 @@ export default function ChatMotoristas({
         idsConhecidos.current = new Set(mensagens.map((mensagem) => mensagem.id));
         ultimoId.current = mensagens.at(-1)?.id ?? 0;
         setMsgs(mensagens);
+        guardarReacoes(mensagens);
       }
       setAviso("Conversa atualizada.");
       setTimeout(() => setAviso(""), 1800);
     } catch {
       setErro("Não foi possível atualizar a conversa.");
     }
+  }
+
+  function abrirSeletor(mensagem: MensagemChat) {
+    setDetalheReacao(null);
+    setSeletorReacao((atual) => (atual === mensagem.id ? null : mensagem.id));
+  }
+
+  function alternarDetalheReacao(mensagem: MensagemChat) {
+    setSeletorReacao(null);
+    setDetalheReacao((atual) => (atual === mensagem.id ? null : mensagem.id));
   }
 
   function irParaUltimaMensagem() {
@@ -809,8 +924,11 @@ export default function ChatMotoristas({
                 temImagem ? { width: "min(80%, 330px)" } : temAudio ? { width: "min(80%, 272px)" } : undefined;
               const classesLargura = larguraBolha ? "" : "w-fit max-w-[80%]";
               const recuo = novoDia ? "" : seguida ? "mt-[5px]" : "mt-2";
+              // Curtidas desta bolha (a pílula gruda na borda de baixo, como no WhatsApp).
+              const listaReacoes = reacoes[mensagem.id] ?? [];
+              const minhaReacao = motorista ? listaReacoes.find((r) => r.motoristaId === motorista.id)?.emoji ?? null : null;
               return (
-                <div key={mensagem.id} className={recuo}>
+                <div key={mensagem.id} className={`${recuo}${listaReacoes.length ? " mb-3" : ""}`}>
                   {novoDia && (
                     <div className="my-2.5 flex justify-center">
                       <span className="rounded-full border border-white/[.06] bg-[#071b3b]/85 px-3.5 py-1 text-[11px] font-bold capitalize tracking-wide text-gelo/65 shadow-sm">
@@ -821,23 +939,37 @@ export default function ChatMotoristas({
                   {sistema ? (
                     <div className={`flex max-w-full items-end gap-2 ${oficial ? "" : "opacity-95"}`}>
                       <AvatarCopa tamanho={35} robo={oficial} classe={oficial ? "border-[#6fb8ff]/55" : "border-white/10 opacity-85"} />
-                      <div className={`relative min-w-0 w-fit max-w-[80%] overflow-hidden rounded-[20px] border px-3 pt-2.5 pb-2 ${oficial ? "border-[#3477c1]/55 bg-[linear-gradient(135deg,rgba(11,38,83,.98),rgba(7,25,58,.96))] shadow-[0_10px_26px_-24px_rgba(65,158,255,.8)]" : "border-[#2a5bb0]/45 bg-[#091d43]/85"}`}>
-                        {oficial && <span aria-hidden className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#6fe7df,#2f8cf0)]" />}
-                        <div className="flex items-center gap-1.5 pl-1">
-                          {oficial ? (
-                            <>
-                              <span className="font-display text-[13px] font-extrabold text-white">CopaLinks</span>
-                              <BadgeCheck size={15} className="fill-[#2f8cf0] text-white" aria-label="Conta oficial verificada" />
-                              <span className="ml-auto rounded-full border border-[#6fe7df]/20 bg-[#2f8cf0]/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[.13em] text-[#9bdaff]">Oficial</span>
-                            </>
-                          ) : (
-                            <span className="font-display text-[12.5px] font-bold text-[#9bc5f1]">{mensagem.nome}</span>
-                          )}
+                      <div
+                        className="relative min-w-0 max-w-[80%]"
+                        data-reacao-area
+                        onDoubleClick={() => { if (motorista) void reagir(mensagem, "👍"); }}
+                        title={motorista ? "Toque duas vezes para curtir com 👍" : undefined}
+                      >
+                        <div className={`relative min-w-0 w-fit max-w-full overflow-hidden rounded-[20px] border px-3 pt-2.5 pb-2 ${oficial ? "border-[#3477c1]/55 bg-[linear-gradient(135deg,rgba(11,38,83,.98),rgba(7,25,58,.96))] shadow-[0_10px_26px_-24px_rgba(65,158,255,.8)]" : "border-[#2a5bb0]/45 bg-[#091d43]/85"}`}>
+                          {oficial && <span aria-hidden className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#6fe7df,#2f8cf0)]" />}
+                          <div className="flex items-center gap-1.5 pl-1">
+                            {oficial ? (
+                              <>
+                                <span className="font-display text-[13px] font-extrabold text-white">CopaLinks</span>
+                                <BadgeCheck size={15} className="fill-[#2f8cf0] text-white" aria-label="Conta oficial verificada" />
+                                <span className="ml-auto rounded-full border border-[#6fe7df]/20 bg-[#2f8cf0]/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[.13em] text-[#9bdaff]">Oficial</span>
+                              </>
+                            ) : (
+                              <span className="font-display text-[12.5px] font-bold text-[#9bc5f1]">{mensagem.nome}</span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-end gap-x-2 pl-1">
+                            <div className="min-w-0"><ConteudoMensagem texto={mensagem.texto} meu={false} /></div>
+                            <MetaMensagem mensagem={mensagem} meu={false} className="ml-auto" onReagir={motorista ? abrirSeletor : undefined} minhaReacao={minhaReacao} />
+                          </div>
                         </div>
-                        <div className="mt-1 flex flex-wrap items-end gap-x-2 pl-1">
-                          <div className="min-w-0"><ConteudoMensagem texto={mensagem.texto} meu={false} /></div>
-                          <MetaMensagem mensagem={mensagem} meu={false} className="ml-auto" />
-                        </div>
+                        <PilulaReacoes lista={listaReacoes} motoristaId={motorista?.id} lado="right-3" onVerQuem={() => alternarDetalheReacao(mensagem)} />
+                        {seletorReacao === mensagem.id && motorista && (
+                          <SeletorReacao minhaReacao={minhaReacao} lado="left-0" onEscolher={(emoji) => void reagir(mensagem, emoji)} />
+                        )}
+                        {detalheReacao === mensagem.id && (
+                          <DetalheReacoes lista={listaReacoes} motoristaId={motorista?.id} lado="left-0" />
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -845,13 +977,16 @@ export default function ChatMotoristas({
                       <AvatarMotorista nome={mensagem.nome} id={mensagem.motoristaId} />
                       <div
                         style={larguraBolha}
-                        className={`${classesLargura} min-w-0 rounded-[20px] border shadow-[0_8px_22px_-20px_rgba(0,0,0,.9)] ${temMidia ? "px-2.5 pt-2.5 pb-2" : "px-3 pt-2.5 pb-2"} ${meu ? "border-[#4c92e8]/45 bg-[linear-gradient(145deg,rgba(19,64,129,.93),rgba(10,43,91,.95))]" : "border-[#2a5bb0]/55 bg-[linear-gradient(145deg,rgba(10,31,70,.97),rgba(7,24,57,.96))]"}`}
+                        data-reacao-area
+                        onDoubleClick={() => { if (motorista) void reagir(mensagem, "👍"); }}
+                        title={motorista ? "Toque duas vezes para curtir com 👍" : undefined}
+                        className={`${classesLargura} relative min-w-0 rounded-[20px] border shadow-[0_8px_22px_-20px_rgba(0,0,0,.9)] ${temMidia ? "px-2.5 pt-2.5 pb-2" : "px-3 pt-2.5 pb-2"} ${meu ? "border-[#4c92e8]/45 bg-[linear-gradient(145deg,rgba(19,64,129,.93),rgba(10,43,91,.95))]" : "border-[#2a5bb0]/55 bg-[linear-gradient(145deg,rgba(10,31,70,.97),rgba(7,24,57,.96))]"}`}
                       >
                         {!seguida && <div className={`mb-1 font-display text-[12px] leading-tight font-extrabold ${meu ? "text-[#a9dbff]" : CORES_NOME[Math.abs(mensagem.motoristaId) % CORES_NOME.length]}`}>{meu ? "Você" : mensagem.nome}</div>}
                         {temAudio ? (
                           <>
                             <PlayerAudio mensagem={mensagem} />
-                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="mt-1" />
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} onReagir={motorista ? abrirSeletor : undefined} minhaReacao={minhaReacao} className="mt-1" />
                           </>
                         ) : temImagem && mensagem.mediaUrl ? (
                           <>
@@ -863,7 +998,7 @@ export default function ChatMotoristas({
                               </a>
                               {mensagem.mediaNome && <p className="mt-1 truncate text-[11px] text-gelo/60">{mensagem.mediaNome}</p>}
                             </div>
-                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="mt-1" />
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} onReagir={motorista ? abrirSeletor : undefined} minhaReacao={minhaReacao} className="mt-1" />
                           </>
                         ) : temArquivo && mensagem.mediaUrl ? (
                           <>
@@ -872,12 +1007,12 @@ export default function ChatMotoristas({
                               <span className="min-w-0 flex-1"><span className="block truncate text-[12.5px] font-bold text-white">{mensagem.mediaNome || "Arquivo"}</span><span className="mt-0.5 block text-[10.5px] text-gelo/50">Toque para abrir ou baixar</span></span>
                               <ExternalLink size={15} className="shrink-0 text-gelo/45" />
                             </a>
-                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="mt-1" />
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} onReagir={motorista ? abrirSeletor : undefined} minhaReacao={minhaReacao} className="mt-1" />
                           </>
                         ) : soEmoji ? (
                           <div className="flex flex-col items-end gap-0.5">
                             <div className="min-w-0"><ConteudoMensagem texto={mensagem.texto} meu={meu} /></div>
-                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} />
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} onReagir={motorista ? abrirSeletor : undefined} minhaReacao={minhaReacao} />
                           </div>
                         ) : (
                           // Texto, figurinha ou localização: o horário sobe para a
@@ -885,8 +1020,15 @@ export default function ChatMotoristas({
                           // uma linha extra só para o rodapé).
                           <div className="flex flex-wrap items-end gap-x-2">
                             <div className="min-w-0"><ConteudoMensagem texto={mensagem.texto} meu={meu} /></div>
-                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} className="ml-auto" />
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} onReagir={motorista ? abrirSeletor : undefined} minhaReacao={minhaReacao} className="ml-auto" />
                           </div>
+                        )}
+                        <PilulaReacoes lista={listaReacoes} motoristaId={motorista?.id} lado={meu ? "left-3" : "right-3"} onVerQuem={() => alternarDetalheReacao(mensagem)} />
+                        {seletorReacao === mensagem.id && motorista && (
+                          <SeletorReacao minhaReacao={minhaReacao} lado={meu ? "right-0" : "left-0"} onEscolher={(emoji) => void reagir(mensagem, emoji)} />
+                        )}
+                        {detalheReacao === mensagem.id && (
+                          <DetalheReacoes lista={listaReacoes} motoristaId={motorista?.id} lado={meu ? "right-0" : "left-0"} />
                         )}
                       </div>
                     </div>
@@ -1068,7 +1210,112 @@ function AcaoAnexo({ icone: Icone, rotulo, onClick }: { icone: typeof Camera; ro
 }
 
 /**
- * Rodapé da bolha: apagar (só nas minhas), horário e a confirmação de envio.
+ * Pílula de curtidas grudada na borda de baixo da bolha (como no WhatsApp):
+ * mostra até 3 emojis + total. Tocar abre quem curtiu.
+ */
+function PilulaReacoes({
+  lista,
+  motoristaId,
+  lado,
+  onVerQuem,
+}: {
+  lista: ReacaoChat[];
+  motoristaId?: number;
+  lado: string;
+  onVerQuem: () => void;
+}) {
+  if (!lista.length) return null;
+  const emojis = [...new Set(lista.map((r) => r.emoji))].slice(0, 3);
+  const eu = motoristaId != null && lista.some((r) => r.motoristaId === motoristaId);
+  return (
+    <button
+      type="button"
+      data-botao-reacao
+      onClick={onVerQuem}
+      aria-label={`${lista.length} ${lista.length === 1 ? "curtida" : "curtidas"}: ${emojis.join(" ")}. Toque para ver quem curtiu.`}
+      title="Ver quem curtiu"
+      className={`absolute -bottom-3 z-10 flex items-center gap-[3px] rounded-full border px-1.5 py-[3px] leading-none shadow-[0_4px_14px_-6px_rgba(0,0,0,.8)] backdrop-blur transition-transform hover:scale-[1.05] active:scale-95 ${lado} ${eu ? "border-[#6fe7df]/55 bg-[#0a2a56]" : "border-white/15 bg-[#0a2349]"}`}
+    >
+      {emojis.map((emoji) => (
+        <span key={emoji} className="text-[13px] leading-none">{emoji}</span>
+      ))}
+      {lista.length > 1 && (
+        <span className="tabular pl-[1px] text-[10.5px] font-bold text-gelo/80">{lista.length}</span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Escolha rápida de emoji para curtir: aparece acima da bolha. Tocar no emoji
+ * que já está ativo remove a curtida (descurtir).
+ */
+function SeletorReacao({
+  minhaReacao,
+  lado,
+  onEscolher,
+}: {
+  minhaReacao: string | null;
+  lado: string;
+  onEscolher: (emoji: string | null) => void;
+}) {
+  return (
+    <div
+      role="toolbar"
+      aria-label="Curtir com emoji"
+      className={`absolute bottom-full z-20 mb-2 flex max-w-[176px] flex-wrap items-center gap-0.5 rounded-[20px] border border-[#3972bb]/55 bg-[#071b3a]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl ${lado}`}
+    >
+      {REACOES_RAPIDAS.map((emoji) => {
+        const ativo = minhaReacao === emoji;
+        return (
+          <button
+            key={emoji}
+            type="button"
+            onClick={() => onEscolher(ativo ? null : emoji)}
+            aria-label={ativo ? `Remover curtida ${emoji}` : `Curtir com ${emoji}`}
+            aria-pressed={ativo}
+            title={ativo ? "Remover curtida" : `Curtir com ${emoji}`}
+            className={`grid h-9 w-9 place-items-center rounded-full text-[21px] transition-all hover:bg-white/10 active:scale-90 ${ativo ? "bg-[#2f8cf0]/25 ring-1 ring-[#6fe7df]/60" : ""}`}
+          >
+            {emoji}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Quem curtiu: nome + emoji de cada um, acima da bolha. */
+function DetalheReacoes({
+  lista,
+  motoristaId,
+  lado,
+}: {
+  lista: ReacaoChat[];
+  motoristaId?: number;
+  lado: string;
+}) {
+  if (!lista.length) return null;
+  return (
+    <div
+      role="dialog"
+      aria-label="Quem curtiu esta mensagem"
+      className={`absolute bottom-full z-20 mb-2 max-h-[180px] w-max max-w-[220px] overflow-y-auto rounded-[16px] border border-[#3972bb]/55 bg-[#071b3a]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl ${lado}`}
+    >
+      {lista.slice(0, 30).map((r) => (
+        <div key={r.motoristaId} className="flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-[12px] leading-tight">
+          <span className="shrink-0 text-[15px] leading-none">{r.emoji}</span>
+          <span className="truncate font-semibold text-gelo/90">
+            {motoristaId != null && r.motoristaId === motoristaId ? "Você" : r.nome}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Rodapé da bolha: curtir, apagar (só nas minhas), horário e a confirmação de envio.
  * Fica no canto inferior direito e ocupa o mínimo: quando a mensagem é curta,
  * sobe para a mesma linha do texto e a bolha não ganha altura por causa dele —
  * o mesmo desenho das bolhas dos aplicativos de mensagem.
@@ -1077,15 +1324,32 @@ function MetaMensagem({
   mensagem,
   meu,
   onApagar,
+  onReagir,
+  minhaReacao,
   className = "",
 }: {
   mensagem: MensagemChat;
   meu: boolean;
   onApagar?: (mensagem: MensagemChat) => void;
+  onReagir?: (mensagem: MensagemChat) => void;
+  minhaReacao?: string | null;
   className?: string;
 }) {
   return (
     <div className={`flex shrink-0 items-center justify-end gap-1.5 text-[10.5px] leading-none ${meu ? "text-[#d6eaff]/60" : "text-gelo/45"} ${className}`}>
+      {onReagir && (
+        <button
+          type="button"
+          data-botao-reacao
+          onClick={() => onReagir(mensagem)}
+          aria-label={minhaReacao ? `Você curtiu com ${minhaReacao}. Toque para mudar ou remover.` : "Curtir mensagem com emoji"}
+          title="Curtir com emoji"
+          // Mesmo desenho baixo do apagar: não engrossa a bolha, toque folgado.
+          className="relative inline-flex min-h-[18px] items-center rounded-full px-1.5 transition-colors after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] hover:bg-white/10 hover:text-white"
+        >
+          {minhaReacao ? <span className="text-[13px] leading-none">{minhaReacao}</span> : <Smile size={12} />}
+        </button>
+      )}
       {meu && onApagar && (
         <button
           type="button"

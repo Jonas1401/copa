@@ -14,7 +14,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h); o **Radar da previsão** mostra que o monitoramento está no ar |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) |
 
@@ -102,6 +102,19 @@ Figurinha é uma mensagem de texto normal ("☕ Bom dia, motoristas!") que o cha
 desenha grande; mensagens só com 1 a 3 emojis também aparecem grandes. Para
 criar figurinhas, edite `FIGURINHAS` em `src/lib/figurinhas.ts`. Testes:
 `tests/figurinhas.test.ts` e `tests/chat-silencio.test.ts`.
+
+**Chat — curtidas com emoji:** qualquer mensagem recebida (texto, áudio, foto,
+arquivo, figurinha ou aviso do sistema) pode ser curtida com 1 emoji, como no
+WhatsApp. Vale o botão 😀 no rodapé da bolha (abre a escolha rápida de 8
+emojis) ou o **toque duplo na bolha** (curte com 👍 na hora). Cada motorista
+tem **uma curtida por mensagem**: repetir o mesmo emoji descurte, outro emoji
+troca. A curtida aparece numa pílula grudada na borda de baixo da bolha e,
+tocando nela, dá para ver **quem curtiu**. É silenciosa: não entra no chat
+como mensagem nova e não dispara notificação — quem já está com o chat aberto
+vê a pílula atualizar sozinha (a tela busca as curtidas junto com as mensagens
+novas). Fica na tabela `chat_reacoes`, criada automaticamente pelo app
+(`src/lib/chat-reacoes.ts` no servidor, `src/lib/reacoes.ts` na tela, rota
+`/api/chat/reacoes`). Teste: `tests/chat-reacoes.test.ts`.
 
 **Chat — velocidade dos áudios:** todo recado de voz tem a etiqueta de
 velocidade ao lado de "Áudio": cada toque passa para a próxima

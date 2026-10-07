@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { chatMensagens, motoristas } from "@/db/schema";
 import { garantirTabelas } from "@/lib/estado";
 import { notificarMensagemChat } from "@/lib/chat-push";
+import { listarReacoes, type ReacaoChat } from "@/lib/chat-reacoes";
 
 export const dynamic = "force-dynamic";
 // Tempo para gravar a mensagem E aguardar o envio do Web Push aos aparelhos.
@@ -22,8 +23,9 @@ type LinhaTela = Pick<
 /**
  * Nunca inclui os bytes do anexo na lista/polling. Arquivos são servidos em
  * /api/chat/:id/media, permitindo que mensagens antigas continuem leves.
+ * As curtidas (reacoes) vêm junto para a pílula aparecer já no 1º desenho.
  */
-const paraTela = (m: LinhaTela) => ({
+const paraTela = (m: LinhaTela, reacoes?: ReacaoChat[]) => ({
   id: m.id,
   motoristaId: m.motoristaId,
   nome: m.nome,
@@ -34,6 +36,7 @@ const paraTela = (m: LinhaTela) => ({
   mediaUrl: m.mediaTipo ? `/api/chat/${m.id}/media` : null,
   duracaoSegundos: m.duracaoSegundos,
   criadoEm: m.criadoEm.toISOString(),
+  reacoes: reacoes ?? [],
 });
 
 const camposTela = {
@@ -81,11 +84,13 @@ export async function GET(req: Request) {
       .where(gt(chatMensagens.id, depois))
       .orderBy(asc(chatMensagens.id))
       .limit(100);
-    return NextResponse.json({ mensagens: novas.map(paraTela) }, { headers: cab });
+    const reacoes = await listarReacoes(novas.map((m) => m.id));
+    return NextResponse.json({ mensagens: novas.map((m) => paraTela(m, reacoes[m.id] ?? [])) }, { headers: cab });
   }
 
   const ultimas = await db.select(camposTela).from(chatMensagens).orderBy(desc(chatMensagens.id)).limit(80);
-  return NextResponse.json({ mensagens: ultimas.reverse().map(paraTela) }, { headers: cab });
+  const reacoes = await listarReacoes(ultimas.map((m) => m.id));
+  return NextResponse.json({ mensagens: ultimas.reverse().map((m) => paraTela(m, reacoes[m.id] ?? [])) }, { headers: cab });
 }
 
 // Freio contra enxurrada: até 8 mensagens por minuto por motorista.
