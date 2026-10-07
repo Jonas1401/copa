@@ -1047,6 +1047,23 @@ export async function garantirTabelas() {
   } catch {
     // já existe ou sem permissão: segue
   }
+  // Curtidas com emoji nas mensagens do chat (tabela nova, separada).
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS chat_reacoes (
+        id SERIAL PRIMARY KEY,
+        mensagem_id INTEGER NOT NULL REFERENCES chat_mensagens(id) ON DELETE CASCADE,
+        motorista_id INTEGER NOT NULL REFERENCES motoristas(id) ON DELETE CASCADE,
+        emoji TEXT NOT NULL,
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT chat_reacao_unica UNIQUE (mensagem_id, motorista_id)
+      );
+      CREATE INDEX IF NOT EXISTS chat_reacoes_mensagem_idx ON chat_reacoes(mensagem_id);
+      ALTER TABLE chat_reacoes ENABLE ROW LEVEL SECURITY;
+    `);
+  } catch {
+    // já existe ou sem permissão: segue
+  }
   // Cada motorista monitora os próprios pontos: o mesmo número pode estar em
   // dois motoristas. Troca a regra antiga (um número só no app inteiro).
   // Separado do bloco acima para uma falha aqui não impedir criar as tabelas.

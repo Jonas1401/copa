@@ -257,6 +257,19 @@ export const chatMensagens = pgTable("chat_mensagens", {
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Curtidas com emoji nas mensagens do chat (estilo WhatsApp). Uma reação por
+// motorista em cada mensagem: repetir o mesmo emoji remove, outro troca.
+export const chatReacoes = pgTable("chat_reacoes", {
+  id: serial("id").primaryKey(),
+  mensagemId: integer("mensagem_id").notNull().references(() => chatMensagens.id, { onDelete: "cascade" }),
+  motoristaId: integer("motorista_id").notNull().references(() => motoristas.id, { onDelete: "cascade" }),
+  emoji: text("emoji").notNull(),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  unique("chat_reacao_unica").on(t.mensagemId, t.motoristaId),
+  index("chat_reacoes_mensagem_idx").on(t.mensagemId),
+]);
+
 // Conversa privada de cada motorista com o assistente de IA (navios, caminhão
 // + ajuda do app). Papel: "user" (pergunta) ou "assistant" (resposta).
 export const iaMensagens = pgTable("ia_mensagens", {

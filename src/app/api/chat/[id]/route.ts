@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { chatMensagens } from "@/db/schema";
 import { garantirTabelas } from "@/lib/estado";
+import { removerReacoesDaMensagem } from "@/lib/chat-reacoes";
 
 export const dynamic = "force-dynamic";
 
@@ -22,5 +23,6 @@ export async function DELETE(req: Request, { params }: Params) {
     .where(and(eq(chatMensagens.id, Number(id)), eq(chatMensagens.motoristaId, motoristaId)))
     .returning({ id: chatMensagens.id });
   if (!r.length) return NextResponse.json({ erro: "Mensagem não encontrada." }, { status: 404 });
+  await removerReacoesDaMensagem(Number(id));
   return NextResponse.json({ ok: true });
 }
