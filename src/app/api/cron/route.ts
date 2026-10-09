@@ -1,36 +1,21 @@
 import { NextResponse } from "next/server";
-import { garantirTabelas, garantirSemente, temPontoCadastrado } from "@/lib/estado";
-import { varrer } from "@/lib/estado";
+import { garantirTabelas, garantirSemente, temPontoCadastrado, varrer } from "@/lib/estado";
 import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
-import { verificarClima } from "@/lib/clima-alerta";
-import { verificarMudancasPrevisao } from "@/lib/clima-monitor";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
-import { enviarRegrasSeguranca } from "@/lib/regras-seguranca";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/**
- * Despertador do monitoramento.
- *
- * Esta rota é o despertador do monitoramento quando nenhum navegador está
- * aberto. Ela deve ser chamada aproximadamente a cada 1 minuto por Vercel Cron
- * (Pro/Enterprise) ou por um cron externo. O Service Worker recebe o Push e
- * mostra a notificação mesmo com o aplicativo fechado.
- *
- * A rota é protegida por CRON_SECRET (Vercel) ou SUPABASE_CRON_SECRET (pg_cron)
- * quando uma dessas variáveis estiver definida. A chave do Supabase é
- * independente para não invalidar o agendador da Vercel já configurado.
+/** Despertador de backend: fila pessoal + leitura Composio + avisos de navios.
+ * Chamar a cada minuto (Supabase pg_cron ou Vercel Pro/Enterprise).
+ * Cada fonte é relida a cada 5 min; a fila de envios é tratada em todo ciclo.
+ * Não publica clima, boletins, boas-vindas ou regras de comportamento.
+ * Nada muda no visual. O Service Worker existente recebe os avisos com o app fechado.
  */
 export async function GET(req: Request) {
-  // Vercel envia Authorization: Bearer <CRON_SECRET> automaticamente.
-  // pg_cron no Supabase usa SUPABASE_CRON_SECRET, guardado no Supabase Vault.
-  // Nunca enviamos nenhuma das duas chaves ao navegador.
-  const segredos = [
-    process.env.CRON_SECRET?.trim(),
-    process.env.SUPABASE_CRON_SECRET?.trim(),
-  ].filter((s): s is string => Boolean(s));
+  const segredos = [process.env.CRON_SECRET?.trim(), process.env.SUPABASE_CRON_SECRET?.trim()]
+    .filter((s): s is string => Boolean(s));
   if (segredos.length) {
     const autorizacao = req.headers.get("authorization") ?? "";
     if (!segredos.some((segredo) => autorizacao === `Bearer ${segredo}`)) {
@@ -42,57 +27,34 @@ export async function GET(req: Request) {
   await garantirAdminDefault();
   await garantirSemente();
 
-  // Testes "com o app fechado" pedidos pelos aparelhos saem neste ciclo,
-  // depois da leitura (o aviso leva a posição atualizada do ponto).
-  // O clima também roda aqui (mesmo sem ponto, os motoristas precisam saber
-  // do tempo no porto): alerta em tempo ruim ou boletim de previsão do turno.
+  // O monitor de navios é independente de pontos cadastrados e de falhas da
+  // fila. A leitura Composio acontece em paralelo para caber no prazo do cron.
+  const tarefaNavios = verificarNaviosFertilizantes().catch(() => null);
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
-    const clima = await verificarClima().catch(() => null);
-    // Radar da previsão (Composio + SIMPORT): avisa QUALQUER mudança no tempo.
-    const radar = await verificarMudancasPrevisao({
-      previsao: clima?.previsao,
-      registrarSomente: Boolean(clima?.postou),
-    }).catch(() => null);
-    const navios = await verificarNaviosFertilizantes().catch(() => null);
+    const navios = await tarefaNavios;
     return NextResponse.json({
-      rodou: false,
-      motivo: "Nenhum ponto cadastrado — monitoramento em repouso.",
-      ...(testes.total ? { testes } : {}),
-      ...(clima?.postou ? { clima } : {}),
-      ...(radar?.postou ? { radar } : {}),
-      ...(navios?.rodou ? { navios } : {}),
+      rodou: false, motivo: "Nenhum ponto cadastrado — monitoramento da fila em repouso.",
+      ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
     });
   }
 
   let testes = { total: 0, enviados: 0 };
-  let leitura: Awaited<ReturnType<typeof varrer>>;
+  let leitura: Awaited<ReturnType<typeof varrer>> | null = null;
   try {
     leitura = await varrer({ forcarRede: true });
+  } catch {
+    // Uma falha da fila não pode impedir a publicação dos avisos de navios.
   } finally {
     testes = await enviarTestesDoCiclo();
   }
-  const clima = await verificarClima().catch(() => null);
-  // Radar da previsão: compara a leitura atual (API da Simport + painel lido
-  // pelo Composio) com a do último aviso e manda qualquer mudança para o chat.
-  const radar = await verificarMudancasPrevisao({
-    previsao: clima?.previsao,
-    registrarSomente: Boolean(clima?.postou),
-  }).catch(() => null);
-  // Navios de fertilizantes (APPA + SINPRAPAR): no máximo a cada 5 min.
-  const navios = await verificarNaviosFertilizantes().catch(() => null);
-  // Regras de segurança do Porto para quem saiu para o trabalho.
-  const regras = await enviarRegrasSeguranca().catch(() => null);
-  const tabelas = Object.values(leitura.fila).filter((l) => l.codigos.length);
+  const navios = await tarefaNavios;
   return NextResponse.json({
-    rodou: true,
-    origem: leitura.origem,
-    tabelas: tabelas.length,
+    rodou: Boolean(leitura),
+    ...(leitura ? {
+      origem: leitura.origem, tabelas: Object.values(leitura.fila).filter((l) => l.codigos.length).length,
+    } : { motivo: "Falha temporária na leitura da fila." }),
     quando: new Date().toISOString(),
-    ...(testes.total ? { testes } : {}),
-    ...(clima?.postou ? { clima } : {}),
-    ...(radar?.postou ? { radar } : {}),
-    ...(navios?.rodou ? { navios } : {}),
-    ...(regras?.enviadas ? { regras } : {}),
+    ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
   });
 }

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -256,6 +257,46 @@ export const chatMensagens = pgTable("chat_mensagens", {
   duracaoSegundos: integer("duracao_segundos"),
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Leituras literais das fontes do Composio e fila durável de avisos individuais.
+export const naviosMonitorFontes = pgTable("navios_monitor_fontes", {
+  fonte: text("fonte").primaryKey(),
+  url: text("url").notNull(),
+  dados: text("dados"),
+  textoFonte: text("texto_fonte"),
+  revisao: integer("revisao").default(0).notNull(),
+  lidoEm: timestamp("lido_em", { withTimezone: true }),
+  tentativaEm: timestamp("tentativa_em", { withTimezone: true }),
+  leituraAte: timestamp("leitura_ate", { withTimezone: true }),
+  tokenLeitura: text("token_leitura"),
+  erro: text("erro"),
+});
+
+export const naviosMonitorEventos = pgTable("navios_monitor_eventos", {
+  id: serial("id").primaryKey(),
+  chave: text("chave").notNull().unique(),
+  fonte: text("fonte").notNull(),
+  navio: text("navio").notNull(),
+  tipo: text("tipo").notNull(),
+  texto: text("texto").notNull(),
+  // Sem FK: o histórico de deduplicação sobrevive à retenção de 7 dias do chat.
+  mensagemId: integer("mensagem_id"),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+  publicadoEm: timestamp("publicado_em", { withTimezone: true }),
+  pushEm: timestamp("push_em", { withTimezone: true }),
+  envioAte: timestamp("envio_ate", { withTimezone: true }),
+  tentativas: integer("tentativas").default(0).notNull(),
+  erro: text("erro"),
+}, (t) => [index("navios_monitor_eventos_pendentes_idx").on(t.id).where(sql`${t.pushEm} is null`)]);
+
+export const pushEntregas = pgTable("push_entregas", {
+  id: serial("id").primaryKey(),
+  tag: text("tag").notNull(),
+  subscriptionId: integer("subscription_id").notNull().references(() => subscriptions.id, { onDelete: "cascade" }),
+  aceitaEm: timestamp("aceita_em", { withTimezone: true }),
+  enviandoAte: timestamp("enviando_ate", { withTimezone: true }),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [unique("push_entrega_unica").on(t.tag, t.subscriptionId), index("push_entregas_criado_em_idx").on(t.criadoEm)]);
 
 // Curtidas com emoji nas mensagens do chat (estilo WhatsApp). Uma reação por
 // motorista em cada mensagem: repetir o mesmo emoji remove, outro troca.

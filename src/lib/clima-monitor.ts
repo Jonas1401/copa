@@ -1,3 +1,6 @@
+/** Política atual: conteúdo para consultas/memória; publicação automática bloqueada. */
+import { POLITICA_AUTOMACAO } from "@/lib/politica-automacao";
+import { memorizarClima } from "@/lib/ia-memoria-porto";
 import { createHash } from "node:crypto";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -1307,6 +1310,7 @@ export async function verificarMudancasPrevisao(
     await gravarConfig(CHAVE_ULTIMA, String(Date.now()));
 
     const p = await lerPrevisao(opcoes.previsao, opcoes.suave);
+    if (p) await memorizarClima(p).catch(() => null);
     const painelLido = await lerPainelComMetodo(cfg, opcoes.forcar, { previsao: p });
     const painel = painelLido.painel;
     // Segunda opinião: medição do tempo atual PELO COMPOSIO (OpenWeather).
@@ -1336,6 +1340,17 @@ export async function verificarMudancasPrevisao(
       };
       await gravarConfig(CHAVE_ESTADO_CHUVA, JSON.stringify(valor));
     };
+
+    // O radar e o painel existentes continuam lendo, sem publicar nada.
+    // Inclusive `forcar` e o botão do administrador respeitam esta política.
+    if (!POLITICA_AUTOMACAO.climaNoChat) {
+      await gravarInstantaneo(atual);
+      if (!(await lerConfig(CHAVE_SEMEADO))) await gravarConfig(CHAVE_SEMEADO, new Date().toISOString());
+      if (estadoChuva && (!registroChuva || registroChuva.estado !== estadoChuva)) {
+        await gravarChuva(estadoChuva, Boolean(registroChuva && registroChuva.estado !== estadoChuva)).catch(() => null);
+      }
+      return { rodou: true, postou: false, motivo: "clima guardado para perguntas; avisos automáticos desativados", mudancas: [] };
+    }
 
     if (!anterior) {
       // 1ª leitura: registra o que já existe e não avisa coisa antiga — nem de

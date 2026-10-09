@@ -32,7 +32,7 @@ const local = (() => {
   try { const u = new URL(uri); return (u.hostname === "127.0.0.1" || u.hostname === "localhost") && u.pathname.startsWith("/fila_push_test_"); } catch { return false; }
 })();
 
-test("ponta a ponta: só quem saiu de verdade recebe, uma regra por vez, sem repetir", { skip: !local }, async () => {
+test("ponta a ponta: saída real não dispara regras automáticas; conteúdo continua disponível à IA", { skip: !local }, async () => {
   const { db, pool } = await import("../src/db");
   const { motoristas, pontos } = await import("../src/db/schema");
   const { garantirTabelas } = await import("../src/lib/estado");
@@ -46,7 +46,7 @@ test("ponta a ponta: só quem saiu de verdade recebe, uma regra por vez, sem rep
       await db.insert(pontos).values({ tipo: "TRUCK", livro: "A", numero: m.id, motoristaId: m.id, ...ponto });
       return m.id;
     };
-    const joao = await cria("João", { status: "SAIU", vistoEm: min(40), saidaEm: min(5) });       // saiu há 5 min
+    await cria("João", { status: "SAIU", vistoEm: min(40), saidaEm: min(5) });       // saiu há 5 min
     await cria("Foratabela", { status: "SAIU", vistoEm: null, saidaEm: min(5) });              // nunca esteve no quadro
     await cria("Antigo", { status: "SAIU", vistoEm: min(500), saidaEm: min(7 * 60) });         // saiu há 7 h
     await cria("Esperando", { status: "AGUARDANDO", vistoEm: min(1) });                         // ainda na fila
@@ -57,16 +57,14 @@ test("ponta a ponta: só quem saiu de verdade recebe, uma regra por vez, sem rep
       return { enviadas: 1, assinaturas: 1 };
     }) as unknown as typeof import("../src/lib/push").enviarPush;
 
-    let r = await enviarRegrasSeguranca(agora, falso);
-    assert.equal(r.enviadas, 1);
-    assert.deepEqual(enviados, [{ motoristaId: joao, title: "REGRA 01 — FARÓIS 🚛" }], "só o João, só a 1ª regra");
-
-    r = await enviarRegrasSeguranca(new Date(agora.getTime() + 5 * 60_000), falso);
-    assert.equal(r.enviadas, 0, "antes de 30 min não manda outra");
-
-    r = await enviarRegrasSeguranca(new Date(agora.getTime() + INTERVALO_MS), falso);
-    assert.equal(enviados.at(-1)?.title, "REGRA 02 — SINALIZAÇÃO 💡");
-    assert.equal(enviados.length, 2);
+    for (const ms of [0, 5 * 60000, INTERVALO_MS, 4 * INTERVALO_MS]) {
+      const r = await enviarRegrasSeguranca(new Date(agora.getTime() + ms), falso);
+      assert.equal(r.enviadas, 0);
+      assert.equal(r.motoristas, 0);
+    }
+    assert.equal(enviados.length, 0);
+    const { contextoOrientacoesPorto } = await import("../src/lib/ia-memoria-porto");
+    assert.match(await contextoOrientacoesPorto(), /REGRA 01 — FARÓIS/);
   } finally {
     await pool.end();
   }

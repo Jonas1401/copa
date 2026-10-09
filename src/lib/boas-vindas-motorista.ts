@@ -1,3 +1,5 @@
+/** Política atual: conteúdo para consultas/memória; publicação automática bloqueada. */
+import { POLITICA_AUTOMACAO } from "@/lib/politica-automacao";
 import { db } from "@/db";
 import { chatMensagens } from "@/db/schema";
 import { notificarMensagemChat } from "@/lib/chat-push";
@@ -10,6 +12,7 @@ Responda somente com JSON válido, sem markdown, com exatamente estas três stri
 
 /** Gera uma saudação pelo Composio e publica no chat; a falha de Push não apaga o recado. */
 export async function publicarBoasVindasMotorista(motorista: { id: number; nome: string }) {
+  if (!POLITICA_AUTOMACAO.boasVindasNoChat) return { mensagemId: null, via: "desativada" as const, push: null };
   let conteudo = boasVindasPadrao(motorista.nome);
   let via: "padrao" | "composio" = "padrao";
 

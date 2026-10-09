@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { obterPrevisao, resumoEmTexto } from "@/lib/tempo";
+import { memorizarClima } from "@/lib/ia-memoria-porto";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   try {
     const p = await obterPrevisao(url.searchParams.get("forcar") === "1");
+    await memorizarClima(p).catch(() => null);
     if (url.searchParams.get("formato") === "texto") {
       return NextResponse.json({ texto: resumoEmTexto(p), atualizadoEm: p.atualizadoEm });
     }

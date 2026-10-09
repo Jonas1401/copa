@@ -1,7 +1,8 @@
+import { garantirTabelasNavios } from "@/lib/navios-migracao";
 import webpush from "web-push";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { configuracao, motoristas, notificacoes, subscriptions } from "@/db/schema";
+import { configuracao, motoristas, notificacoes, subscriptions, pushEntregas } from "@/db/schema";
 
 /**
  * Backend de Web Push.
@@ -147,6 +148,9 @@ export async function enviarPush(
   opcoes: {
     somenteEndpoint?: string;
     unica?: boolean;
+    /** Navios: recibo por aparelho e retomada de falhas sem repetir nos demais. */
+    retentavel?: boolean;
+    timeoutMs?: number;
     /** Só os aparelhos deste motorista (+ aparelhos ainda sem dono). */
     motoristaId?: number | null;
     /** Todos os aparelhos, MENOS os deste motorista (ex.: quem escreveu no chat). */
@@ -187,6 +191,8 @@ export async function enviarPush(
     return { enviadas: 0, assinaturas: 0, erro: "Nenhuma assinatura ativa." };
   }
 
+  if (opcoes.retentavel) await garantirTabelasNavios();
+
   if (opcoes.unica !== false) {
     // Impede notificação duplicada: mesma tag não dispara duas vezes.
     const [reservada] = await db
@@ -197,7 +203,7 @@ export async function enviarPush(
     await db.execute(
       sql`delete from notificacoes where criado_em < now() - interval '2 days'`,
     );
-    if (!reservada) {
+    if (!reservada && !opcoes.retentavel) {
       return {
         enviadas: 0,
         assinaturas: alvos.length,
@@ -217,10 +223,28 @@ export async function enviarPush(
   });
 
   let enviadas = 0;
+  let falhas = 0;
   const invalidas: string[] = [];
 
   await Promise.all(
     alvos.map(async (s) => {
+      let reciboId: number | null = null;
+      if (opcoes.retentavel) {
+        await db.insert(pushEntregas).values({ tag: payload.tag, subscriptionId: s.id }).onConflictDoNothing();
+        const agora = new Date();
+        const [claim] = await db.update(pushEntregas)
+          .set({ enviandoAte: new Date(agora.getTime() + (opcoes.timeoutMs ?? 10000) + 10000) })
+          .where(and(eq(pushEntregas.tag, payload.tag), eq(pushEntregas.subscriptionId, s.id),
+            isNull(pushEntregas.aceitaEm), or(isNull(pushEntregas.enviandoAte), lt(pushEntregas.enviandoAte, agora))))
+          .returning({ id: pushEntregas.id });
+        if (!claim) {
+          const [recibo] = await db.select({ aceitaEm: pushEntregas.aceitaEm }).from(pushEntregas)
+            .where(and(eq(pushEntregas.tag, payload.tag), eq(pushEntregas.subscriptionId, s.id))).limit(1);
+          if (!recibo?.aceitaEm) falhas++; // outra Function ainda está enviando
+          return;
+        }
+        reciboId = claim.id;
+      }
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -228,12 +252,14 @@ export async function enviarPush(
           {
             // TTL de 24 horas para o Google/FCM reter a mensagem caso o celular esteja desligado ou sem rede
             TTL: 86400,
+            ...(opcoes.timeoutMs ? { timeout: opcoes.timeoutMs } : {}),
             // 'high' força entrega imediata em celulares Android mesmo em Doze Mode / tela desligada
             urgency: "high",
             topic: payload.tag.slice(0, 32),
           },
         );
         enviadas += 1;
+        if (reciboId !== null) await db.update(pushEntregas).set({ aceitaEm: new Date(), enviandoAte: null }).where(eq(pushEntregas.id, reciboId));
         await db
           .update(subscriptions)
           .set({ ultimoEnvioEm: new Date() })
@@ -244,7 +270,10 @@ export async function enviarPush(
         // Em qualquer caso ela não volta a funcionar: descarta.
         if (codigo === 404 || codigo === 410 || codigo === 403) {
           invalidas.push(s.endpoint);
+        } else {
+          falhas++;
         }
+        if (reciboId !== null) await db.update(pushEntregas).set({ enviandoAte: null }).where(eq(pushEntregas.id, reciboId)).catch(() => null);
       }
     }),
   );
@@ -260,6 +289,7 @@ export async function enviarPush(
     assinaturas: alvos.length,
     descartadas: invalidas.length,
     tag: payload.tag,
+    ...(opcoes.retentavel ? { falhas } : {}),
   };
 }
 

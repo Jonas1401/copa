@@ -1,3 +1,6 @@
+/** Política atual: conteúdo para consultas/memória; publicação automática bloqueada. */
+import { POLITICA_AUTOMACAO } from "@/lib/politica-automacao";
+import { memorizarClima } from "@/lib/ia-memoria-porto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { chatMensagens, configuracao } from "@/db/schema";
@@ -120,6 +123,10 @@ export async function verificarEPostarAlertaClima(
   nivel: string;
   motivo: string;
 }> {
+  if (!POLITICA_AUTOMACAO.climaNoChat) {
+    if (opcoes.previsao) await memorizarClima(opcoes.previsao).catch(() => null);
+    return { postou: false, nivel: opcoes.previsao?.alerta.nivel ?? "?", motivo: "clima somente na memória da IA" };
+  }
   try {
     const p = opcoes.previsao ?? (await obterPrevisao());
     const nivel = p.alerta.nivel;
@@ -196,6 +203,10 @@ export async function verificarClima(
     /* os agentes tentam ler de novo se precisarem */
   }
 
+  if (previsao) await memorizarClima(previsao).catch(() => null);
+  if (!POLITICA_AUTOMACAO.climaNoChat) {
+    return { postou: false, nivel: previsao?.alerta.nivel ?? "?", motivo: "clima somente na memória da IA", tipo: "nenhum", previsao };
+  }
   const alerta = await verificarEPostarAlertaClima({ previsao, forcar: opcoes.forcar });
   if (alerta.postou) return { ...alerta, tipo: "alerta", previsao };
   // Tempo ruim: o alerta já leva a previsão do dia, sem boletim junto.

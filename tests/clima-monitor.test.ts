@@ -715,345 +715,47 @@ test("radar: registro persistido da situação da chuva (parse tolerante)", () =
 
 /* ------------------------------------------------- ponta a ponta (banco) */
 
-test("radar: 1ª leitura só registra; mudança real avisa 1 vez no chat e por Push", { skip: !local }, async () => {
+test("radar: mudanças continuam na memória sem publicar chat ou Push, inclusive com forcar", { skip: !local }, async () => {
   const { db } = await import("../src/db");
-  const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
-  const { inArray } = await import("drizzle-orm");
-  const { garantirTabelas } = await import("../src/lib/estado");
-  const { verificarMudancasPrevisao, NOME_RADAR, statusRadarClima, tickRadar, resetarTickRadar } = await import("../src/lib/clima-monitor");
-  const webpush = (await import("web-push")).default;
-
-  const chaves = webpush.generateVAPIDKeys();
-  process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
-  process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
-  process.env.COMPOSIO_API_KEY = "chave-de-teste";
-  delete process.env.CLIMA_MONITOR_ATIVO;
-
-  const pushes: string[] = [];
-  Object.defineProperty(webpush, "sendNotification", {
-    configurable: true,
-    value: async (_s: unknown, c: string) => {
-      pushes.push(JSON.parse(c).title);
-      return { statusCode: 201 };
-    },
-  });
-
-  // Cenário da previsão (mutável): chance de chuva, rajada, volume, condição e
-  // temperatura (a medição do porto e o máximo/mínimo do dia saem daqui).
-  let cenario = { chance: 10, rajada: 18, mm: 0, gravidade: 0, temp: 21 };
-  const fetchReal = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    // Painel da Simport lido PELO COMPOSIO (o slug da ferramenta vem na URL).
-    if (url.includes("backend.composio.dev")) {
-      if (url.includes("COMPOSIO_SEARCH_FETCH_URL_CONTENT")) {
-        return Response.json({
-          successful: true,
-          data: { results: [{ url: "https://weather-appa.app.simport.com.br/", text: PAINEL }] },
-        });
-      }
-      // Sem Gemini: o radar cai no texto pronto das regras.
-      throw new Error("sem Gemini neste teste");
-    }
-    if (url.includes("wfa.app.simport.com.br")) return Response.json({ events: [] });
-    if (url.includes("simport")) {
-      const base = Math.floor(Date.now() / 1000) - 3600;
-      const horas = Array.from({ length: 40 }, (_, i) => ({
-        date: { sec: base + i * 3600 },
-        ...(url.includes("chanceOfRain")
-          ? {
-              precipitation: cenario.mm,
-              temperature: cenario.temp,
-              relativeHumidity: 80,
-              thermalSensation: cenario.temp,
-              chanceOfRain: cenario.chance,
-              icon: cenario.gravidade === 5 ? 1186 : 1003,
-            }
-          : {}),
-        ...(url.includes("windGust")
-          ? { windSpeed: Math.round((cenario.rajada / 1.852) * 0.6), windGust: Math.round(cenario.rajada / 1.852), windDirection: 135 }
-          : {}),
-        ...(url.includes("hourlyPrecipitation")
-          ? { temperatureAverage: cenario.temp, thermalSensationAverage: cenario.temp, humidityAverage: 80, hourlyPrecipitation: 0 }
-          : {}),
-        ...(url.includes("windDirectionAverage")
-          ? { windDirectionAverage: 135, windSpeedAverage: 7 }
-          : {}),
-      }));
-      return Response.json(horas);
-    }
-    if (url.includes("open-meteo")) {
-      const dias = Array.from({ length: 16 }, (_, i) => {
-        const d = new Date(Date.now() + i * 86400000).toISOString().slice(0, 10);
-        return d;
-      });
-      return Response.json({
-        daily: {
-          time: dias,
-          weather_code: dias.map(() => 2),
-          temperature_2m_max: dias.map(() => 26),
-          temperature_2m_min: dias.map(() => 17),
-          precipitation_sum: dias.map(() => 0),
-          precipitation_probability_max: dias.map(() => cenario.chance),
-          sunrise: dias.map(() => "2026-10-02T04:54"),
-          sunset: dias.map(() => "2026-10-02T17:15"),
-        },
-      });
-    }
-    return fetchReal(input, init);
-  };
-
-  try {
-    await garantirTabelas();
-    await db.delete(climaMudancas);
-    await db.delete(chatMensagens);
-    // Zera o estado do radar (o banco de teste é reaproveitado entre execuções).
-    await db.delete(configuracao).where(
-      inArray(configuracao.chave, [
-        "clima_monitor_instantaneo",
-        "clima_monitor_ultima",
-        "clima_monitor_painel",
-        "clima_monitor_semeado",
-        "clima_estado_chuva",
-        "notificacoes_cota",
-      ]),
-    );
-    await db.delete(subscriptions);
-    const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
-    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
-
-    // 1) Primeira leitura: registra o que já existe, sem avisar nada antigo.
-    const r1 = await verificarMudancasPrevisao({ forcar: true });
-    assert.equal(r1.postou, false);
-    assert.match(r1.motivo, /primeira leitura/i);
-    assert.equal((await db.select().from(chatMensagens)).length, 0);
-    assert.equal(pushes.length, 0);
-
-    // 2) A APPA revisa a previsão: entra chuva forte e rajada alta.
-    cenario = { ...cenario, chance: 80, rajada: 55, mm: 6.5, gravidade: 5 };
-    const r2 = await verificarMudancasPrevisao({ forcar: true });
-    assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
-    assert.ok(r2.mudancas.length > 0);
-    const msgs = await db.select().from(chatMensagens);
-    assert.equal(msgs.length, 1);
-    assert.equal(msgs[0].nome, NOME_RADAR);
-    assert.match(msgs[0].texto, /mudou|chuva/i);
-    assert.deepEqual(pushes, [NOME_RADAR], "Push com o nome do radar");
-    assert.ok((await db.select().from(climaMudancas)).length > 0);
-
-    // 2b) Sem forçar, o radar respeita o intervalo entre leituras (5 min).
-    const r2b = await verificarMudancasPrevisao();
-    assert.equal(r2b.rodou, false);
-    assert.match(r2b.motivo, /aguardando intervalo/i);
-
-    // 3) Mesma previsão no ciclo seguinte: nada muda, nada repete.
-    const r3 = await verificarMudancasPrevisao({ forcar: true });
-    assert.equal(r3.postou, false);
-    assert.match(r3.motivo, /sem mudança/i);
-    assert.equal((await db.select().from(chatMensagens)).length, 1);
-    assert.equal(pushes.length, 1);
-
-    // 4) O alerta/boletim do clima já falou neste minuto: o radar cala a boca,
-    //    mas avança a referência (não avisa de novo no ciclo seguinte).
-    cenario = { ...cenario, chance: 20, rajada: 18, mm: 0, gravidade: 0 };
-    const r4 = await verificarMudancasPrevisao({ forcar: true, registrarSomente: true });
-    assert.equal(r4.postou, false);
-    assert.match(r4.motivo, /já avisou/i);
-    assert.equal((await db.select().from(chatMensagens)).length, 1);
-
-    // 5) Mudança nova de verdade (de 20% para 95%) volta a avisar.
-    cenario = { ...cenario, chance: 95, rajada: 70, mm: 12, gravidade: 5 };
-    const r5 = await verificarMudancasPrevisao({ forcar: true });
-    assert.equal(r5.postou, true, `motivo: ${r5.motivo}`);
-    assert.equal((await db.select().from(chatMensagens)).length, 2);
-    assert.equal(pushes.length, 2);
-
-    // 5b) Só a temperatura mudou (5°C a mais): não é notícia para quem está
-    //     na estrada — o radar avança a referência sem acordar o celular.
-    cenario = { ...cenario, temp: 26 };
-    const r5b = await verificarMudancasPrevisao({ forcar: true });
-    assert.equal(r5b.postou, false, `motivo: ${r5b.motivo}`);
-    assert.match(r5b.motivo, /baixa relevância/i);
-    assert.ok(r5b.mudancas.length > 0, "a mudança foi detectada e registrada");
-    assert.equal((await db.select().from(chatMensagens)).length, 2, "sem mensagem nova");
-    assert.equal(pushes.length, 2, "sem Push novo");
-
-    // 6) Status do radar para a tela Tempo e para o painel.
-    const s = await statusRadarClima();
-    assert.equal(s.ativo, true);
-    assert.equal(s.sensibilidade, "media");
-    assert.ok(s.ultimaVerificacao);
-    assert.equal(s.mudancas24h, (await db.select().from(climaMudancas)).length);
-    assert.equal(s.avisoMinMin, 45, "cota: 45 min entre avisos");
-    assert.equal(s.maxPorHora, 2, "cota: no máximo 2 avisos por hora");
-    assert.equal(s.maxPorDia, 8, "cota: no máximo 8 avisos por dia");
-    assert.equal(s.fontes.simport, true);
-    assert.equal(s.fontes.painel, true, "o painel lido pelo Composio alimentou o radar");
-    assert.equal(s.fontes.composio, false);
-    assert.ok(s.composio, "Composio configurado (chave de teste)");
-    assert.ok(s.ultimaMudanca?.resumo);
-    // 6a) Painel da APPA: leitura feita por ALGUM método, com o log das
-    //     tentativas — nada de "ainda não lido pelo Composio".
-    assert.equal(s.painel.conectado, true, "painel APPA conectado");
-    assert.equal(s.painel.erro, null, "sem erro quando algum método leu");
-    assert.ok(s.painel.metodo, "método de leitura informado");
-    assert.ok(s.painel.metodoRotulo && s.painel.metodoRotulo.length > 3);
-    assert.ok(s.painel.em, "quando foi a última leitura boa");
-    assert.equal(s.painel.leitura?.fonte, "APPA");
-    assert.equal(s.painel.leitura?.status, "sucesso");
-    assert.ok(s.painel.tentativas.length > 0, "log de diagnóstico com as tentativas");
-
-    // 6b) Batida leve do caminho do app aberto: a 1ª roda o ciclo, as seguintes
-    // saem de graça (só uma comparação de horário, sem banco e sem rede).
-    resetarTickRadar();
-    const batida1 = await tickRadar();
-    assert.ok(batida1, "a 1ª batida roda o ciclo do radar");
-    assert.equal(batida1?.postou, false, "sem mudança nova (o cenário não mudou)");
-    assert.equal(await tickRadar(), null, "a 2ª batida no mesmo minuto sai de graça");
-    // Radar desligado: a batida não faz nada.
-    process.env.CLIMA_MONITOR_ATIVO = "0";
-    assert.equal(await tickRadar(), null);
-    delete process.env.CLIMA_MONITOR_ATIVO;
-    resetarTickRadar();
-    assert.ok(await tickRadar(), "volta a rodar com o radar ligado");
-
-    // 7) CLIMA_MONITOR_ATIVO=0 desliga o radar sem quebrar o cron.
-    process.env.CLIMA_MONITOR_ATIVO = "0";
-    const desligado = await verificarMudancasPrevisao({ forcar: true });
-    assert.equal(desligado.rodou, false);
-    assert.match(desligado.motivo, /desligado/i);
-    delete process.env.CLIMA_MONITOR_ATIVO;
-  } finally {
-    globalThis.fetch = fetchReal;
-    delete process.env.COMPOSIO_API_KEY;
-    delete process.env.CLIMA_MONITOR_ATIVO;
-  }
-});
-
-test("radar: situação da chuva — avisa só na virada, não repete enquanto persiste", { skip: !local }, async () => {
-  const { db } = await import("../src/db");
-  const { chatMensagens, climaMudancas, configuracao, motoristas, subscriptions } = await import("../src/db/schema");
+  const { chatMensagens, climaMudancas, configuracao } = await import("../src/db/schema");
   const { eq, inArray } = await import("drizzle-orm");
   const { garantirTabelas } = await import("../src/lib/estado");
   const { verificarMudancasPrevisao } = await import("../src/lib/clima-monitor");
+  const { lerMemoriaClima } = await import("../src/lib/ia-memoria-porto");
   const webpush = (await import("web-push")).default;
-
-  const chaves = webpush.generateVAPIDKeys();
-  process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
-  process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
-  delete process.env.COMPOSIO_API_KEY;
+  const original = webpush.sendNotification, fetchReal = globalThis.fetch;
+  process.env.COMPOSIO_API_KEY = "chave-ficticia-sem-rede";
   delete process.env.CLIMA_MONITOR_ATIVO;
-
-  const pushes: string[] = [];
-  Object.defineProperty(webpush, "sendNotification", {
-    configurable: true,
-    value: async (_s: unknown, c: string) => {
-      pushes.push(JSON.parse(c).title);
-      return { statusCode: 201 };
-    },
-  });
-
-  // Sem rede: painel da APPA e afins ficam fora do ar — o radar trabalha só
-  // com a previsão (SIMPORT) que o teste injeta.
-  const fetchReal = globalThis.fetch;
-  globalThis.fetch = async () => new Response("indisponível", { status: 503 });
-
-  const lerChuva = async () => {
-    const [l] = await db.select().from(configuracao).where(eq(configuracao.chave, "clima_estado_chuva")).limit(1);
-    return l ? (JSON.parse(l.valor) as { estado: string; transicoes: number }) : null;
+  let painel = PAINEL, pushes = 0;
+  Object.defineProperty(webpush, "sendNotification", { configurable: true, value: async () => { pushes++; return { statusCode: 201 }; } });
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("COMPOSIO_SEARCH_FETCH_URL_CONTENT")) return Response.json({ successful: true, data: { results: [{ url: "https://weather-appa.app.simport.com.br/", text: painel }] } });
+    if (url.includes("backend.composio.dev")) return Response.json({ successful: false, error: "sem medição no teste" });
+    if (url.includes("weather-appa")) return new Response(painel);
+    return Response.json([]); // rede simulada, sem serviços externos
   };
-
   try {
     await garantirTabelas();
-    await db.delete(climaMudancas);
-    await db.delete(chatMensagens);
-    await db.delete(configuracao).where(
-      inArray(configuracao.chave, [
-        "clima_monitor_instantaneo",
-        "clima_monitor_ultima",
-        "clima_monitor_painel",
-        "clima_monitor_painel_erro",
-        "clima_monitor_semeado",
-        "clima_estado_chuva",
-        "notificacoes_cota",
-      ]),
-    );
-    await db.delete(subscriptions);
-    const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
-    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
-
-    // 1) ☀️ Estava sem chuva: a 1ª leitura só registra a situação (semeia).
-    const r1 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 10 }) });
-    assert.equal(r1.postou, false);
-    assert.match(r1.motivo, /primeira leitura/i);
-    assert.equal((await lerChuva())?.estado, "sem-chuva", "situação inicial registrada sem avisar");
-
-    // 2) 🌧️ A previsão passa a indicar chuva: UM alerta.
-    const r2 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 80, gravidade: 5, mm: 3, rajada: 55 }) });
-    assert.equal(r2.postou, true, `motivo: ${r2.motivo}`);
-    assert.match(r2.motivo, /chuva: sem-chuva → chuva/i);
-    const msgs2 = await db.select().from(chatMensagens);
-    assert.equal(msgs2.length, 1, "uma mensagem para a virada");
-    assert.match(msgs2[0].texto, /estava sem chuva|passou a indicar chuva/i);
-    assert.equal(pushes.length, 1, "Push da virada");
-    assert.equal((await lerChuva())?.estado, "chuva", "situação notificada fica registrada");
-    assert.equal((await lerChuva())?.transicoes, 1);
-    const assinaturas2 = (await db.select().from(climaMudancas)).map((x) => x.assinatura);
-    assert.ok(assinaturas2.some((a) => a.includes("chuvaEstado:sem-chuva>chuva")), "virada registrada no histórico");
-
-    // 3) 🌧️ Continua chovendo e a previsão segue chuvosa (até piora): NÃO repete.
-    const r3 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 95, gravidade: 5, mm: 8, rajada: 55 }) });
-    assert.equal(r3.postou, false, `motivo: ${r3.motivo}`);
-    assert.equal((await db.select().from(chatMensagens)).length, 1, "sem mensagem repetida");
-    assert.equal(pushes.length, 1, "sem Push repetido");
-    assert.equal((await lerChuva())?.estado, "chuva");
-
-    // 4) ☀️→🌧️ Oscilação DENTRO da banda (40%): a situação não mexe e a
-    //    mudança numérica fica calada — proteção contra aviso pingado.
-    const r4 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 40, gravidade: 5, mm: 8, rajada: 55 }) });
-    assert.equal(r4.postou, false, `motivo: ${r4.motivo}`);
-    assert.equal((await lerChuva())?.estado, "chuva", "dentro da banda, o estado não mexe");
-    assert.equal((await db.select().from(chatMensagens)).length, 1);
-
-    // 5) ☀️ Estava chovendo e a previsão indica que vai limpar: UM alerta.
-    const r5 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 10 }) });
-    assert.equal(r5.postou, true, `motivo: ${r5.motivo}`);
-    assert.match(r5.motivo, /chuva: chuva → sem-chuva/i);
-    const msgs5 = await db.select().from(chatMensagens);
-    assert.equal(msgs5.length, 2, "uma mensagem para a segunda virada");
-    assert.match(msgs5[1].texto, /estava chovendo|vai parar|tempo abre/i);
-    assert.match(msgs5[1].texto, /☀️/);
-    assert.equal(pushes.length, 2);
-    assert.equal((await lerChuva())?.estado, "sem-chuva");
-    assert.equal((await lerChuva())?.transicoes, 2);
-
-    // 6) ☀️ Continua sem chuva: NÃO repete.
-    const r6 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 5 }) });
-    assert.equal(r6.postou, false, `motivo: ${r6.motivo}`);
-    assert.equal((await db.select().from(chatMensagens)).length, 2);
-    assert.equal(pushes.length, 2);
-
-    // 7) 🌧️ Nova virada de verdade (voltou a chover): volta a avisar.
-    const r7 = await verificarMudancasPrevisao({ forcar: true, previsao: previsao({ chance: 85, gravidade: 5, mm: 5, rajada: 50 }) });
-    assert.equal(r7.postou, true, `motivo: ${r7.motivo}`);
-    assert.equal((await db.select().from(chatMensagens)).length, 3);
-    assert.equal(pushes.length, 3);
-    assert.equal((await lerChuva())?.estado, "chuva");
-    const assinaturas7 = (await db.select().from(climaMudancas)).map((x) => x.assinatura);
-    assert.ok(assinaturas7.filter((a) => a.includes("chuvaEstado:")).length >= 3, "cada virada fica registrada");
-
-    // Cada virada fica registrada UMA vez no histórico (nada de assinatura repetida).
-    const viradas = assinaturas7.filter((a) => a.includes("chuvaEstado:"));
-    assert.equal(new Set(viradas).size, viradas.length, "nenhuma virada registrada duas vezes");
+    await db.delete(configuracao).where(inArray(configuracao.chave, ["clima_monitor_instantaneo", "clima_monitor_ultima", "clima_monitor_painel", "clima_monitor_semeado", "clima_estado_chuva"]));
+    const chatAntes = (await db.select().from(chatMensagens)).length;
+    const avisosAntes = (await db.select().from(climaMudancas)).length;
+    for (const cenario of [{ chance: 10, rajada: 18, mm: 0 }, { chance: 92, rajada: 58, mm: 6.4 }, { chance: 95, rajada: 65, mm: 10 }]) {
+      painel = cenario.chance > 50 ? PAINEL_MUDADO : PAINEL;
+      const r = await verificarMudancasPrevisao({ forcar: true, previsao: previsao(cenario) });
+      assert.equal(r.postou, false); assert.equal(r.rodou, true); assert.match(r.motivo, /avisos automáticos desativados/);
+      assert.equal((await lerMemoriaClima())?.agora.rajadaKmh, cenario.rajada);
+    }
+    const [memoria] = await db.select().from(configuracao).where(eq(configuracao.chave, "clima_monitor_instantaneo"));
+    assert.ok(memoria?.valor, "memória e diagnóstico do radar preservados");
+    resetarTickRadar();
+    assert.equal((await tickRadar())?.postou, false);
+    assert.equal((await db.select().from(chatMensagens)).length, chatAntes);
+    assert.equal((await db.select().from(climaMudancas)).length, avisosAntes);
+    assert.equal(pushes, 0);
   } finally {
     globalThis.fetch = fetchReal;
-    delete process.env.COMPOSIO_API_KEY;
+    Object.defineProperty(webpush, "sendNotification", { configurable: true, value: original });
   }
 });
-
-// O banco de teste é compartilhado pelos testes de ponta a ponta do arquivo:
-// o pool fecha UMA vez, depois de todos (fechar no meio derruba os próximos).
-after(async () => {
-  const { pool } = await import("../src/db");
-  await pool.end().catch(() => null);
-});
+after(async () => { if (local) { const { pool } = await import("../src/db"); await pool.end(); } });

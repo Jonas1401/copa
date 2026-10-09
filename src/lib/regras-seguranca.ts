@@ -1,7 +1,9 @@
+/** Política atual: conteúdo para consultas/memória; publicação automática bloqueada. */
 import { and, desc, eq, gt, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { pontos, regrasEnvios } from "@/db/schema";
 import { enviarPush } from "@/lib/push";
+import { POLITICA_AUTOMACAO } from "@/lib/politica-automacao";
 
 /**
  * Regras de segurança do Porto (chamado pelo /api/cron, a cada minuto).
@@ -56,6 +58,8 @@ export async function enviarRegrasSeguranca(
   agora: Date = new Date(),
   enviar: Enviar = enviarPush,
 ): Promise<{ enviadas: number; motoristas: number }> {
+  // As orientações continuam na memória da IA, mas nunca saem automaticamente.
+  if (!POLITICA_AUTOMACAO.regrasDePortoPorPush) return { enviadas: 0, motoristas: 0 };
   try {
     const inicioJanela = new Date(agora.getTime() - JANELA_MS);
     // Só saídas reais: o ponto apareceu no quadro (vistoEm) e saiu (saidaEm).

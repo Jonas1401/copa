@@ -11,10 +11,10 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Início** | ponto monitorado ao vivo, último escalado e contadores das 6 tabelas (TRUCK e CAVALO/C nos Livros A, B e M) |
 | **Cadastrar ponto** | tipo + livro + número, com ativação de notificações |
 | **Notificações** | Web Push (VAPID) quando o ponto é chamado, sai da tabela ou chega perto da vez |
-| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; o boletim de previsão também entra no chat 4× por dia (00h, 06h, 12h e 18h); o **Radar da previsão** mostra que o monitoramento está no ar |
+| **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; sem boletins ou alertas automáticos no chat; leituras disponíveis para a IA responder perguntas |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor também posta a previsão do tempo, os alertas de clima, as mudanças da previsão (radar) e os avisos de navios; cada mensagem nova chega como notificação (nome + texto), mesmo com o app fechado |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos pelo Composio; mensagens dos motoristas continuam funcionando |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) |
 
@@ -94,7 +94,7 @@ cancelamentos vão para a auditoria. Teste: `tests/alerta-admin.test.ts`.
 
 **Chat — silenciar e figurinhas:** o sino ao lado do **X** no topo do chat
 silencia **só as notificações do chat** para o motorista (todos os aparelhos
-dele), inclusive os avisos de clima postados no chat; os avisos do ponto (NA
+dele), inclusive os avisos de navios postados no chat; os avisos do ponto (NA
 VEZ, SAIU, perto da vez, lista do grupo) continuam chegando. Fica na tabela
 `chat_silenciados`, criada automaticamente pelo app. O botão 😀 ao lado do
 campo abre **Emojis** (inserem no texto) e **Figurinhas** (enviam na hora).
@@ -132,20 +132,13 @@ todos os cadastrados, situação/posição e aparelhos com avisos ativos. A rota
 O chat é coletivo: mensagens que uma pessoa publica nele são visíveis para
 as demais, independentemente dos pontos particulares.
 
-**Boas-vindas a novos motoristas:** no primeiro cadastro, o servidor usa o
-Gemini pelo Composio para criar uma mensagem original para o chat e um título e
-texto próprios para a notificação. O recado aparece como **👋 CopaLinks**; os
-outros motoristas com Push ativo recebem o convite mesmo com o app fechado, e
-tocar no aviso abre o chat. O novo integrante não recebe a própria
-notificação. Se o Composio estiver indisponível, há uma saudação padrão; falha
-da IA não impede o cadastro. Como os demais avisos do chat, respeita quem
-silenciou o chat e depende de permissão de notificações no aparelho.
+**Cadastro de novos motoristas:** permanece funcionando sem mensagens automáticas
+de boas-vindas no chat. O visual existente não foi alterado; a lista de agentes
+automáticos do chat contém somente o monitor de navios.
 
 **Notificações do chat (Web Push):** mensagens escritas por motoristas ou
-postadas por agentes do servidor (ex.: "🌦️ Clima no Porto", gerado via
-Composio no `/api/cron`) disparam Push (`src/lib/chat-push.ts`). Em geral, o
-título mostra quem enviou e o corpo contém a mensagem; boas-vindas podem usar
-texto criativo separado. O envio funciona com o app fechado: o Service Worker
+postadas pelo monitor de navios (leitura via Composio no `/api/cron`) disparam Push (`src/lib/chat-push.ts`). Em geral, o
+título mostra quem enviou e o corpo contém a mensagem; avisos de navios preservam o texto literal da fonte, sem corte de decimais no payload. O envio funciona com o app fechado: o Service Worker
 exibe o aviso e, ao tocar, abre o app direto no chat (`/?chat=1`, ou
 `postMessage` "abrir-chat" quando a aba já está aberta). Quem escreveu não
 recebe o próprio aviso; a tag `CHAT_<id>` impede aviso repetido. Exige as
@@ -154,161 +147,25 @@ Teste: `TEST_DATABASE_URL=... tsx --test tests/chat-push.test.ts` (banco
 `fila_push_test_*`, com serviço Push falso local); conteúdo da IA:
 `tsx --test tests/boas-vindas-conteudo.test.ts`.
 
-## Previsão do tempo no chat (24 h por dia)
+## Tempo e orientações: memória da IA, sem avisos automáticos
 
-O `/api/cron` manda o tempo para o chat dos motoristas em dois formatos,
-sempre escritos pela IA (**Gemini pelo Composio**) com os dados reais do porto
-(SIMPORT/APPA + Open-Meteo, boletim da APPA e maré). Se a IA falhar, vale um
-texto pronto montado pelas regras — nunca um palpite:
+A política do proprietário (`src/lib/politica-automacao.ts`) desativa a publicação
+espontânea de previsão do tempo, alertas meteorológicos, dicas e orientações de
+comportamento no porto. Isso também vale para `forcar` e para a verificação pelo
+administrador. **Não foram modificados componentes, telas, estilos ou imagens.**
 
-1. **🌤️ Previsão do Porto** — um boletim por turno, todo dia: **00h, 06h,
-   12h e 18h** no horário de Brasília (`src/lib/clima-boletim.ts`). São 4
-   boletins por dia, 24 horas por dia: quem pega serviço de madrugada
-   também recebe a previsão. A chave do turno fica em `configuracao`
-   (`clima_boletim_chat`) e nunca saem dois boletins com menos de 5 h de
-   diferença. **O Push só sai quando o turno traz novidade** (chuva ≥ 50 %,
-   volume ≥ 1 mm, rajada ≥ 40 km/h, mínima ≤ 10° ou máxima ≥ 33°, boletim
-   ruim da APPA ou previsão revisada desde o turno anterior) — e, mesmo nos
-   turnos tranquilos, há um aviso de segurança a cada
-   `CLIMA_BOLETIM_PUSH_MIN` (12 h). Turno repetido entra **no chat, sem
-   notificação**: a previsão está lá para quem abrir o app, sem o celular
-   apitar 4 vezes por dia à toa.
-2. **🌦️ Clima no Porto** — o alerta de chuva forte ou vento (ou boletim ruim
-   da APPA): assume o lugar do boletim enquanto o tempo estiver ruim. O nível
-   NOVO é urgente e sai na hora; o lembrete em alerta ativo reaparece a cada
-   `CLIMA_ALERTA_MIN` (6 h), com no máximo `CLIMA_ALERTA_MAX_DIA` (4) avisos
-   por dia (`src/lib/clima-alerta.ts`).
+- A tela do tempo, as fontes APPA/SIMPORT/Open-Meteo e o radar do administrador
+  continuam disponíveis. As leituras atualizam silenciosamente a memória.
+- As 11 orientações de porto permanecem em `REGRAS` e no PostgreSQL para
+  responder perguntas, não para disparar Push quando um ponto sai para o trabalho.
+- A IA tenta dados atuais ao receber uma pergunta de clima. Se precisar usar
+  memória antiga, o contexto identifica a data e não a apresenta como tempo atual.
+- Avisos automáticos antigos de clima, radar e boas-vindas são excluídos da
+  listagem, do polling e do contador do chat; mensagens humanas são preservadas.
+  Reabra o app para atualizar um feed que já estava carregado.
+- A fila pessoal, seus avisos NA VEZ/SAIU e o restante do aplicativo não mudaram.
 
-Um único ponto de entrada decide quem fala: `verificarClima()` tenta o alerta
-primeiro e, com o tempo tranquilo, publica o boletim do turno. Nos dois casos
-a mensagem entra no chat como `motorista_id = 0` (sistema) e dispara **Web
-Push para todos os aparelhos, mesmo com o aplicativo fechado**: o Service
-Worker mostra o nome do agente e o texto e, ao tocar, abre o chat. Quem
-silenciou o chat não recebe — o mesmo caminho dos avisos de navios
-(`src/lib/chat-push.ts`).
-Teste: `TEST_DATABASE_URL=... tsx --test tests/clima-boletim.test.ts` (banco
-`fila_push_test_*`): turnos de 6 h, texto do boletim e o fluxo completo
-chat + Push, incluindo o alerta tomando o lugar do boletim.
-
-## Radar da previsão: monitoramento constante (painel da APPA com fallback + SIMPORT®)
-
-Além do boletim por turno, o CopaLinks **não para de olhar o tempo**. É o
-**📡 Radar da Previsão** (`src/lib/clima-monitor.ts`):
-
-O radar tem **dois caminhos** para não parar:
-
-- **`/api/cron`** (a cada minuto, Vercel ou Supabase pg_cron): é quem garante o
-  aviso **com o aplicativo fechado**;
-- **`/api/estado` e `/api/atualizar`** (`tickRadar`): o app aberto chama essas
-  rotas o tempo todo,
-  então o monitoramento continua vivo mesmo que o cron do provedor rode só uma
-  vez por dia (plano Hobby) ou o job do Supabase esteja desligado. A batida
-  custa uma comparação de horário na maior parte das vezes e, quando o
-  intervalo vence, roda um ciclo *suave* (usa o cache de 10 min da previsão em
-  vez de forçar a leitura) — nunca atrasa nem quebra a resposta da fila.
-
-1. **API estruturada do SIMPORT®** — Dashboard Meteoceanográfico da APPA
-   (`https://weather-appa.app.simport.com.br/`): modelo WRF hora a hora,
-   estação do porto, boletim e Open-Meteo para os dias seguintes. Relida a
-   cada **5 minutos** (`CLIMA_MONITOR_MIN`).
-1. **Medição do tempo atual PELO COMPOSIO** (ferramenta `WEATHERMAP_WEATHER` /
-   OpenWeather): é a **segunda opinião** do radar, com cache de 10 min — cobre
-   o tempo atual mesmo quando a estação da APPA e o WRF caem.
-2. **Painel público da APPA** a cada **5 minutos**
-   (`CLIMA_MONITOR_PAINEL_MIN`) com **fallback automático**
-   (`src/lib/appa-painel.ts` → `lerPainelAppa`). Cada método devolve o mesmo
-   formato normalizado (`DadosPainelAppa`: chuva, chuva forte, tempestade,
-   vento, temperatura, umidade, pressão, previsão por hora, alertas, além de
-   `metodo_leitura`). A ordem tentada é:
-
-   1. **API/JSON** — dados JSON embutidos na página (`__NEXT_DATA__`,
-      `<script type="application/json">`), endpoints internos (`/api/...`,
-      `*.json`) e a API estruturada da APPA/SIMPORT (WRF + estação + boletim),
-      a mesma que alimenta a tela **Tempo**;
-   2. **HTTP + HTML** — a página é baixada pelo **backend** (nunca pelo
-      navegador do motorista) e as tabelas/cards/textos são lidos do HTML;
-   3. **navegador headless** — Playwright/Puppeteer (ou navegador remoto por
-      `APPA_CDP_URL`): abre a página, espera o JavaScript e os componentes
-      dinâmicos, rola a tela e lê o texto renderizado. A página **não** é
-      considerada vazia antes dessa espera;
-   4. **captura de tela + OCR** — screenshot da página e OCR (tesseract.js ou
-      serviço externo em `APPA_OCR_URL`) para painel desenhado em canvas;
-   5. **Composio** — `COMPOSIO_SEARCH_FETCH_URL_CONTENT` como método
-      **adicional**; quando devolve `results` vazio, texto vazio, erro ou
-      timeout, o radar simplesmente já vem dos métodos anteriores.
-
-   Se um método não consegue ler, o próximo entra sozinho — o usuário nunca
-   fica só com "Painel APPA ainda não lido pelo Composio". O erro só aparece
-   quando **todos** falham, com o motivo de cada tentativa (log
-   `[radar-appa] método N/5 …` e o cartão do administrador).
-
-Cada leitura vira um **instantâneo** comparável (números + textos
-normalizados). Quando a comparação com o instantâneo do **último aviso** passa
-do limite da sensibilidade, o radar:
-
-- publica **uma** mensagem no chat como **📡 Radar da Previsão**
-  (`motorista_id = 0`), escrita pela IA (**Gemini pelo Composio**) com os
-  números reais — se a IA falhar, vale o texto pronto das regras;
-- dispara **Web Push para todos os aparelhos: a notificação chega mesmo com o
-  aplicativo fechado** (quem mostra é o Service Worker) e, ao tocar, abre o
-  chat. Em mudança grave (chuva forte, rajada ≥ 40 km/h ou boletim da APPA com
-  tempo ruim) o aviso fica na tela até o motorista tocar.
-
-**O que é comparado:** início e intensidade da chuva (6 h e 24 h), chuva forte,
-tempestade, vento e rajada máximos, condição do tempo (na API e no painel),
-máxima/mínima de hoje e de amanhã, boletim da APPA (texto e alerta de tempo
-ruim), **alerta meteorológico novo no painel**, tabelas do painel (chuva, vento
-em nós), marés e horários do sol.
-
-**Antispam (o radar fala pouco e só quando importa):**
-
-- a 1ª leitura só registra (nada de aviso antigo); a comparação é sempre
-  contra o último aviso, então uma mudança lenta é avisada uma vez só;
-- **só o que importa acorda o celular**: chuva, vento, condição do tempo,
-  alerta e boletim. Oscilação de temperatura, maré e horário do sol apenas
-  avançam a referência, sem notificação;
-- cada mudança tem assinatura única por bloco de 3 h (tabela `clima_mudancas`)
-  e a **cota comum** (`src/lib/notificacoes-cota.ts`) limita os avisos:
-  `CLIMA_MONITOR_AVISO_MIN` (**45 min**) entre avisos,
-  `CLIMA_MONITOR_MAX_HORA` (**2**) por hora e `CLIMA_MONITOR_MAX_DIA` (**8**)
-  por dia, no horário de Brasília;
-- mudança **grave** (chuva forte, temporal, rajada ≥ 40 km/h) passa do teto,
-  mas nunca sai em cima do aviso anterior (piso `CLIMA_MONITOR_MIN_GRAVE`,
-  15 min);
-- se o alerta/boletim do clima acabou de falar no mesmo minuto, o radar cala e
-  apenas avança a referência; quem silenciou o chat não recebe.
-
-Tudo é opcional e configurável por variável de ambiente (veja `.env.example`):
-`CLIMA_MONITOR_ATIVO`, `CLIMA_MONITOR_MIN`, `CLIMA_MONITOR_PAINEL_MIN`,
-`CLIMA_MONITOR_SENSIBILIDADE` (baixa/média/alta), `CLIMA_MONITOR_AVISO_MIN`,
-`CLIMA_MONITOR_MAX_HORA`, `CLIMA_MONITOR_MAX_DIA` e `CLIMA_MONITOR_MIN_GRAVE`. A leitura do painel aceita `SIMPORT_PAINEL_URL`
-(endereço do painel), `APPA_DADOS_API`/`APPA_BOLETIM_API`/`SIMPORT_AUTH_TOKEN`
-(API estruturada), `APPA_NAVEGADOR_MODULO`/`APPA_CDP_URL` (navegador headless e
-navegador remoto), `APPA_LEITURA_TIMEOUT_MS`/`APPA_NAVEGADOR_TIMEOUT_MS` e
-`APPA_OCR_URL`/`APPA_OCR_IDIOMA` (OCR). Sem `COMPOSIO_API_KEY` o radar continua
-funcionando com os métodos diretos (API, HTML, navegador e OCR).
-
-O cartão *Radar da previsão* fica **somente na área do administrador**
-(`/admin`, logo abaixo do atalho do Monitor WhatsApp): mostra se está
-monitorando, a última leitura, a última mudança avisada, a **cota de avisos**
-(intervalo entre avisos, teto por hora e por dia), as fontes no ar e o
-**Painel APPA: conectado · leitura realizada**, com o **método de leitura**
-(API/endpoint de dados, HTTP + HTML, navegador automático, OCR ou Composio), a
-última leitura normalizada (chuva, chuva forte, tempestade, vento, temperatura,
-umidade, pressão e alertas) e o **log de diagnóstico** com uma linha por método
-tentado. O erro só aparece quando todos os métodos falham, com o botão
-**Verificar agora** (`POST /api/tempo/radar`; `?painel=1` roda só a leitura do
-painel e devolve as tentativas). A tela pública **Tempo** não exibe mais o cartão —
-o motorista continua recebendo os avisos no chat e por Push. As rotas
-`GET`/`POST /api/tempo/radar` exigem sessão de administrador. O painel
-`/admin → Integrações → Previsão do Tempo APPA` mostra o mesmo estado.
-
-Testes: `tsx --test tests/appa-painel.test.ts` (puros, com rede e navegador
-simulados: HTML → texto, JSON embutido, endpoints, normalização e a ORDEM do
-fallback, inclusive o caso "todos falharam") e `tsx --test
-tests/clima-monitor.test.ts` (puros: leitura do painel, comparação,
-sensibilidade, alerta e texto) mais o trecho de ponta a ponta no banco
-`fila_push_test_*` (radar → chat → Push).
+Veja [a documentação do monitor](docs/MONITORAMENTO_NAVIOS.md).
 
 ## Filtro do grupo SEM APK (pelo servidor)
 
@@ -413,56 +270,46 @@ inteligente, salvo em `banners_motorista` — cada motorista só vê o próprio
 (`/api/motoristas/banner/imagem`, sessão httpOnly). Limite de 6 trocas por
 hora. Teste: `tests/banner.test.ts`.
 
-## Regras de segurança do Porto
+## Navios e manobras pelo Composio (somente backend)
 
-Quando o ponto de um motorista **sai para o trabalho** (SAIU depois de ter
-aparecido no quadro), o `/api/cron` manda as **11 regras de segurança**
-(faróis, sinalização, lona, velocidade, vias livres, local proibido, fumar,
-escada lateral, beirada do costado, guindaste, segurança sempre), uma de cada
-vez, só para os aparelhos dele: a 1ª um minuto depois do aviso de saída e as
-seguintes a cada 30 min (≈5 h de serviço). Saídas com mais de 6 h não recebem.
-Texto e tempos em `src/lib/regras-seguranca.ts`; controle na tabela
-`regras_envios`. Não altera a fila. Teste: `tests/regras-seguranca.test.ts`.
+O `/api/cron` usa o Composio para abrir e ler estas duas fontes:
 
-## Navios de fertilizantes (Paranaguá e Antonina)
+- **Navios atracados / saldos:** https://berth-bloom-buddy.lovable.app/
+- **Manobras previstas / SINPRAPAR:** https://berth-bloom-tracker.lovable.app/
 
-O `/api/cron` (a cada minuto; no máximo uma leitura a cada 5 min) lê o
-**line-up da APPA** (berço, mercadoria, toneladas, chegada, ETA/ETB,
-atracação, saldo) e as **manobras previstas do SINPRAPAR** (hora, calado,
-confirmada ou não) — `src/lib/navios.ts`. Para navios de **fertilizantes**
-(ureia, MAP, DAP, cloreto de potássio, sulfato de amônio, nitratos, NPK,
-superfosfatos, rocha fosfática…) — **e somente para eles** — o app avisa, uma
-vez cada:
-1. **programado para atracar**, apenas quando a APPA já definiu o **berço**
-   (navio sem berço não gera aviso; se o berço mudar, sai um aviso novo);
-2. **atracação confirmada** pela praticagem (manobra EA/AT confirmada);
-3. **atracou**;
-4. **despachado** (desatracou e saiu do porto).
+Uma leitura válida inicial de cada fonte cria a referência silenciosa. Depois:
 
-O aviso é escrito pela IA (Gemini pelo Composio) em tom humano, com a análise
-da **maré** (Open-Meteo Marine, referência — não é a tábua oficial) e o
-calado; sem IA, usa um texto pronto. A IA **nunca inventa a tonelagem**: todo
-número de toneladas do texto é conferido contra o line-up (`tonelagemConfere`)
-e, se a fonte não informou a quantidade ou o número não bate, o aviso da IA é
-descartado e vai o texto pronto — que diz que a quantidade ainda não foi
-divulgada. Sai no chat como **🚢 Navios no Porto** e
-por Web Push (quem silenciou o chat não recebe) — `src/lib/navios-aviso.ts`,
-tabela `navios_avisos`. Na 1ª execução só registra o que já existe.
+1. Novos navios atracados e mudanças do berço informadas pela fonte geram aviso.
+2. Uma mudança de saldo gera aviso somente quando o **Saldo Total do Navio** é
+   **estritamente menor que 2.000 t**, inclusive alterações de saldos das operadoras
+   quando o total do navio está abaixo desse limite. Igual a 2.000 t não atende.
+3. Manobras de atracação/desatracação exigem **berço definido e data/hora prevista**.
+   EF (entrada e fundeio) sem berço não é anunciada como atracação. `PREVISTA` é
+   preservada literalmente, sem inventar confirmação ou execução da manobra.
+4. Cada atualização entra numa fila durável: **um navio por mensagem e Push**,
+   com nomes, mercadorias, valores e decimais como na fonte. Sem IA para reescrever
+   o aviso, sem análise de maré e sem dicas espontâneas.
+5. Leituras repetidas não avisam. Uma leitura inválida/parcial não substitui a
+   memória anterior e desaparecimento não prova desatracação. Fontes são independentes.
 
-**Antiexcesso:** quando dois ou mais navios têm novidade no mesmo ciclo, sai
-**UMA mensagem e UMA notificação** com todos (lote) — nada de três avisos
-seguidos no mesmo minuto; o que não couber no lote continua pendente para o
-próximo ciclo. A cota de navios é `NAVIOS_AVISO_MIN` (20 min) entre avisos,
-`NAVIOS_MAX_HORA` (3) por hora e `NAVIOS_MAX_DIA` (8) por dia; **atracou** e
-**despachado** são urgentes e passam do teto (com piso de 15 min entre
-avisos), porque mudam a fila de trabalho de quem está no pátio.
+O envio respeita o silêncio do chat e tem recibos persistentes por aparelho para
+retentar falhas temporárias sem reenviar aos aparelhos que já tiveram o aceite
+registrado. O aceite do serviço Push não garante a exibição pelo sistema operacional.
 
-O **Assistente IA** do chat responde sobre qualquer navio (line-up, manobras e
-maré entram no contexto quando a pergunta fala de navio, berço, carga,
-fertilizante, maré…). Para posição/rota, pesquisa na web pelo Composio
-(`COMPOSIO_SEARCH_WEB`: VesselFinder, MarineTraffic, Google). `GET /api/navios`
-devolve os navios de fertilizantes e as próximas marés (dados públicos).
-Testes: `tests/navios.test.ts` e `tests/navios-aviso.test.ts`.
+Implementação: `navios-fontes.ts`, `navios-monitor.ts`, `politica-automacao.ts`,
+`ia-memoria-porto.ts`. A migração é aditiva e aplicada pelo backend quando tem
+permissão de DDL; também está em `supabase/migrations/20261008_navios_composio.sql`.
+A função antiga `verificarNaviosFertilizantes` delega ao novo fluxo. O módulo
+`navios.ts` e a rota legada `/api/navios` permanecem compatíveis para consultas.
+
+**Agendamento é necessário:** chamar `/api/cron` a cada minuto, usando o job
+Supabase já existente ou Vercel Pro/Enterprise. Cada fonte é relida a cada 5 min.
+No Hobby, o `vercel.json` continua diário: isso sozinho NÃO é monitoramento contínuo.
+Consulte [GITHUB_VERCEL.md](GITHUB_VERCEL.md) e
+[docs/MONITORAMENTO_NAVIOS.md](docs/MONITORAMENTO_NAVIOS.md).
+
+Testes: `npm test`; integração isolada: `tests/navios-aviso.test.ts` com
+`DATABASE_URL=TEST_DATABASE_URL` em um banco local `fila_push_test_*`.
 
 ## Filtro automático do grupo (PONTOS NA VEZ / PULADAS)
 
@@ -529,7 +376,8 @@ Não comite `.env` nem cole a `DATABASE_URL` no chat.
 | `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
-| `CLIMA_MONITOR_*` | não | radar da previsão: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (releitura do painel da APPA), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
+| `NAVIOS_MONITOR_MIN` / `NAVIOS_MAX_POR_CICLO` | não | intervalo das leituras (5 min) e quantidade de avisos individuais por ciclo (10); não mudam o visual |
+| `CLIMA_MONITOR_*` | não | radar silencioso para memória da IA: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (releitura do painel da APPA), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
 | `APPA_*` / `SIMPORT_*` | não | leitura do painel da APPA com fallback: `SIMPORT_PAINEL_URL`, `APPA_DADOS_API`, `APPA_BOLETIM_API`, `SIMPORT_AUTH_TOKEN`, `APPA_NAVEGADOR_MODULO`, `APPA_CDP_URL`, `APPA_LEITURA_TIMEOUT_MS`, `APPA_NAVEGADOR_TIMEOUT_MS`, `APPA_OCR_URL`, `APPA_OCR_IDIOMA` |
 
 Segredos opcionais (Composio, WhatsApp, IA) podem ser cadastrados no `/admin`:

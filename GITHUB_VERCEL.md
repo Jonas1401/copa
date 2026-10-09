@@ -89,7 +89,7 @@ select cron.schedule(
                      from vault.decrypted_secrets
                      where name = 'copalinks_supabase_cron_secret')
       ),
-      timeout_milliseconds := 30000
+      timeout_milliseconds := 60000
     );
   $$
 );
@@ -106,7 +106,9 @@ from net._http_response
 order by id desc limit 5;
 ```
 
-Resposta HTTP **200** significa que `/api/cron` rodou; **401** significa
+Resposta HTTP **200** significa que `/api/cron` respondeu; confira também `navios.fontes`
+na resposta para validar as leituras do Composio. Um 200 não garante que uma fonte
+foi lida nem que o celular exibiu uma notificação; **401** significa
 chave ausente ou diferente. Para interromper o job sem apagar dados do app:
 `select cron.unschedule('copalinks-monitor-1-min');`
 

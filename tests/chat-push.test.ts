@@ -78,7 +78,7 @@ test("chat: mensagem de motorista e de agente viram Push com nome + texto, sem a
   const { notificarMensagemChat } = await import("@/lib/chat-push");
 
   await garantirTabelas();
-  await db.execute(sql`truncate subscriptions, notificacoes, chat_mensagens restart identity`);
+  await db.execute(sql`truncate subscriptions, notificacoes, chat_mensagens restart identity cascade`);
   await db.execute(sql`delete from motoristas`);
 
   const [ana] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
@@ -112,11 +112,11 @@ test("chat: mensagem de motorista e de agente viram Push com nome + texto, sem a
   assert.equal(r2.enviadas, 0);
   assert.equal(recebidos.length, 2);
 
-  // 3) Agente do servidor (Clima no Porto, motorista_id 0): todos recebem.
+  // 3) Monitor de navios (motorista_id 0): todos recebem.
   recebidos.length = 0;
   const [clima] = await db
     .insert(chatMensagens)
-    .values({ motoristaId: 0, nome: "🌦️ Clima no Porto", texto: "Vento forte no cais, atenção na lona." })
+    .values({ motoristaId: 0, nome: "🚢 Navios no Porto", texto: "ECO CERBERUS\nSaldo Total do Navio 544,190 Tons." })
     .returning();
   const r3 = await notificarMensagemChat(
     { id: clima.id, motoristaId: 0, nome: clima.nome, texto: clima.texto },
@@ -126,10 +126,10 @@ test("chat: mensagem de motorista e de agente viram Push com nome + texto, sem a
   assert.deepEqual(recebidos.map((r) => r.url).sort(), ["/ana", "/beto", "/sem-dono"]);
   const travas = await db.select().from(notificacoes);
   const doClima = travas.find((t) => t.tag === `CHAT_${clima.id}`);
-  assert.equal(doClima?.titulo, "🌦️ Clima no Porto");
-  assert.equal(doClima?.corpo, "Vento forte no cais, atenção na lona.");
+  assert.equal(doClima?.titulo, "🚢 Navios no Porto");
+  assert.equal(doClima?.corpo, "ECO CERBERUS\nSaldo Total do Navio 544,190 Tons.");
 
-  // 4) Boas-vindas do sistema notificam os demais, mas não o recém-chegado.
+  // 4) Boas-vindas do sistema não estão mais na lista de agentes permitidos.
   const [paulo] = await db.insert(motoristas).values({ nome: "Paulo" }).returning();
   await salvarSubscription({ endpoint: `${base}/paulo`, keys: { p256dh: chaveP256dh(), auth } }, "Paulo-cel", paulo.id);
   recebidos.length = 0;
@@ -145,12 +145,11 @@ test("chat: mensagem de motorista e de agente viram Push com nome + texto, sem a
       notificacao: { titulo: "👋 Reforço novo na boleia!", corpo: "Paulo chegou. Abra o chat e mande um alô!" },
     },
   );
-  assert.equal(r4.enviadas, 3);
-  assert.deepEqual(recebidos.map((r) => r.url).sort(), ["/ana", "/beto", "/sem-dono"]);
+  assert.equal(r4.enviadas, 0);
+  assert.deepEqual(recebidos, []);
   const avisos = await db.select().from(notificacoes);
   const avisoBoasVindas = avisos.find((n) => n.tag === `CHAT_${boasVindas.id}`);
-  assert.equal(avisoBoasVindas?.titulo, "👋 Reforço novo na boleia!");
-  assert.equal(avisoBoasVindas?.corpo, "Paulo chegou. Abra o chat e mande um alô!");
+  assert.equal(avisoBoasVindas, undefined);
 
   // 5) Texto longo é resumido para caber na notificação.
   const longo = "x".repeat(600);
@@ -160,7 +159,7 @@ test("chat: mensagem de motorista e de agente viram Push com nome + texto, sem a
   assert.ok(t4 && t4.corpo.length <= 220 && t4.corpo.endsWith("…"));
 
   } finally {
-    await db.execute(sql`truncate subscriptions, notificacoes, chat_mensagens restart identity`).catch(() => {});
+    await db.execute(sql`truncate subscriptions, notificacoes, chat_mensagens restart identity cascade`).catch(() => {});
     await db.execute(sql`delete from motoristas`).catch(() => {});
     servico.close();
     rmSync(pasta, { recursive: true, force: true });

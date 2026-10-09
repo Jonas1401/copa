@@ -182,67 +182,30 @@ test("boletim: push só quando o turno traz novidade de verdade", () => {
   assert.equal(boletimMerecePush(nublou, resumoCalmo), true);
 });
 
-test("boletim: sai 1 vez por turno no chat e por Push; alerta assume em tempo ruim", { skip: !local }, async () => {
+test("clima: boletim e alerta ficam na memória, sem chat/Push inclusive com forcar", { skip: !local }, async () => {
   const { db, pool } = await import("@/db");
-  const { sql } = await import("drizzle-orm");
-  const { chatMensagens, motoristas, subscriptions } = await import("@/db/schema");
+  const { chatMensagens } = await import("@/db/schema");
   const { garantirTabelas } = await import("@/lib/estado");
-  const { verificarEPostarBoletimClima, NOME_BOLETIM } = await import("@/lib/clima-boletim");
-  const { verificarEPostarAlertaClima, NOME_CLIMA } = await import("@/lib/clima-alerta");
+  const { verificarEPostarBoletimClima } = await import("@/lib/clima-boletim");
+  const { verificarEPostarAlertaClima } = await import("@/lib/clima-alerta");
+  const { lerMemoriaClima } = await import("@/lib/ia-memoria-porto");
   const webpush = (await import("web-push")).default;
-  process.env.COMPOSIO_API_KEY = ""; // sem IA: vale o texto pronto
-  const chaves = webpush.generateVAPIDKeys();
-  process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
-  process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
-  const pushes: string[] = [];
-  Object.defineProperty(webpush, "sendNotification", {
-    configurable: true,
-    value: async (_s: unknown, c: string) => {
-      pushes.push(JSON.parse(c).title);
-      return { statusCode: 201 };
-    },
-  });
-
+  const original = webpush.sendNotification;
+  let pushes = 0;
+  Object.defineProperty(webpush, "sendNotification", { configurable: true, value: async () => { pushes++; return { statusCode: 201 }; } });
   try {
     await garantirTabelas();
-    await db.execute(sql`truncate chat_mensagens, notificacoes, subscriptions restart identity`);
-    await db.execute(sql`delete from motoristas`);
-    await db.execute(
-      sql`delete from configuracao where chave in ('clima_boletim_chat', 'clima_ultimo_aviso_chat', 'notificacoes_cota')`,
-    );
-
-    const [ana] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
-    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: ana.id });
-
-    // 1) Boletim da vez: mensagem no chat + Push para o aparelho da Ana.
-    const r1 = await verificarEPostarBoletimClima({ previsao: previsao() });
-    assert.equal(r1.postou, true);
-    assert.equal(r1.push, true, "1º boletim do estado: avisa o aparelho");
-    const msgs = await db.select().from(chatMensagens);
-    assert.equal(msgs.length, 1);
-    assert.equal(msgs[0].nome, NOME_BOLETIM);
-    assert.match(msgs[0].texto, /21°C/);
-    assert.deepEqual(pushes, [NOME_BOLETIM], "Push com o nome do agente");
-
-    // 2) Mesmo turno: não repete (nem mensagem nem Push).
-    const r2 = await verificarEPostarBoletimClima({ previsao: previsao() });
-    assert.equal(r2.postou, false);
-    assert.match(r2.motivo, /já publicado/);
-    assert.equal((await db.select().from(chatMensagens)).length, 1);
-    assert.equal(pushes.length, 1);
-
-    // 3) Tempo ruim: o alerta entra no lugar do boletim, uma única vez.
-    const a1 = await verificarEPostarAlertaClima({ previsao: previsao({ nivel: "chuva", chanceChuva: 90, tempoRuim: true }) });
-    assert.equal(a1.postou, true);
-    const a2 = await verificarEPostarAlertaClima({ previsao: previsao({ nivel: "chuva", chanceChuva: 90, tempoRuim: true }) });
-    assert.equal(a2.postou, false);
-    assert.equal(a2.motivo, "já avisado");
-    const nomes = (await db.select().from(chatMensagens)).map((m) => m.nome);
-    assert.deepEqual(nomes, [NOME_BOLETIM, NOME_CLIMA]);
-    assert.deepEqual(pushes, [NOME_BOLETIM, NOME_CLIMA]);
+    const antes = (await db.select().from(chatMensagens)).length;
+    for (const forcar of [false, true]) {
+      assert.equal((await verificarEPostarBoletimClima({ previsao: previsao(), forcar })).postou, false);
+      const p = previsao({ nivel: "chuva", chanceChuva: 90, tempoRuim: true });
+      assert.equal((await verificarEPostarAlertaClima({ previsao: p, forcar })).postou, false);
+      assert.equal((await lerMemoriaClima())?.alerta.nivel, "chuva");
+    }
+    assert.equal((await db.select().from(chatMensagens)).length, antes);
+    assert.equal(pushes, 0);
   } finally {
-    await db.execute(sql`truncate chat_mensagens, notificacoes, subscriptions restart identity`).catch(() => {});
-    await db.execute(sql`delete from motoristas`).catch(() => {});
+    Object.defineProperty(webpush, "sendNotification", { configurable: true, value: original });
     await pool.end();
   }
 });

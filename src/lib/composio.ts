@@ -356,10 +356,13 @@ export async function lerPaginas(urls: string[], maxCaracteres = 20000) {
   const res = r.data?.results ?? [];
   // Devolve na mesma ordem pedida.
   const paginas = urls.map((u) => {
-    const achado = res.find(
-      (x) => String(x?.id ?? x?.url ?? "").replace(/\/$/, "") === u.replace(/\/$/, ""),
-    );
-    return { url: u, texto: extrairTexto(achado ?? res[urls.indexOf(u)]) };
+    const igual = (v: unknown) => typeof v === "string" && v.replace(/\/$/, "") === u.replace(/\/$/, "");
+    const achado = res.find((x) => igual(x?.url) || igual(x?.id));
+    // A posição só é aceitável quando TODOS os resultados vieram sem URL e
+    // existe um resultado para cada pedido. Resposta parcial não é remapeada.
+    const semUrls = res.every((x) => ![x?.url, x?.id].some((v) => typeof v === "string" && /^https?:\/\//i.test(v)));
+    const porPosicao = semUrls && res.length === urls.length ? res[urls.indexOf(u)] : undefined;
+    return { url: u, texto: extrairTexto(achado ?? porPosicao) };
   });
   if (!paginas.some((p) => p.texto)) {
     throw new ErroComposio(`Composio não devolveu texto das páginas (${descreverResposta(r)}).`, 502);

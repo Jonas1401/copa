@@ -1,359 +1,309 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { paginaAppa, paginaSinprapar } from "./navios-fixture";
 import {
-  etbDeltaMin,
-  eventosFertilizantes,
-  parseEtb,
-  resumoEvento,
-  textoLotePadrao,
-  textoPadrao,
-  type EventoNavio,
-} from "../src/lib/navios-aviso";
-import type { NavioLineup } from "../src/lib/navios";
+  bercoFonteDefinido, LeituraNaviosInvalida, manobraPodeAvisar,
+  novidadesAtracados, novidadesManobras, parseAtracadosComposio,
+  parseManobrasComposio, saldoEmToneladas,
+} from "../src/lib/navios-fontes";
+import { mensagemVisivelNoChat, NOME_NAVIOS_AUTOMACAO, POLITICA_AUTOMACAO, sistemaPodePublicar } from "../src/lib/politica-automacao";
+import { atracadosTexto, manobrasTexto } from "./navios-composio-fixture";
+import type { Previsao } from "../src/lib/tempo";
 
-/**
- * Avisos de navios de fertilizantes de ponta a ponta (cron → chat → Push).
- * Só roda num PostgreSQL local descartável fila_push_test_<sufixo>:
- *   TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/fila_push_test_exemplo \
- *   DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/fila_push_test_exemplo \
- *   ./node_modules/.bin/tsx --test tests/navios-aviso.test.ts
- * Não acessa APPA/SINPRAPAR/Open-Meteo (fetch substituído) nem envia Push real.
- */
 const uri = process.env.TEST_DATABASE_URL;
 const local = (() => {
   if (!uri || process.env.DATABASE_URL !== uri) return false;
-  try { const u = new URL(uri); return (u.hostname === "127.0.0.1" || u.hostname === "localhost") && u.pathname.startsWith("/fila_push_test_"); } catch { return false; }
+  try { const u = new URL(uri); return ["127.0.0.1", "localhost"].includes(u.hostname) && u.pathname.startsWith("/fila_push_test_"); } catch { return false; }
 })();
 
-/** Navio de fertilizante para os testes puros do lote (sem rede). */
-function navioTeste(extra: Partial<NavioLineup> = {}): NavioLineup {
-  return {
-    programacao: "2",
-    secao: "PROGRAMADOS",
-    porto: "Paranaguá",
-    berco: "211",
-    nome: "LEO. K",
-    imo: "2",
-    dwt: "30000",
-    sentido: "Imp",
-    mercadoria: "MAP",
-    toneladas: 70000,
-    saldoToneladas: null,
-    chegada: "",
-    eta: "",
-    etb: "05/10 08:00",
-    atracacao: "",
-    agencia: "",
-    operador: "",
-    ...extra,
-  };
-}
-
-test("navios: lote de novidades no mesmo ciclo vira UMA mensagem", () => {
-  const eventos: EventoNavio[] = [
-    { chave: "P:2:211", tipo: "programado", navio: navioTeste(), manobra: null },
-    {
-      chave: "A:3",
-      tipo: "atracado",
-      navio: navioTeste({
-        programacao: "3",
-        secao: "ATRACADOS",
-        nome: "ZY IDOL",
-        mercadoria: "UREIA",
-        toneladas: 32219,
-        saldoToneladas: 12000,
-      }),
-      manobra: null,
-    },
-  ];
-  const texto = textoLotePadrao(eventos, [{ hora: "2026-10-05T03:20", tipo: "preamar", alturaM: 1.4 }]);
-  assert.match(texto, /2 novidades/);
-  assert.match(texto, /LEO\. K.*berço 211/);
-  assert.match(texto, /ZY IDOL.*atracou.*berço 211/);
-  assert.match(texto, /preamar por volta das 03:20/);
-  assert.ok(texto.length <= 480, "cabe no corpo da notificação");
-
-  // Sem maré, sai sem a dica — e um evento sozinho não vira "lote".
-  const semMare = textoLotePadrao(eventos);
-  assert.match(semMare, /ZY IDOL/);
-  assert.doesNotMatch(semMare, /preamar/);
-  assert.doesNotMatch(textoLotePadrao([eventos[0]]), /novidades/);
-
-  // Linhas curtas de cada tipo de evento (sem inventar número nenhum).
-  const despachado = resumoEvento({
-    chave: "S:3",
-    tipo: "saiu",
-    navio: navioTeste({ nome: "ZY IDOL", mercadoria: "UREIA" }),
-    manobra: null,
-  });
-  assert.match(despachado, /ZY IDOL foi despachado e deixou Paranaguá/);
+test("Composio: preserva nomes, operadoras, berço e todos os decimais da fonte", () => {
+  const n = parseAtracadosComposio(atracadosTexto());
+  assert.equal(n.length, 3);
+  assert.deepEqual(n.map((x) => [x.nome, x.berco]), [["AFFINITY DIVA", "FOSPAR"], ["ARISTOS II", "Berço 211"], ["ECO CERBERUS", "Berço 208"]]);
+  assert.equal(n[1].saldoTotal, "41.792,880 Tons.");
+  assert.equal(n[2].saldoToneladas, 544.19);
+  assert.equal(n[2].operadoras.length, 2);
+  assert.equal(n[2].operadoras[0].saldo, "319,630 Tons.");
+  assert.match(n[2].texto, /Saldo Total do Navio 544,190 Tons\./);
+  assert.doesNotMatch(n[2].texto, /cerca|arredond|bora|maré|preamar/i);
 });
 
-test("navios: parseEtb entende o horário previsto (com e sem ano)", () => {
-  const agora = new Date("2026-10-04T12:00:00Z");
-  // Sem ano: assume o ano atual quando o horário está à frente.
-  assert.equal(parseEtb("05/10 08:00", agora)?.toISOString(), "2026-10-05T08:00:00.000Z");
-  // Sem ano e muito no passado: vira o próximo ano (dezembro → janeiro).
-  assert.equal(parseEtb("02/01 08:00", agora)?.toISOString(), "2027-01-02T08:00:00.000Z");
-  // Ano explícito (curto ou longo) manda no resultado.
-  assert.equal(parseEtb("05/10/26 08:00", agora)?.toISOString(), "2026-10-05T08:00:00.000Z");
-  assert.equal(parseEtb("05/10/2026 08:00", agora)?.toISOString(), "2026-10-05T08:00:00.000Z");
-  assert.equal(parseEtb("05/10 08h30", agora)?.toISOString(), "2026-10-05T08:30:00.000Z");
-  // Horário que não dá para entender não vira data nenhuma.
-  assert.equal(parseEtb("", agora), null);
-  assert.equal(parseEtb("a definir", agora), null);
-  assert.equal(parseEtb(null, agora), null);
-  assert.equal(parseEtb("40/13 25:99", agora), null);
+test("Composio: Markdown/HTML e rótulo separado do valor não alteram o saldo", () => {
+  const bruto = atracadosTexto().replaceAll("Saldo da Operadora", "**Saldo da Operadora**\n").replaceAll("Saldo Total do Navio", "**Saldo Total do Navio**\n").replace("ECO CERBERUS", "### ECO CERBERUS");
+  const n = parseAtracadosComposio(bruto);
+  assert.equal(n[2].saldoTotal, "544,190 Tons.");
+  assert.equal(n[2].operadoras[1].saldo, "224,560 Tons.");
+  const html = atracadosTexto().split("\n").map((l) => `<p>${l}</p>`).join("");
+  assert.equal(parseAtracadosComposio(html)[2].saldoToneladas, 544.19);
 });
 
-test("navios: o limite da mudança de ETB é configurável (padrão 120 min)", () => {
-  assert.equal(etbDeltaMin({} as Record<string, string>), 120);
-  assert.equal(etbDeltaMin({ NAVIOS_ETB_DELTA_MIN: "60" } as Record<string, string>), 60);
-  assert.equal(etbDeltaMin({ NAVIOS_ETB_DELTA_MIN: "abc" } as Record<string, string>), 120);
+test("Composio: operadora FOSPAR não troca o berço do próximo cartão", () => {
+  const bruto = `PARANAGUÁ\nBerço 211\n1 operadora\nNAVIO A\nFOSPAR\nUREIA\nSaldo da Operadora 100,000 Tons.\nSaldo Total do Navio 100,000 Tons.\n1 operadora\nNAVIO B\nFOSPAR\nUREIA\nSaldo da Operadora 90,000 Tons.\nSaldo Total do Navio 90,000 Tons.`;
+  assert.equal(parseAtracadosComposio(bruto)[1].berco, "Berço 211");
 });
 
-test("navios: o ETB vira evento candidato só para navio anunciado com berço definido", () => {
-  const comEtb = eventosFertilizantes([navioTeste()], []);
-  assert.ok(comEtb.some((e) => e.tipo === "programado"), "programado continua existindo");
-  const etb = comEtb.find((e) => e.tipo === "etb");
-  assert.ok(etb, "navio programado com berço e ETB ganha o evento de previsão");
-  assert.equal(etb?.chave, "E:2:05/10 08:00", "a chave carrega o valor do ETB");
-
-  // Sem ETB legível, sem evento de ETB (só o programado).
-  const semEtb = eventosFertilizantes([navioTeste({ etb: "" })], []);
-  assert.equal(semEtb.some((e) => e.tipo === "etb"), false);
-
-  // Já atracado: o ETB não interessa mais.
-  const atracado = eventosFertilizantes([navioTeste({ secao: "ATRACADOS" })], []);
-  assert.equal(atracado.some((e) => e.tipo === "etb"), false);
-  assert.ok(atracado.some((e) => e.tipo === "atracado"));
+test("Composio: leitura parcial, duplicada ou saldo inválido não vira estado novo", () => {
+  for (const b of [
+    "<html><div id=\"root\"></div></html>",
+    atracadosTexto().replace("Saldo Total do Navio544,190 Tons.", ""),
+    atracadosTexto().replace("Saldo da Operadora224,560 Tons.", ""),
+    atracadosTexto().replace("544,190 Tons.", "não informado"),
+    atracadosTexto() + "\nSaldo Total do Navio 10,000 Tons.",
+  ]) assert.throws(() => parseAtracadosComposio(b), LeituraNaviosInvalida);
+  assert.throws(() => parseAtracadosComposio(atracadosTexto().replace("ECO CERBERUS", "ARISTOS II")), /duplicado/);
 });
 
-test("navios: reprogramação grande do ETB avisa de novo; deriva pequena não", () => {
-  const ev: EventoNavio = {
-    chave: "E:2:06/10 20:00",
-    tipo: "etb",
-    navio: navioTeste({ etb: "06/10 20:00" }),
-    manobra: null,
-    etbAnterior: "05/10 08:00",
-  };
-  const resumo = resumoEvento(ev);
-  assert.match(resumo, /LEO\. K/);
-  assert.match(resumo, /reprogramada de 05\/10 08:00 para 06\/10 20:00/);
-  assert.match(resumo, /berço 211/);
-
-  const texto = textoPadrao(ev, []);
-  assert.match(texto, /previsão de atracação/);
-  assert.match(texto, /era 05\/10 08:00 e agora é 06\/10 20:00/);
-
-  // No lote, a reprogramação entra como mais uma linha da mesma mensagem.
-  const lote = textoLotePadrao([ev], []);
-  assert.match(lote, /reprogramada/);
-  assert.ok(lote.length <= 480, "cabe no corpo da notificação");
+test("saldo: limite estrito de 2.000 t e interpretação brasileira sem arredondar", () => {
+  assert.equal(saldoEmToneladas("1.999,999 Tons."), 1999.999);
+  assert.equal(saldoEmToneladas("2.000,000 Tons."), 2000);
+  assert.equal(saldoEmToneladas("0,000 Tons."), 0);
+  for (const v of ["-1,000 Tons.", "1.9999 Tons.", "20 Movs.", "?", "NaN", "2000"]) assert.equal(saldoEmToneladas(v), null);
+  const base = parseAtracadosComposio(atracadosTexto({ eco: "2.100,000" }));
+  assert.equal(novidadesAtracados(base, parseAtracadosComposio(atracadosTexto({ eco: "2.000,000" }))).length, 0);
+  assert.equal(novidadesAtracados(base, parseAtracadosComposio(atracadosTexto({ eco: "1.999,999" })))[0].tipo, "saldo");
+  // Saldo de uma operadora abaixo do limite não basta com navio grande.
+  assert.equal(novidadesAtracados(base, parseAtracadosComposio(atracadosTexto({ eco: "2.100,000", outro: "10,000" }))).length, 0);
 });
 
-test("navios: 1ª leitura não avisa; novo programado avisa 1 vez no chat e por Push; carga comum ignorada", { skip: !local }, async () => {
+test("saldo: toda mudança observada abaixo do limite, sem repetir nem agrupar navios", () => {
+  const a = parseAtracadosComposio(atracadosTexto({ aristos: "1.900,000" }));
+  const b = parseAtracadosComposio(atracadosTexto({ eco: "500,123", aristos: "1.899,999" }));
+  const ev = novidadesAtracados(a, b);
+  assert.equal(ev.length, 2);
+  assert.match(ev[0].texto, /ARISTOS II/); assert.doesNotMatch(ev[0].texto, /ECO CERBERUS/);
+  assert.match(ev[1].texto, /ECO CERBERUS/); assert.doesNotMatch(ev[1].texto, /ARISTOS II/);
+  assert.equal(novidadesAtracados(b, b).length, 0);
+  assert.equal(novidadesAtracados(b, parseAtracadosComposio(atracadosTexto({ eco: "500,123", aristos: "1.899,999", outro: "318,630" }))).length, 1, "mudou saldo da operadora e total continua abaixo de 2000");
+  assert.equal(novidadesAtracados(a, []).length, 0, "desaparecimento não prova desatracação");
+});
+
+test("manobras: data e situação literais; EF não é atracação com berço", () => {
+  const m = parseManobrasComposio(manobrasTexto());
+  assert.equal(m.length, 4);
+  assert.equal(m[0].berco, "PFELIX 2 BB");
+  assert.equal(m[3].berco, "FOSPAR EXT BB");
+  assert.ok(manobraPodeAvisar(m[0]));
+  assert.ok(!manobraPodeAvisar(m[1]));
+  assert.deepEqual(novidadesManobras(m, parseManobrasComposio(manobrasTexto({ berco: "AZ211 BB" }))).map((e) => e.navio), ["AFENTIS XRISTOS ATH"]);
+  const texto = novidadesManobras(m, parseManobrasComposio(manobrasTexto({ berco: "AZ211 BB" })))[0].texto;
+  assert.match(texto, /11\/10 17:00·AT— Atracação: AZ211 BB\nPREVISTA/);
+  assert.doesNotMatch(texto, /confirmada|já atracou|já saiu|maré/i);
+  assert.equal(novidadesManobras(m, m).length, 0);
+  for (const b of ["", "-", "?", "A DEFINIR", "a confirmar", "Fundeio", "SEM BERÇO", "N/A", "ND"]) assert.ok(!bercoFonteDefinido(b), b);
+  for (const b of ["211", "AZ1011 BB", "FOSPAR EXT BB", "PFELIX 2 BB"]) assert.ok(bercoFonteDefinido(b), b);
+});
+
+test("manobras: sem data/situação, cartão cortado ou data impossível é rejeitado", () => {
+  for (const b of [
+    manobrasTexto().replace("11/10 17:00", "31/02 17:00"),
+    manobrasTexto().replace("11/10 17:00", "11/10 25:00"),
+    manobrasTexto().replace("11/10 17:00·EF— Entrada e Fundeio\nPREVISTA", ""),
+    manobrasTexto().replace("14/10 18:00·DS— Desatracação e Saída: FOSPAR EXT BB\nPREVISTA", "14/10 18:00·DS— Desatracação e Saída: FOSPAR EXT BB"),
+  ]) assert.throws(() => parseManobrasComposio(b), LeituraNaviosInvalida);
+});
+
+test("política: somente navios automáticos; motoristas e perguntas à IA preservados", () => {
+  assert.equal(POLITICA_AUTOMACAO.limiteSaldoToneladas, 2000);
+  for (const nome of ["🌦️ Clima no Porto", "🌤️ Previsão do Porto", "📡 Radar da Previsão", "👋 CopaLinks", "Dicas do Porto"]) {
+    assert.ok(!sistemaPodePublicar(nome)); assert.ok(!mensagemVisivelNoChat({ motoristaId: 0, nome }));
+    assert.ok(mensagemVisivelNoChat({ motoristaId: 12, nome }));
+  }
+  assert.ok(sistemaPodePublicar(NOME_NAVIOS_AUTOMACAO));
+});
+
+/** Integração real somente com PostgreSQL local DESCARTÁVEL e Push/fetch falsos.
+ * DATABASE_URL=TEST_DATABASE_URL=.../fila_push_test_<nome> tsx --test ...
+ * Nenhum serviço externo recebe chamadas ou mensagens durante os testes.
+ */
+test("backend: Composio → comparação persistente → um navio por chat/Push → retentativa", { skip: !local }, async (t) => {
   const { db } = await import("../src/db");
-  const { chatMensagens, motoristas, subscriptions, naviosAvisos, configuracao } = await import("../src/db/schema");
-  const { inArray } = await import("drizzle-orm");
   const { garantirTabelas } = await import("../src/lib/estado");
-  const { limparCacheNavios } = await import("../src/lib/navios");
-  const { verificarNaviosFertilizantes, NOME_NAVIOS } = await import("../src/lib/navios-aviso");
-  const { checarCota } = await import("../src/lib/notificacoes-cota");
+  const { garantirTabelasNavios } = await import("../src/lib/navios-migracao");
+  const { verificarNaviosComposio } = await import("../src/lib/navios-monitor");
+  const { chatMensagens, configuracao, motoristas, subscriptions, naviosMonitorEventos, naviosMonitorFontes, notificacoes, pushEntregas } = await import("../src/db/schema");
+  const { eq, sql } = await import("drizzle-orm");
   const webpush = (await import("web-push")).default;
-  process.env.COMPOSIO_API_KEY = "";
-  const chaves = webpush.generateVAPIDKeys();
-  process.env.VAPID_PUBLIC_KEY = chaves.publicKey; process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
-  const pushes: string[] = [];
-  Object.defineProperty(webpush, "sendNotification", { configurable: true, value: async (_s: unknown, c: string) => { pushes.push(JSON.parse(c).title); return { statusCode: 201 }; } });
-
-  let appa = paginaAppa({ ATRACADOS: [{ "Programação": "1", "Berço": "114", "Embarcação": "ZY IDOL", IMO: "1", Mercadoria: "UREIA", Previsto: "32.219,000 Tons." }] });
-  const fetchReal = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    if (url.includes("appaweb")) return new Response(appa);
-    if (url.includes("sinprapar")) return new Response(paginaSinprapar([{ data: "01/10", hora: "02:00", navio: "LEO. K", manobra: "AT: F93/AZ211", calado: "11,40", imo: "2", situacao: "A CONFIRMAR" }]));
-    if (url.includes("open-meteo")) return Response.json({ hourly: { time: ["2099-10-01T00:00", "2099-10-01T01:00", "2099-10-01T02:00"], sea_level_height_msl: [0.1, 0.7, 0.2] } });
-    if (url.includes("composio")) throw new Error("sem composio no teste");
-    return fetchReal(input, init);
+  const fetchReal = globalThis.fetch, sendReal = webpush.sendNotification;
+  process.env.COMPOSIO_API_KEY = "chave-ficticia-do-teste-sem-rede";
+  const vapid = webpush.generateVAPIDKeys();
+  process.env.VAPID_PUBLIC_KEY = vapid.publicKey; process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
+  let atracados = atracadosTexto(), manobras = manobrasTexto(), erroAtracados = false;
+  let falharEndpoint: string | null = null;
+  const leituras: string[] = [], pushes: { endpoint: string; body: string; tag: string }[] = [], prompts: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const url = String(_input);
+    assert.ok(url.startsWith("https://backend.composio.dev/"), `nenhuma chamada fora do Composio: ${url}`);
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    if (url.endsWith("GEMINI_GENERATE_CONTENT")) {
+      prompts.push(body.arguments.system_instruction + "\n" + body.arguments.prompt);
+      return Response.json({ successful: true, data: { text: "Mantenha os faróis acesos ao circular no porto e siga a sinalização vigente." } });
+    }
+    assert.ok(url.endsWith("COMPOSIO_SEARCH_FETCH_URL_CONTENT"), "avisos não passam por LLM nem clima");
+    const fonte: string = body.arguments.urls[0]; leituras.push(fonte);
+    if (fonte === POLITICA_AUTOMACAO.fonteAtracados && erroAtracados) return Response.json({ successful: false, error: "falha simulada" });
+    const texto = fonte === POLITICA_AUTOMACAO.fonteAtracados ? atracados : manobras;
+    return Response.json({ successful: true, data: { results: [{ id: fonte, text: texto }] } });
   };
+  Object.defineProperty(webpush, "sendNotification", { configurable: true, value: async (s: { endpoint: string }, corpo: string) => {
+    if (s.endpoint === falharEndpoint) throw Object.assign(new Error("falha temporária"), { statusCode: 503 });
+    const p = JSON.parse(corpo); pushes.push({ endpoint: s.endpoint, body: p.body, tag: p.tag });
+    return { statusCode: 201, body: "" };
+  } });
   try {
-    await garantirTabelas();
-    // O banco de teste é reaproveitado entre execuções: comece com o estado
-    // dos navios, do chat e da cota limpo (o teste pressupõe a 1ª leitura).
-    await db.delete(naviosAvisos);
-    await db.delete(chatMensagens);
-    await db.delete(configuracao).where(
-      inArray(configuracao.chave, ["navios_semeado", "navios_ultima_verificacao", "notificacoes_cota"]),
-    );
-    await db.delete(subscriptions);
-    const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
-    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
+    await garantirTabelas(); await garantirTabelasNavios();
+    await db.delete(pushEntregas); await db.delete(naviosMonitorEventos); await db.delete(naviosMonitorFontes);
+    await db.delete(chatMensagens); await db.delete(notificacoes); await db.delete(subscriptions);
+    const [ana, bia, caio] = await db.insert(motoristas).values([{ nome: "Ana monitor" }, { nome: "Bia monitor" }, { nome: "Caio silenciado" }]).returning();
+    await db.insert(subscriptions).values([
+      { endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: ana.id },
+      { endpoint: "https://push.teste/bia", p256dh: "x", auth: "y", motoristaId: bia.id },
+      { endpoint: "https://push.teste/caio", p256dh: "x", auth: "y", motoristaId: caio.id },
+    ]);
+    const { definirSilencioChat } = await import("../src/lib/chat-silencio");
+    await definirSilencioChat(caio.id, true);
+    const ciclo = () => verificarNaviosComposio({ forcar: true });
+    const mensagens = () => db.select().from(chatMensagens).orderBy(chatMensagens.id);
 
-    // 1ª leitura: o navio que JÁ estava atracado não gera aviso antigo.
-    const r1 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.match(r1.motivo, /primeira leitura: 1 evento/);
-    assert.equal((await db.select().from(chatMensagens)).length, 0);
-    assert.equal(pushes.length, 0);
-
-    // Surge um navio de MAP programado (berço definido) e um de açúcar.
-    appa = paginaAppa({
-      ATRACADOS: [{ "Programação": "1", "Berço": "114", "Embarcação": "ZY IDOL", IMO: "1", Mercadoria: "UREIA", Previsto: "32.219,000 Tons." }],
-      PROGRAMADOS: [
-        { "Programação": "2", "Berço": "211", "Embarcação": "LEO. K", IMO: "2", Mercadoria: "MAP", Previsto: "70.000,000 Tons." },
-        { "Programação": "9", "Berço": "204", "Embarcação": "OCEAN AZALEA", IMO: "9", Mercadoria: "AÇÚCAR", Previsto: "60.000,000 Tons." },
-      ],
+    await t.test("primeira leitura silenciosa de cada fonte, com memória permanente", async () => {
+      const r = await ciclo();
+      assert.equal(r.eventos, 0); assert.equal(r.avisados.length, 0);
+      assert.equal((await mensagens()).length, 0); assert.equal(pushes.length, 0);
+      assert.equal((await db.select().from(naviosMonitorFontes)).length, 2);
+      assert.equal(leituras.length, 2);
+      const config = await db.select().from(configuracao);
+      assert.ok(config.some((c) => c.chave === "ia_porto_politica_v2" && c.valor.includes("2.000")));
+      assert.ok(config.some((c) => c.chave === "ia_porto_orientacoes_v2" && c.valor.includes("REGRA 11")));
+      await ciclo(); assert.equal((await mensagens()).length, 0);
     });
-    limparCacheNavios();
-    const r2 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.deepEqual(r2.avisados, ["programado:LEO. K"]);
-    const msgs = await db.select().from(chatMensagens);
-    assert.equal(msgs.length, 1);
-    assert.equal(msgs[0].nome, NOME_NAVIOS);
-    assert.match(msgs[0].texto, /LEO\. K.*berço 211.*map \(70\.000 t\)/);
-    assert.deepEqual(pushes, [NOME_NAVIOS], "Push com o nome do aviso");
 
-    // Mesma situação no próximo ciclo: não repete. Intervalo de 5 min respeitado.
-    limparCacheNavios();
-    assert.equal((await verificarNaviosFertilizantes({ forcar: true })).avisados.length, 0);
-    assert.equal((await verificarNaviosFertilizantes()).motivo, "aguardando intervalo");
-    assert.equal((await db.select().from(chatMensagens)).length, 1);
-    assert.equal((await db.select().from(naviosAvisos)).length, 2);
-
-    // DOIS navios de fertilizantes com novidade no MESMO ciclo: sai UMA
-    // mensagem (e UM Push) com os dois — e a cota do assunto é registrada.
-    appa = paginaAppa({
-      ATRACADOS: [{ "Programação": "1", "Berço": "114", "Embarcação": "ZY IDOL", IMO: "1", Mercadoria: "UREIA", Previsto: "32.219,000 Tons." }],
-      PROGRAMADOS: [
-        { "Programação": "2", "Berço": "211", "Embarcação": "LEO. K", IMO: "2", Mercadoria: "MAP", Previsto: "70.000,000 Tons." },
-        { "Programação": "4", "Berço": "212", "Embarcação": "OCEAN PEARL", IMO: "4", Mercadoria: "UREIA", Previsto: "55.000,000 Tons." },
-        { "Programação": "5", "Berço": "213", "Embarcação": "ATLANTIC BAY", IMO: "5", Mercadoria: "KCL", Previsto: "40.000,000 Tons." },
-      ],
+    await t.test("dois navios atualizados dão duas mensagens e dois Push por aparelho", async () => {
+      atracados = atracadosTexto({ eco: "500,123", aristos: "1.999,999" });
+      const r = await ciclo(); assert.equal(r.eventos, 2); assert.equal(r.avisados.length, 2);
+      const msgs = await mensagens(); assert.equal(msgs.length, 2);
+      assert.match(msgs[0].texto, /ARISTOS II/); assert.doesNotMatch(msgs[0].texto, /ECO CERBERUS/);
+      assert.match(msgs[1].texto, /ECO CERBERUS/); assert.doesNotMatch(msgs[1].texto, /ARISTOS II/);
+      assert.match(msgs[1].texto, /500,123 Tons\./);
+      assert.equal(pushes.length, 4); assert.ok(pushes.every((p) => p.endpoint !== "https://push.teste/caio"));
+      assert.equal(pushes.filter((p) => p.body === msgs[0].texto).length, 2);
+      assert.equal(pushes.filter((p) => p.body === msgs[1].texto).length, 2, "payload sem truncar o saldo");
+      await ciclo(); assert.equal((await mensagens()).length, 2); assert.equal(pushes.length, 4);
     });
-    limparCacheNavios();
-    const r4 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.deepEqual(r4.avisados, ["programado:OCEAN PEARL", "programado:ATLANTIC BAY"]);
-    const emLote = await db.select().from(chatMensagens);
-    assert.equal(emLote.length, 2, "um lote = uma mensagem");
-    assert.equal(emLote[1].nome, NOME_NAVIOS);
-    assert.match(emLote[1].texto, /2 novidades/);
-    assert.match(emLote[1].texto, /OCEAN PEARL/);
-    assert.match(emLote[1].texto, /ATLANTIC BAY/);
-    assert.deepEqual(pushes, [NOME_NAVIOS, NOME_NAVIOS], "um lote = um Push");
 
-    // A cota do assunto ficou registrada: o próximo aviso não sai colado.
-    assert.equal((await checarCota("navios")).liberado, false, "cota de navios registrada");
+    await t.test("berço definido e mudanças pequenas de horário avisam, sem inferir confirmação", async () => {
+      manobras = manobrasTexto({ berco: "AZ211 BB" }); await ciclo();
+      let msgs = await mensagens(); assert.equal(msgs.length, 3);
+      assert.match(msgs[2].texto, /AFENTIS XRISTOS ATH/); assert.match(msgs[2].texto, /PREVISTA/);
+      assert.doesNotMatch(msgs[2].texto, /confirmada|já atracou/i);
+      manobras = manobrasTexto({ berco: "AZ211 BB", dataHora: "11/10 17:30" }); await ciclo();
+      msgs = await mensagens(); assert.equal(msgs.length, 4); assert.match(msgs[3].texto, /17:30/);
+    });
+
+    await t.test("fonte quebrada não altera sua memória nem impede a outra fonte", async () => {
+      const [antes] = await db.select().from(naviosMonitorFontes).where(eq(naviosMonitorFontes.fonte, "atracados"));
+      erroAtracados = true;
+      manobras = manobrasTexto({ berco: "AZ212 BB", dataHora: "11/10 17:30" });
+      const r = await ciclo(); assert.equal(r.eventos, 1);
+      const [depois] = await db.select().from(naviosMonitorFontes).where(eq(naviosMonitorFontes.fonte, "atracados"));
+      assert.equal(depois.dados, antes.dados); assert.equal(depois.lidoEm?.getTime(), antes.lidoEm?.getTime());
+      assert.ok(depois.erro); erroAtracados = false;
+      atracados = atracadosTexto().replace("Saldo Total do Navio544,190 Tons.", "");
+      await ciclo();
+      const [parcial] = await db.select().from(naviosMonitorFontes).where(eq(naviosMonitorFontes.fonte, "atracados"));
+      assert.equal(parcial.dados, antes.dados, "leitura parcial também preserva o estado");
+    });
+
+    await t.test("cron concorrente não duplica, e 2.000 exatas não recebem alerta de saldo", async () => {
+      const numeroAntes = (await mensagens()).length;
+      const pushAntes = pushes.length;
+      atracados = atracadosTexto({ eco: "499,123", aristos: "2.000,000" });
+      await Promise.all([ciclo(), ciclo()]);
+      assert.equal((await mensagens()).length, numeroAntes + 1);
+      assert.equal(pushes.length, pushAntes + 2);
+    });
+
+    await t.test("falha temporária em Bia retenta só Bia, sem duplicar chat ou Ana", async () => {
+      const chatAntes = (await mensagens()).length, pushAntes = pushes.length;
+      falharEndpoint = "https://push.teste/bia";
+      atracados = atracadosTexto({ eco: "498,987", aristos: "2.000,000" });
+      await ciclo(); assert.equal((await mensagens()).length, chatAntes + 1); assert.equal(pushes.length, pushAntes + 1);
+      const [pendente] = await db.select().from(naviosMonitorEventos).where(sql`${naviosMonitorEventos.pushEm} is null`);
+      assert.ok(pendente); assert.ok(pendente.mensagemId); assert.equal(pendente.tentativas, 1);
+      await db.update(naviosMonitorEventos).set({ envioAte: null }).where(eq(naviosMonitorEventos.id, pendente.id));
+      falharEndpoint = null; await ciclo();
+      assert.equal((await mensagens()).length, chatAntes + 1); assert.equal(pushes.length, pushAntes + 2);
+      const [concluido] = await db.select().from(naviosMonitorEventos).where(eq(naviosMonitorEventos.id, pendente.id));
+      assert.ok(concluido.pushEm); assert.equal(concluido.tentativas, 2);
+      assert.equal(pushes.slice(pushAntes).filter((p) => p.endpoint === "https://push.teste/ana").length, 1);
+    });
+
+    await t.test("volta A→B→A do saldo é uma nova atualização, não uma chave velha", async () => {
+      const antes = (await mensagens()).length;
+      atracados = atracadosTexto({ eco: "499,123", aristos: "2.000,000" }); await ciclo();
+      atracados = atracadosTexto({ eco: "498,987", aristos: "2.000,000" }); await ciclo();
+      assert.equal((await mensagens()).length, antes + 2);
+    });
+
+    await t.test("clima/orientações/boas-vindas desativados inclusive com forcar; IA mantém memória", async () => {
+      const antes = (await mensagens()).length, pushAntes = pushes.length;
+      const { verificarEPostarAlertaClima } = await import("../src/lib/clima-alerta");
+      const { verificarEPostarBoletimClima } = await import("../src/lib/clima-boletim");
+      const { enviarRegrasSeguranca } = await import("../src/lib/regras-seguranca");
+      const { publicarBoasVindasMotorista } = await import("../src/lib/boas-vindas-motorista");
+      assert.equal((await verificarEPostarAlertaClima({ forcar: true })).postou, false);
+      assert.equal((await verificarEPostarBoletimClima({ forcar: true })).postou, false);
+      assert.equal((await enviarRegrasSeguranca()).enviadas, 0);
+      assert.equal((await publicarBoasVindasMotorista({ id: ana.id, nome: "Ana" })).via, "desativada");
+      const { perguntarIA } = await import("../src/lib/ia");
+      await perguntarIA("Quais as regras de comportamento dentro do porto?", [], ana.id);
+      assert.ok(prompts.some((p) => /REGRA 01|faróis/.test(p) && /Não publicar automaticamente/.test(p)));
+      assert.equal((await mensagens()).length, antes); assert.equal(pushes.length, pushAntes);
+      const { memorizarClima, lerMemoriaClima } = await import("../src/lib/ia-memoria-porto");
+      const p = { atualizadoEm: "2026-10-08T18:00:00.000Z", agora: {}, alerta: {}, dias: [], fontes: { simport: false, estacao: true, openMeteo: false, composio: false } } as unknown as Previsao;
+      await memorizarClima(p); await memorizarClima({ ...p, atualizadoEm: "2026-10-07T18:00:00.000Z" });
+      assert.equal((await lerMemoriaClima())?.atualizadoEm, p.atualizadoEm);
+    });
+
+    await t.test("cron autenticado lê e publica navios sem pontos cadastrados, sem clima/regras", async () => {
+      const { pontos, eventos } = await import("../src/db/schema");
+      await db.delete(pontos);
+      await db.insert(eventos).values({ codigo: "TESTE", tipo: "TRUCK", livro: "A", numero: 1, acao: "cadastrou", mensagem: "Inicialização isolada, sem semente de pontos" });
+      await db.update(naviosMonitorFontes).set({ tentativaEm: null });
+      atracados = atracadosTexto({ eco: "497,111", aristos: "2.000,000" });
+      const antes = (await mensagens()).length;
+      const { GET } = await import("../src/app/api/cron/route");
+      process.env.CRON_SECRET = "segredo-ficticio-local-do-cron";
+      const proibido = await GET(new Request("http://localhost/api/cron"));
+      assert.equal(proibido.status, 401); assert.equal((await mensagens()).length, antes);
+      const r = await GET(new Request("http://localhost/api/cron", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } }));
+      assert.equal(r.status, 200);
+      const b = await r.json();
+      assert.equal(b.rodou, false, "fila pessoal em repouso");
+      assert.equal(b.navios.eventos, 1); assert.equal(b.navios.avisados.length, 1);
+      assert.equal(b.clima, undefined); assert.equal(b.radar, undefined); assert.equal(b.regras, undefined);
+      assert.equal((await mensagens()).length, antes + 1);
+    });
+
+    await t.test("histórico, polling e contador ocultam clima do sistema, não mensagens humanas", async () => {
+      const [marco] = await db.select({ n: sql<number>`max(id)` }).from(chatMensagens);
+      await db.insert(chatMensagens).values([
+        { motoristaId: 0, nome: "🌦️ Clima no Porto", texto: "Aviso automático antigo" },
+        { motoristaId: 0, nome: "🌤️ Previsão do Porto", texto: "Boletim antigo" },
+        { motoristaId: 0, nome: "📡 Radar da Previsão", texto: "Radar antigo" },
+        { motoristaId: ana.id, nome: ana.nome, texto: "Alguém sabe se vai chover?" },
+      ]);
+      const { GET } = await import("../src/app/api/chat/route");
+      for (const sufixo of ["", `?depois=${marco.n}`]) {
+        const r = await GET(new Request(`http://localhost/api/chat${sufixo}`));
+        const b = await r.json();
+        assert.ok(b.mensagens.every((m: { motoristaId: number; nome: string }) => mensagemVisivelNoChat(m)));
+        assert.ok(b.mensagens.some((m: { texto: string }) => m.texto === "Alguém sabe se vai chover?"));
+      }
+      const r = await GET(new Request(`http://localhost/api/chat?contar=${marco.n}`));
+      assert.equal((await r.json()).novas, 1);
+    });
   } finally {
     globalThis.fetch = fetchReal;
+    Object.defineProperty(webpush, "sendNotification", { configurable: true, value: sendReal });
   }
 });
 
-test("navios: mudança significativa do ETB avisa 1 vez; deriva pequena não vira spam", { skip: !local }, async () => {
-  const { db } = await import("../src/db");
-  const { chatMensagens, motoristas, subscriptions, naviosAvisos, configuracao } = await import("../src/db/schema");
-  const { inArray } = await import("drizzle-orm");
-  const { garantirTabelas } = await import("../src/lib/estado");
-  const { limparCacheNavios } = await import("../src/lib/navios");
-  const { verificarNaviosFertilizantes, NOME_NAVIOS } = await import("../src/lib/navios-aviso");
-  const webpush = (await import("web-push")).default;
-  process.env.COMPOSIO_API_KEY = "";
-  const chaves = webpush.generateVAPIDKeys();
-  process.env.VAPID_PUBLIC_KEY = chaves.publicKey; process.env.VAPID_PRIVATE_KEY = chaves.privateKey;
-  const pushes: string[] = [];
-  Object.defineProperty(webpush, "sendNotification", { configurable: true, value: async (_s: unknown, c: string) => { pushes.push(JSON.parse(c).title); return { statusCode: 201 }; } });
-
-  const programa = (etb: string) => paginaAppa({
-    PROGRAMADOS: [
-      { "Programação": "2", "Berço": "211", "Embarcação": "LEO. K", IMO: "2", Mercadoria: "MAP", Previsto: "70.000,000 Tons.", ETB: etb },
-    ],
-  });
-  let appa = programa("05/10 08:00");
-  const fetchReal = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    if (url.includes("appaweb")) return new Response(appa);
-    if (url.includes("sinprapar")) return new Response(paginaSinprapar([]));
-    if (url.includes("open-meteo")) return Response.json({ hourly: { time: ["2099-10-01T00:00", "2099-10-01T01:00"], sea_level_height_msl: [0.1, 0.7] } });
-    if (url.includes("composio")) throw new Error("sem composio no teste");
-    return fetchReal(input, init);
-  };
-
-  try {
-    await garantirTabelas();
-    await db.delete(naviosAvisos);
-    await db.delete(chatMensagens);
-    await db.delete(configuracao).where(
-      inArray(configuracao.chave, ["navios_semeado", "navios_ultima_verificacao", "notificacoes_cota"]),
-    );
-    await db.delete(subscriptions);
-    const [m] = await db.insert(motoristas).values({ nome: "Ana" }).returning();
-    await db.insert(subscriptions).values({ endpoint: "https://push.teste/ana", p256dh: "x", auth: "y", motoristaId: m.id });
-
-    // 1) 1ª leitura: registra o navio E a previsão atual (referência), sem avisar.
-    //    (Limpa o cache do line-up: o teste anterior pode ter deixado o dele.)
-    limparCacheNavios();
-    const r1 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.match(r1.motivo, /primeira leitura/i);
-    assert.equal((await db.select().from(naviosAvisos)).length, 2, "P: programado + E: referência do ETB");
-    assert.equal(pushes.length, 0);
-
-    // 2) Tudo igual: nada novo (a mesma informação não repete).
-    limparCacheNavios();
-    assert.equal((await verificarNaviosFertilizantes({ forcar: true })).avisados.length, 0);
-
-    // 3) ETB deriva 1h30 (< 2 h): mudança pequena NÃO avisa nem vira referência.
-    appa = programa("05/10 09:30");
-    limparCacheNavios();
-    const r3 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.equal(r3.avisados.length, 0, `motivo: ${r3.motivo}`);
-    assert.match(r3.motivo, /ETB sem mudança significativa/i);
-    assert.equal((await db.select().from(naviosAvisos)).length, 2, "deriva pequena não altera a referência");
-    assert.equal((await db.select().from(chatMensagens)).length, 0);
-
-    // 4) ETB acumula 3 h de diferença contra a última previsão NOTIFICADA: avisa.
-    appa = programa("05/10 11:00");
-    limparCacheNavios();
-    const r4 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.deepEqual(r4.avisados, ["etb:LEO. K"]);
-    const msgs = await db.select().from(chatMensagens);
-    assert.equal(msgs.length, 1, "uma mensagem para a reprogramação");
-    assert.equal(msgs[0].nome, NOME_NAVIOS);
-    assert.match(msgs[0].texto, /era 05\/10 08:00/);
-    assert.match(msgs[0].texto, /agora é 05\/10 11:00/);
-    assert.deepEqual(pushes, [NOME_NAVIOS], "Push da reprogramação");
-    assert.equal((await db.select().from(naviosAvisos)).length, 3, "nova previsão vira a referência");
-
-    // 5) Mesma previsão no ciclo seguinte: não repete.
-    limparCacheNavios();
-    assert.equal((await verificarNaviosFertilizantes({ forcar: true })).avisados.length, 0);
-
-    // 6) Deriva de 1h30 contra a ÚLTIMA NOTIFICADA (11:00): continua calado.
-    appa = programa("05/10 12:30");
-    limparCacheNavios();
-    const r6 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.equal(r6.avisados.length, 0, `motivo: ${r6.motivo}`);
-    assert.equal((await db.select().from(naviosAvisos)).length, 3);
-    assert.equal((await db.select().from(chatMensagens)).length, 1);
-
-    // 7) Agora sim, 3 h contra a última notificada: avisa de novo (1 vez).
-    appa = programa("05/10 14:00");
-    limparCacheNavios();
-    const r7 = await verificarNaviosFertilizantes({ forcar: true });
-    assert.deepEqual(r7.avisados, ["etb:LEO. K"]);
-    const msgs7 = await db.select().from(chatMensagens);
-    assert.equal(msgs7.length, 2);
-    assert.match(msgs7[1].texto, /era 05\/10 11:00/);
-    assert.match(msgs7[1].texto, /agora é 05\/10 14:00/);
-    assert.equal(pushes.length, 2);
-  } finally {
-    globalThis.fetch = fetchReal;
-  }
-});
-
-// O banco de teste é compartilhado pelos testes de ponta a ponta do arquivo:
-// o pool fecha UMA vez, depois de todos (fechar no meio derruba os próximos).
-after(async () => {
-  const { pool } = await import("../src/db");
-  await pool.end().catch(() => null);
-});
+after(async () => { if (local) { const { pool } = await import("../src/db"); await pool.end(); } });

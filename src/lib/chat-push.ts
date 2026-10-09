@@ -1,3 +1,4 @@
+import { sistemaPodePublicar } from "@/lib/politica-automacao";
 import { enviarPush } from "@/lib/push";
 import { motoristasComChatSilenciado } from "@/lib/chat-silencio";
 
@@ -5,7 +6,7 @@ import { motoristasComChatSilenciado } from "@/lib/chat-silencio";
  * Web Push das mensagens do chat dos motoristas (SOMENTE servidor).
  *
  * Toda mensagem gravada em `chat_mensagens` — escrita por um motorista ou
- * postada por um agente do servidor (ex.: "🌦️ Clima no Porto", via Composio)
+ * postada pelo monitor de navios do servidor (leitura via Composio)
  * — vira uma notificação com o NOME de quem enviou e o TEXTO da mensagem.
  *
  * - Sai para os aparelhos com notificações ativas, menos os de quem escreveu;
@@ -48,18 +49,23 @@ export async function notificarMensagemChat(
     notificacao?: { titulo?: string; corpo?: string };
   } = {},
 ) {
-  const nome = resumir(m.nome || "Motorista", TITULO_MAX);
-  const corpo = resumir(m.texto, CORPO_MAX);
-  if (!corpo) return { enviadas: 0, assinaturas: 0, erro: "Mensagem vazia." };
-
   const doSistema = m.motoristaId <= 0;
+  if (doSistema && !sistemaPodePublicar(m.nome)) {
+    return { enviadas: 0, assinaturas: 0, erro: "Aviso automático desativado pela política do porto." };
+  }
+  const navio = doSistema && sistemaPodePublicar(m.nome);
+  const nome = resumir(m.nome || "Motorista", TITULO_MAX);
+  // Não cortar o saldo/decimais nem reescrever os dados do navio. O sistema
+  // operacional ainda pode encurtar a visualização; o payload mantém o texto.
+  const corpo = navio ? m.texto.trim() : resumir(opcoes.notificacao?.corpo?.trim() || m.texto, CORPO_MAX);
+  if (!corpo) return { enviadas: 0, assinaturas: 0, erro: "Mensagem vazia." };
   // Quem silenciou o chat não recebe avisos de mensagens (inclui os do sistema).
   const silenciados = await motoristasComChatSilenciado();
   return enviarPush(
     {
       // Motorista: "💬 Fulano"; agente do servidor já traz o próprio emoji no nome.
       title: resumir(opcoes.notificacao?.titulo?.trim() || (doSistema ? nome : `💬 ${nome}`), TITULO_MAX),
-      body: resumir(opcoes.notificacao?.corpo?.trim() || m.texto, CORPO_MAX),
+      body: corpo,
       tag: `CHAT_${m.id}`,
       acao: "chat",
       url: URL_ABRIR_CHAT,
@@ -71,6 +77,8 @@ export async function notificarMensagemChat(
     },
     {
       unica: true,
+      retentavel: navio,
+      ...(navio ? { timeoutMs: 10000 } : {}),
       // Quem escreveu não recebe o próprio recado; o sistema pode excluir o novo integrante.
       excetoMotoristaId: doSistema ? (opcoes.excetoMotoristaId ?? null) : m.motoristaId,
       semMotoristas: silenciados,

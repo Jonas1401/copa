@@ -1,3 +1,5 @@
+import { MEMORIA_POLITICA_PORTO } from "@/lib/politica-automacao";
+import { contextoOrientacoesPorto, garantirMemoriaPorto, lerMemoriaClima, memorizarClima } from "@/lib/ia-memoria-porto";
 import { obterSegredo, semSegredos } from "@/lib/admin/segredos";
 import { chatViaComposio, chatViaGeminiComposio, composioConfigurado, ErroComposio } from "@/lib/composio";
 
@@ -34,12 +36,13 @@ JEITO DE ESCREVER:
 - Termos técnicos, peças, números e instruções sempre em português claro e correto. Quando faltar informação (sintoma, placa, navio), pergunte em vez de chutar.
 - Se houver risco (freio, direção, vazamento, superaquecimento, fumaça), deixe a descontração de lado e dê primeiro a orientação de segurança, direto ao ponto.
 
-SUAS 4 FUNÇÕES:
+SUAS FUNÇÕES:
 1. CAMINHÃO E MECÂNICA (truck, cavalo/carreta, diesel): do simples ao avançado — preventiva, freios (inclusive freio motor e retarder), suspensão, direção, embreagem, câmbio, diferencial, arla 32, turbo, arrefecimento, elétrica, pneus, 5ª roda, tacógrafo. Sempre que houver risco de segurança (freio, direção, suspensão, vazamento de diesel/ar), avise claramente: "não rode assim, chame socorro/guincho".
 2. O APP COPALINKS: explique como usar — cadastrar ponto (tipo TRUCK ou CAVALO/C + livro A/B/M + número), monitorar a fila a cada 5 segundos, notificações quando o número é chamado/sai/volta/chega perto, tela de tempo (Paranaguá), cálculo de frete por foto do ticket, contatos/WhatsApp da equipe, chat dos motoristas, serviços (login, consulta de ponto, APPA, SINPRAPAR) e /admin (só administrador).
 3. CLIMA NO PORTO: quando receber o "Clima atual" no contexto, use esses dados reais (temperatura, chuva, vento, boletim APPA) para orientar: chuva forte = pista lisa e fila lenta; vento forte = cuidado com carreta vazia; neblina = farol baixo e distância.
 
-4. NAVIOS NO PORTO (foco em FERTILIZANTES): quando receber o line-up da APPA, as manobras do SINPRAPAR e a maré, responda sobre qualquer navio de Paranaguá ou Antonina: berço, carga, toneladas, chegada, ETA/ETB, atracação e saldo. Dê destaque aos fertilizantes (ureia, MAP, DAP, cloreto de potássio, sulfato de amônio, nitratos, NPK…). Analise a maré de forma prática: compare a hora da manobra e o calado com as próximas preamares e baixa-mares, sem inventar regras oficiais. Diga de onde veio a informação (line-up APPA, SINPRAPAR ou pesquisa na web). Se o dado não estiver no contexto, diga que não encontrou. Nunca invente tonelagem, horário ou berço.
+4. NAVIOS NO PORTO: use os dados literais dos sites CopaLinks de navios atracados e manobras previstas, lidos pelo Composio ou conservados na memória com data da leitura. Responda sobre um navio por vez e cite o link da fonte. Saldo Total do Navio é diferente do saldo de uma operadora. Preserve todos os decimais e a grafia dos nomes; nunca invente tonelagem, horário ou berço. PREVISTA não é confirmação e EF (entrada e fundeio) não é atracação. Se a leitura for antiga, diga quando foi lida. Se um dado não estiver no contexto, diga que não encontrou.
+5. ORIENTAÇÕES DO PORTO: responda às perguntas usando as orientações cadastradas no contexto; elas não substituem as regras oficiais vigentes. Não envie dicas espontâneas de comportamento junto de respostas sobre navios.
 
 REGRAS:
 - Responda em português, no máximo ~1200 caracteres.
@@ -50,7 +53,7 @@ REGRAS:
 
 /** A pergunta fala de clima/tempo? Aí anexamos o resumo real do porto. */
 function querClima(texto: string) {
-  return /clima|tempo|chuva|chover|vento|neblina|nevoeiro|tempestade|porto|onda|maré|mare/i.test(texto);
+  return /clima|tempo|chuva|chover|vento|neblina|nevoeiro|tempestade|onda|maré|mare/i.test(texto);
 }
 
 /** A pergunta fala de navio/porto/atracação/fertilizante? Anexa line-up, manobras e maré. */
@@ -58,54 +61,13 @@ function querNavios(texto: string) {
   return /navio|embarca|atrac|ber[cç]o|line-?up|fundead|ao largo|fertiliz|adubo|ureia|uréia|pot[aá]ss|kcl|\bmap\b|\bdap\b|npk|nitrato|sulfato|fosfat|tonelad|mar[eé]|calado|pr[aá]tic|antonina|appa|sinprapar|imo\b/i.test(texto);
 }
 
-/** Pede posição/rota atual? Aí pesquisa na web (VesselFinder/MarineTraffic/Google) pelo Composio. */
-function querPosicao(texto: string) {
-  return /onde (est[aá]|fica|anda)|posi[cç][aã]o|localiza|rota|vindo|destino|chega quando|quando chega|vesselfinder|marinetraffic|rastre/i.test(texto);
-}
-
+/** A consulta não altera a fila de avisos nem publica no chat coletivo. */
 async function contextoNavios(pergunta: string): Promise<string> {
   try {
-    const { ehFertilizante, lerLineup, lerManobras, lerMares, linhaNavio, resumoMares } = await import("@/lib/navios");
-    const [lineup, manobras, mares] = await Promise.all([
-      lerLineup(),
-      lerManobras().catch(() => []),
-      lerMares().catch(() => []),
-    ]);
-    const p = pergunta.toUpperCase();
-    const citados = lineup.filter((n) => n.nome.length >= 3 && p.includes(n.nome.toUpperCase()));
-    const vistos = new Set<string>();
-    const unicos = (lista: typeof lineup) => lista.filter((n) => {
-      const k = `${n.programacao}:${n.secao}`;
-      if (vistos.has(k)) return false;
-      vistos.add(k);
-      return true;
-    });
-    const ordem = ["ATRACADOS", "PROGRAMADOS", "AO LARGO PARA REATRACAÇÃO", "AO LARGO", "ESPERADOS"];
-    const fert = unicos(citados).concat(unicos(
-      lineup.filter((n) => ehFertilizante(n.mercadoria) && ordem.includes(n.secao))
-        .sort((a, b) => ordem.indexOf(a.secao) - ordem.indexOf(b.secao)),
-    )).slice(0, 30);
-    let txt = `\n\nLine-up oficial (APPA, Paranaguá e Antonina) e manobras da praticagem (SINPRAPAR), lidos agora:\n`;
-    txt += fert.length ? fert.map((n) => `- ${linhaNavio(n, manobras)}`).join("\n") : "- nenhum navio de fertilizante no line-up agora";
-    if (mares.length) txt += `\nMaré na baía de Paranaguá (referência Open-Meteo, não é a tábua oficial): ${resumoMares(mares, 8)}.`;
-
-    if (querPosicao(pergunta)) {
-      const alvo = citados[0]?.nome ?? pergunta.slice(0, 120);
-      try {
-        const { executarFerramenta } = await import("@/lib/composio");
-        const r = await executarFerramenta("COMPOSIO_SEARCH_WEB", {
-          arguments: { query: `${alvo} navio IMO ${citados[0]?.imo ?? ""} posição atual vesselfinder marinetraffic Paranaguá` },
-          userId: "copalinks-servidor",
-        });
-        const bruto = JSON.stringify(r.data ?? {}).slice(0, 3500);
-        if (bruto.length > 20) txt += `\nPesquisa na web (Composio, pode estar desatualizada): ${bruto}`;
-      } catch {
-        /* sem pesquisa: responde com o line-up */
-      }
-    }
-    return txt;
+    const { contextoNaviosComposio } = await import("@/lib/navios-monitor");
+    return await contextoNaviosComposio(pergunta);
   } catch {
-    return "\n\n(Não consegui ler o line-up da APPA agora.)";
+    return "\n\nNão consegui ler as fontes de navios pelo Composio agora. Não invente dados atuais.";
   }
 }
 
@@ -115,12 +77,15 @@ function querFila(texto: string) {
 }
 
 async function contextoClima(): Promise<string> {
+  const { obterPrevisao, resumoEmTexto } = await import("@/lib/tempo");
   try {
-    const { obterPrevisao, resumoEmTexto } = await import("@/lib/tempo");
     const p = await obterPrevisao();
+    if (!Object.values(p.fontes).some(Boolean)) throw new Error("Fontes de clima indisponíveis.");
+    await memorizarClima(p).catch(() => null);
     return `\n\nClima atual (dados reais do porto, ${new Date(p.atualizadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}): ${resumoEmTexto(p)}`;
   } catch {
-    return "";
+    const p = await lerMemoriaClima().catch(() => null);
+    return p ? `\n\nClima da última leitura SALVA em ${p.atualizadoEm}; pode estar desatualizado. Não apresentar como tempo atual: ${resumoEmTexto(p)}` : "\n\nClima atual indisponível; não invente previsão.";
   }
 }
 
@@ -249,13 +214,15 @@ export async function perguntarIA(
   const limpa = pergunta.trim().slice(0, 1000);
   if (!limpa) throw new ErroIA("Escreva sua pergunta.", "falha");
 
+  await garantirMemoriaPorto().catch(() => null);
   let contexto = "";
+  if (/porto|regra|seguran[cç]a|comport|orienta|far[oó]l|lona|costado|guindaste|funil/i.test(limpa)) contexto += await contextoOrientacoesPorto().catch(() => "");
   if (querClima(limpa)) contexto += await contextoClima();
   if (querFila(limpa)) contexto += await contextoFila(motoristaId);
   if (querNavios(limpa)) contexto += await contextoNavios(limpa);
 
   const mensagens = [
-    { role: "system", content: PROMPT_SISTEMA },
+    { role: "system", content: PROMPT_SISTEMA + "\n\n" + MEMORIA_POLITICA_PORTO },
     ...historico.slice(-10).map((h) => ({ role: h.papel, content: h.texto.slice(0, 2000) })),
     { role: "user", content: limpa + contexto },
   ];

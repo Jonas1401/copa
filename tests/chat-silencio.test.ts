@@ -57,9 +57,9 @@ test("quem silenciou o chat não recebe push do chat, mas continua recebendo o a
     await notificarMensagemChat({ id: 2, motoristaId: ids.Autor, nome: "Autor", texto: "☕ Bom dia, motoristas!" });
     assert.deepEqual(enviados, ["Ana"], "Beto silenciou: não recebe");
 
-    // Mensagem do sistema (clima) também respeita o silêncio.
+    // Mensagem do sistema (navio) também respeita o silêncio.
     enviados.length = 0;
-    await notificarMensagemChat({ id: 3, motoristaId: 0, nome: "🌦️ Clima no Porto", texto: "Chuva forte chegando" });
+    await notificarMensagemChat({ id: 3, motoristaId: 0, nome: "🚢 Navios no Porto", texto: "ECO CERBERUS\nSaldo Total do Navio 544,190 Tons." });
     assert.deepEqual(enviados.sort(), ["Ana", "Autor"]);
 
     // Aviso do PONTO (fora do chat) continua chegando para o Beto.

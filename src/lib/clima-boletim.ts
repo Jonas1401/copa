@@ -1,3 +1,6 @@
+/** Política atual: conteúdo para consultas/memória; publicação automática bloqueada. */
+import { POLITICA_AUTOMACAO } from "@/lib/politica-automacao";
+import { memorizarClima } from "@/lib/ia-memoria-porto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { chatMensagens, configuracao } from "@/db/schema";
@@ -254,6 +257,10 @@ async function escreverBoletim(p: Previsao, turno: Turno): Promise<string> {
 export async function verificarEPostarBoletimClima(
   opcoes: { forcar?: boolean; previsao?: Previsao } = {},
 ): Promise<{ postou: boolean; motivo: string; turno?: string; push?: boolean }> {
+  if (!POLITICA_AUTOMACAO.climaNoChat) {
+    if (opcoes.previsao) await memorizarClima(opcoes.previsao).catch(() => null);
+    return { postou: false, motivo: "boletim automático desativado; clima disponível para perguntas" };
+  }
   try {
     const atual = turnoDoDia();
     const ultimo = await lerUltimo().catch(() => null);

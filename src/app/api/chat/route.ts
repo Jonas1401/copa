@@ -5,6 +5,7 @@ import { chatMensagens, motoristas } from "@/db/schema";
 import { garantirTabelas } from "@/lib/estado";
 import { notificarMensagemChat } from "@/lib/chat-push";
 import { listarReacoes, type ReacaoChat } from "@/lib/chat-reacoes";
+import { chatVisivel } from "@/lib/chat-politica";
 
 export const dynamic = "force-dynamic";
 // Tempo para gravar a mensagem E aguardar o envio do Web Push aos aparelhos.
@@ -69,6 +70,7 @@ export async function GET(req: Request) {
       .from(chatMensagens)
       .where(
         and(
+          chatVisivel,
           gt(chatMensagens.id, Number.isFinite(contar) ? contar : 0),
           sql`${chatMensagens.motoristaId} <> ${eu}`,
         ),
@@ -81,14 +83,14 @@ export async function GET(req: Request) {
     const novas = await db
       .select(camposTela)
       .from(chatMensagens)
-      .where(gt(chatMensagens.id, depois))
+      .where(and(chatVisivel, gt(chatMensagens.id, depois)))
       .orderBy(asc(chatMensagens.id))
       .limit(100);
     const reacoes = await listarReacoes(novas.map((m) => m.id));
     return NextResponse.json({ mensagens: novas.map((m) => paraTela(m, reacoes[m.id] ?? [])) }, { headers: cab });
   }
 
-  const ultimas = await db.select(camposTela).from(chatMensagens).orderBy(desc(chatMensagens.id)).limit(80);
+  const ultimas = await db.select(camposTela).from(chatMensagens).where(chatVisivel).orderBy(desc(chatMensagens.id)).limit(80);
   const reacoes = await listarReacoes(ultimas.map((m) => m.id));
   return NextResponse.json({ mensagens: ultimas.reverse().map((m) => paraTela(m, reacoes[m.id] ?? [])) }, { headers: cab });
 }
