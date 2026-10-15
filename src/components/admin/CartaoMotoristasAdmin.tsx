@@ -156,6 +156,8 @@ export default function CartaoMotoristasAdmin({
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [filtro, setFiltro] = useState("");
+  const [enviandoTodos, setEnviandoTodos] = useState(false);
+  const [retornoTodos, setRetornoTodos] = useState("");
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -211,6 +213,44 @@ export default function CartaoMotoristasAdmin({
     }
   }
 
+
+  async function enviarAlertaTodosSemNotificacao() {
+    if (!lista) return;
+    const alvos = lista.filter((m) => !m.avisos);
+    if (alvos.length === 0) {
+      setRetornoTodos("Nenhum motorista sem notificações ativas.");
+      return;
+    }
+    if (!window.confirm(`Enviar alerta para ${alvos.length} motorista(s) sem notificações ativadas?`)) return;
+    setEnviandoTodos(true);
+    setRetornoTodos("");
+    try {
+      const resultados = await Promise.all(
+        alvos.map((m) =>
+          api<{ ok?: boolean; erro?: string }>(`/api/admin/motoristas/${m.id}/alerta`, {
+            method: "POST",
+            body: JSON.stringify({ mensagem: mensagemPadrao(m.nome) }),
+          }),
+        ),
+      );
+      const falhas = resultados.filter((r) => !r.ok).length;
+      if (resultados.some((r) => r.status === 401)) {
+        onSessaoExpirada(401);
+        return;
+      }
+      await carregar();
+      setRetornoTodos(
+        falhas > 0
+          ? `Alerta enviado para ${alvos.length - falhas} de ${alvos.length} motorista(s). ${falhas} falha(s).`
+          : `Alerta enviado para ${alvos.length} motorista(s) sem notificações.`,
+      );
+    } catch {
+      setRetornoTodos("Sem conexão. Tente de novo.");
+    } finally {
+      setEnviandoTodos(false);
+    }
+  }
+
   const filtrados = useMemo(() => {
     const f = filtro.trim().toLowerCase();
     if (!lista || !f) return lista ?? [];
@@ -256,6 +296,17 @@ export default function CartaoMotoristasAdmin({
         <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12.5px] font-semibold text-gelo/75">Lista de motoristas cadastrados</span>
+            <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void enviarAlertaTodosSemNotificacao()}
+              disabled={enviandoTodos || !(lista?.some((m) => !m.avisos))}
+              title="Enviar alerta de ativar as notificações para todos sem notificações ativadas"
+              aria-label="Enviar alerta de ativar as notificações para todos sem notificações ativadas"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ambar/70 bg-ambar/15 px-3 text-[12.5px] font-semibold text-ambar hover:bg-ambar/25 disabled:opacity-60"
+            >
+              <Megaphone size={15} /> {enviandoTodos ? "Enviando…" : "Enviar alerta para todos sem notificações"}
+            </button>
             <button
               type="button"
               onClick={() => void carregar()}
@@ -267,6 +318,7 @@ export default function CartaoMotoristasAdmin({
               <RefreshCw size={15} className={carregando ? "animate-spin" : ""} />
               Atualizar
             </button>
+            </div>
           </div>
 
           {lista && lista.length > 6 && (
@@ -282,6 +334,7 @@ export default function CartaoMotoristasAdmin({
             </label>
           )}
 
+          {retornoTodos && <p className="mt-2 text-[12.5px] text-ciano" role="status">{retornoTodos}</p>}
           {erro && <p className="mt-3 text-[14px] text-ambar">{erro}</p>}
           {!lista && !erro && <p className="mt-3 text-[14px] text-gelo/60">Carregando motoristas…</p>}
           {lista && lista.length === 0 && <p className="mt-3 text-[14px] text-gelo/60">Nenhum motorista cadastrado ainda.</p>}

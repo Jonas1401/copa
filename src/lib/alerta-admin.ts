@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { alertasMotorista, subscriptions } from "@/db/schema";
+import { alertasMotorista, motoristas, subscriptions } from "@/db/schema";
 import { enviarPush } from "@/lib/push";
 
 /**
@@ -82,3 +82,35 @@ export async function ultimosAlertas(ids: number[]) {
   }
   return mapa;
 }
+
+/** Envia (cria) o alerta de ativar notificações para TODOS os motoristas que
+ *  ainda não têm notificações ativas (sem subscription ativa), de uma vez só. */
+export async function criarAlertaParaTodosSemNotificacao(adminNome: string, mensagem?: string) {
+  const todos = await db.select({ id: motoristas.id, nome: motoristas.nome }).from(motoristas);
+  const ativos = await db
+    .select({ motoristaId: subscriptions.motoristaId })
+    .from(subscriptions)
+    .where(eq(subscriptions.ativa, 1));
+  const comNotificacao = new Set(
+    ativos.map((a) => a.motoristaId).filter((v): v is number => v != null),
+  );
+  const alvos = todos.filter((m) => !comNotificacao.has(m.id));
+
+  let pushEnviadas = 0;
+  const motoristasAlertados: { id: number; nome: string; alertaId: number; criadoEm: string; pushEnviadas: number }[] = [];
+  for (const m of alvos) {
+    const texto = (typeof mensagem === "string" && mensagem.trim()) ? mensagem.trim() : mensagemPadrao(m.nome);
+    const r = await criarAlerta(m.id, texto, adminNome);
+    pushEnviadas += r.pushEnviadas ?? 0;
+    motoristasAlertados.push({ id: m.id, nome: m.nome, alertaId: r.id, criadoEm: r.criadoEm, pushEnviadas: r.pushEnviadas ?? 0 });
+  }
+  return { total: alvos.length, enviados: motoristasAlertados.length, pushEnviadas, motoristas: motoristasAlertados };
+}
+
+export const criarAlertaParaTodos = criarAlertaParaTodosSemNotificacao;
+export const criarAlertaTodos = criarAlertaParaTodosSemNotificacao;
+export const enviarAlertaParaTodos = criarAlertaParaTodosSemNotificacao;
+export const enviarAlertaTodos = criarAlertaParaTodosSemNotificacao;
+export const alertarTodosSemNotificacao = criarAlertaParaTodosSemNotificacao;
+export const alertarMotoristasSemNotificacao = criarAlertaParaTodosSemNotificacao;
+export const criarAlertaMotoristasSemNotificacao = criarAlertaParaTodosSemNotificacao;
