@@ -764,7 +764,8 @@ export async function garantirTabelas() {
         ponto_tipo TEXT,
         ponto_livro TEXT,
         ponto_numero INTEGER,
-        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        ultimo_acesso_em TIMESTAMP WITH TIME ZONE
       );
       CREATE TABLE IF NOT EXISTS motorista_sessoes (
         id SERIAL PRIMARY KEY,
@@ -1063,6 +1064,17 @@ export async function garantirTabelas() {
     `);
   } catch {
     // já existe ou sem permissão: segue
+  }
+  // Último acesso do motorista no app (exclusão automática após 15 dias sem
+  // entrar e sem número monitorado). Aditivo: bancos antigos ganham a coluna.
+  try {
+    await db.execute(sql`
+      ALTER TABLE motoristas ADD COLUMN IF NOT EXISTS ultimo_acesso_em TIMESTAMP WITH TIME ZONE;
+      UPDATE motoristas SET ultimo_acesso_em = NOW() WHERE ultimo_acesso_em IS NULL;
+      CREATE INDEX IF NOT EXISTS motoristas_ultimo_acesso_em_idx ON motoristas (ultimo_acesso_em);
+    `);
+  } catch {
+    // já migrado ou sem permissão: segue
   }
   // Cada motorista monitora os próprios pontos: o mesmo número pode estar em
   // dois motoristas. Troca a regra antiga (um número só no app inteiro).

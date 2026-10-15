@@ -3,6 +3,7 @@ import { garantirTabelas, garantirSemente, temPontoCadastrado, varrer } from "@/
 import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
+import { limparMotoristasInativos } from "@/lib/motorista-inatividade";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,6 +27,7 @@ export async function GET(req: Request) {
   await garantirTabelas();
   await garantirAdminDefault();
   await garantirSemente();
+  const inativos = await limparMotoristasInativos().catch(() => ({ excluidos: 0, candidatos: 0 }));
 
   // O monitor de navios é independente de pontos cadastrados e de falhas da
   // fila. A leitura Composio acontece em paralelo para caber no prazo do cron.
@@ -36,6 +38,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       rodou: false, motivo: "Nenhum ponto cadastrado — monitoramento da fila em repouso.",
       ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
+      ...(inativos.excluidos ? { inativos } : {}),
     });
   }
 
@@ -56,5 +59,6 @@ export async function GET(req: Request) {
     } : { motivo: "Falha temporária na leitura da fila." }),
     quando: new Date().toISOString(),
     ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
+    ...(inativos.excluidos ? { inativos } : {}),
   });
 }

@@ -45,6 +45,8 @@ export const motoristas = pgTable("motoristas", {
   pontoLivro: text("ponto_livro"),
   pontoNumero: integer("ponto_numero"),
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+  // Última vez que o motorista abriu o aplicativo neste cadastro.
+  ultimoAcessoEm: timestamp("ultimo_acesso_em", { withTimezone: true }),
 });
 
 // Motoristas que silenciaram SÓ as notificações do chat (os avisos do ponto

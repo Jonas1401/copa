@@ -8,6 +8,7 @@ type MotoristaAdmin = {
   id: number;
   nome: string;
   criadoEm: string;
+  ultimoAcessoEm?: string | null;
   avisos: number;
   pontos: PontoDTO[];
   alerta?: { criadoEm: string; resolvidoEm: string | null } | null;
@@ -296,6 +297,9 @@ export default function CartaoMotoristasAdmin({
                     <b className="text-[15.5px] break-words text-white">{m.nome}</b>
                     <span className="text-[12px] text-gelo/50">
                       #{m.id} · desde {dia(m.criadoEm)}
+                      {m.ultimoAcessoEm
+                        ? ` · último acesso ${dia(m.ultimoAcessoEm)}`
+                        : " · ainda não entrou"}
                     </span>
                     <div className="ml-auto flex items-center gap-3">
                       <span

@@ -12,6 +12,8 @@ export type MotoristaAdmin = {
   id: number;
   nome: string;
   criadoEm: string;
+  /** Última vez que o motorista abriu o aplicativo. */
+  ultimoAcessoEm: string | null;
   /** Aparelhos com notificação ativa (recebem os avisos do ponto). */
   avisos: number;
   pontos: PontoDTO[];
@@ -29,7 +31,12 @@ export async function GET() {
   await garantirTabelas();
 
   const [lista, todos, avisos, ultimas] = await Promise.all([
-    db.select({ id: motoristas.id, nome: motoristas.nome, criadoEm: motoristas.criadoEm }).from(motoristas),
+    db.select({
+      id: motoristas.id,
+      nome: motoristas.nome,
+      criadoEm: motoristas.criadoEm,
+      ultimoAcessoEm: motoristas.ultimoAcessoEm,
+    }).from(motoristas),
     db.select().from(pontos).orderBy(pontos.ordem, pontos.id),
     db
       .select({ motoristaId: subscriptions.motoristaId, n: sql<number>`count(*)::int` })
@@ -57,6 +64,7 @@ export async function GET() {
       id: m.id,
       nome: m.nome,
       criadoEm: m.criadoEm.toISOString(),
+      ultimoAcessoEm: m.ultimoAcessoEm?.toISOString() ?? null,
       avisos: aparelhos.get(m.id) ?? 0,
       pontos: porMotorista.get(m.id) ?? [],
       alerta: alertas.get(m.id) ?? null,
