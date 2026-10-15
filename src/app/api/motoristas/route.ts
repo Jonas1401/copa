@@ -38,6 +38,7 @@ export async function POST(req: Request) {
       pontoTipo: ponto?.tipo ?? null,
       pontoLivro: ponto?.livro ?? null,
       pontoNumero: ponto?.numero ?? null,
+      ultimoAcessoEm: new Date(),
     })
     .returning();
   const resposta = await iniciarSessaoMotorista(
