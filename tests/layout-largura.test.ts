@@ -26,8 +26,30 @@ test("telas não usam mais a foto do navio como fundo", () => {
   for (const p of TELAS) {
     const s = ler(p);
     assert.ok(!s.includes("FUNDO.src"), `${p} ainda usa a foto de fundo`);
-    assert.ok(s.includes("#002b6b") && s.includes("fundo-app"), `${p} sem a cor azul do fundo`);
+    assert.ok(
+      s.includes("bg-fundo") && s.includes("fundo-app"),
+      `${p} sem o fallback sólido (bg-fundo) e sem a classe do degradê (fundo-app)`,
+    );
+    assert.ok(!s.includes("#002b6b"), `${p} ainda repete à mão o azul-marinho antigo`);
   }
+});
+
+test("o fundo cobalto tem uma única fonte de verdade em globals.css", () => {
+  const css = ler("src/app/globals.css");
+  // as quatro cores do degradê de referência (brilho #0319ba → base #010a38)
+  for (const cor of ["--fundo-brilho: #0319ba", "--fundo-meio: #021285", "--fundo-borda: #010e5a", "--fundo-base: #010a38"]) {
+    assert.ok(css.includes(cor), `globals.css sem ${cor}`);
+  }
+  assert.ok(
+    /radial-gradient\(80% 85% at 50% 42%/.test(css),
+    "globals.css sem o degradê do fundo na geometria da referência (80% 85% at 50% 42%)",
+  );
+  // o degradê é o mesmo do body, da tela de carregamento e de todas as telas
+  assert.ok(css.includes("background-image: var(--fundo-gradiente)"), "html/body não usam --fundo-gradiente");
+  assert.ok(css.includes(".fundo-app"), "globals.css sem a classe .fundo-app");
+  assert.ok(ler("src/components/inicio/CarregamentoLogo.tsx").includes("var(--fundo-gradiente)"), "a tela de carregamento saiu do degradê único");
+  assert.ok(!css.includes("#002b6b") && !css.includes("#00479e"), "globals.css ainda tem o azul-marinho antigo");
+  assert.ok(css.includes("--color-fundo:"), "@theme sem o token de cor do fundo (bg-fundo)");
 });
 
 test("imagens de topo se fundem ao fundo azul (foto do caminhão: só a base em degradê)", () => {
@@ -41,7 +63,11 @@ test("imagens de topo se fundem ao fundo azul (foto do caminhão: só a base em 
   for (const p of ["src/components/inicio/BannerCaminhao.tsx", "src/components/tempo/TempoApp.tsx"]) {
     const s = ler(p);
     assert.ok(/imagem-(degrade|nitida)/.test(s), `${p} sem degradê de máscara na imagem`);
-    assert.ok(s.includes("#002b6b"), `${p} não funde a base na cor azul do fundo`);
+    assert.ok(
+      s.includes("var(--fundo-meio)"),
+      `${p} não funde a base da foto no cobalto do app (var(--fundo-meio))`,
+    );
+    assert.ok(!s.includes("#002b6b"), `${p} ainda dissolve na cor azul antiga`);
   }
 });
 
@@ -93,7 +119,10 @@ test("banner do caminhão: foto nítida no topo, degradê só nos 5% da base, tr
   assert.ok(!s.includes("linear-gradient(90deg,"), "BannerCaminhao.tsx voltou a cobrir o lado esquerdo da foto");
   assert.ok(!s.includes("radial-gradient("), "BannerCaminhao.tsx voltou a jogar brilho sobre a foto");
   assert.ok(s.includes("imagem-nitida"), "BannerCaminhao.tsx sem a máscara de foto nítida");
-  assert.ok(s.includes("bottom-0 h-[5%]") && s.includes("#002b6b_100%"), "BannerCaminhao.tsx sem o degradê de 5% na base");
+  assert.ok(
+    s.includes("bottom-0 h-[5%]") && s.includes("var(--fundo-meio)_100%"),
+    "BannerCaminhao.tsx sem o degradê de 5% na base dissolvendo no cobalto do app",
+  );
   assert.ok(s.includes("object-[68%_46%]"), "BannerCaminhao.tsx alterou o enquadramento do caminhão");
   // trocar a foto = só o ícone, pequeno e quase sem "caixa", para não poluir a frente da imagem
   assert.ok(/aria-label="Personalizar imagem"[\s\S]{0,400}h-10 w-10[\s\S]{0,200}bg-black\/20/.test(s), "o botão de personalizar deixou de ser discreto");
