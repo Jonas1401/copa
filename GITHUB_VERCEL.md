@@ -26,7 +26,7 @@ Não envie `.env`, dumps do banco, `node_modules` ou `.vercel`.
 
 ## Integrações opcionais
 
-As chaves de Composio, WhatsApp e IA podem ser cadastradas no próprio `/admin`. Elas ficam cifradas no banco quando a chave mestra está configurada.
+As chaves de Composio e IA podem ser cadastradas no próprio `/admin`. Elas ficam cifradas no banco quando a chave mestra está configurada.
 
 ## Monitoramento externo
 
