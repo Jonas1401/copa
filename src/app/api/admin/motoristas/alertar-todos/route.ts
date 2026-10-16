@@ -6,7 +6,14 @@ import { MENSAGEM_MAX, criarAlertaParaTodosSemNotificacao } from "@/lib/alerta-a
 export const dynamic = "force-dynamic";
 const CAB = { "Cache-Control": "no-store" };
 
-/** POST { mensagem? } → alerta para TODOS os motoristas sem notificações ativas. */
+/**
+ * POST { mensagem? } → alerta para TODOS os motoristas sem notificações ativas.
+ *
+ * UM pedido só para a lista inteira: o trabalho é em lote dentro de
+ * `criarAlertaParaTodosSemNotificacao`. O painel não deve mais abrir um pedido
+ * por motorista — eram dezenas de Functions ao mesmo tempo, cada uma repetindo
+ * a criação das tabelas, e o botão ficava preso em "Enviando…".
+ */
 export async function POST(req: Request) {
   const admin = await exigirAdmin();
   if (admin instanceof NextResponse) return admin;

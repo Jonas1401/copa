@@ -215,7 +215,7 @@ export default function CartaoMotoristasAdmin({
 
 
   async function enviarAlertaTodosSemNotificacao() {
-    if (!lista) return;
+    if (!lista || enviandoTodos) return;
     const alvos = lista.filter((m) => !m.avisos);
     if (alvos.length === 0) {
       setRetornoTodos("Nenhum motorista sem notificações ativas.");
@@ -224,29 +224,37 @@ export default function CartaoMotoristasAdmin({
     if (!window.confirm(`Enviar alerta para ${alvos.length} motorista(s) sem notificações ativadas?`)) return;
     setEnviandoTodos(true);
     setRetornoTodos("");
+    // Tempo limite: sem ele, se a rede cair no meio, o fetch não expira nunca
+    // e o botão fica preso em "Enviando…" com o painel travado.
+    const controlador = new AbortController();
+    const fim = setTimeout(() => controlador.abort(), 60_000);
     try {
-      const resultados = await Promise.all(
-        alvos.map((m) =>
-          api<{ ok?: boolean; erro?: string }>(`/api/admin/motoristas/${m.id}/alerta`, {
-            method: "POST",
-            body: JSON.stringify({ mensagem: mensagemPadrao(m.nome) }),
-          }),
-        ),
+      // UMA chamada para a lista inteira — o servidor grava o alerta de todos
+      // em lote. Antes era um pedido por motorista: dezenas de Functions ao
+      // mesmo tempo, cada uma recriando as tabelas, e o app travava.
+      const r = await api<{ ok?: boolean; erro?: string; enviados?: number; total?: number }>(
+        "/api/admin/motoristas/alertar-todos",
+        { method: "POST", body: JSON.stringify({}), signal: controlador.signal },
       );
-      const falhas = resultados.filter((r) => !r.ok).length;
-      if (resultados.some((r) => r.status === 401)) {
+      if (r.status === 401) {
         onSessaoExpirada(401);
         return;
       }
-      await carregar();
+      if (!r.ok) {
+        setRetornoTodos(r.dados.erro ?? "Não foi possível enviar o alerta.");
+        return;
+      }
+      const enviados = r.dados.enviados ?? alvos.length;
       setRetornoTodos(
-        falhas > 0
-          ? `Alerta enviado para ${alvos.length - falhas} de ${alvos.length} motorista(s). ${falhas} falha(s).`
-          : `Alerta enviado para ${alvos.length} motorista(s) sem notificações.`,
+        enviados > 0
+          ? `Alerta enviado para ${enviados} motorista(s) sem notificações.`
+          : "Nenhum motorista sem notificações ativas.",
       );
+      await carregar();
     } catch {
-      setRetornoTodos("Sem conexão. Tente de novo.");
+      setRetornoTodos("Não consegui enviar agora (sem conexão ou o servidor demorou). Toque de novo.");
     } finally {
+      clearTimeout(fim);
       setEnviandoTodos(false);
     }
   }
