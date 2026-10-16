@@ -83,8 +83,21 @@ export async function ultimosAlertas(ids: number[]) {
   return mapa;
 }
 
-/** Envia (cria) o alerta de ativar notificações para TODOS os motoristas que
- *  ainda não têm notificações ativas (sem subscription ativa), de uma vez só. */
+/**
+ * Envia (cria) o alerta de ativar notificações para TODOS os motoristas que
+ * ainda não têm notificações ativas (sem subscription ativa), de uma vez só.
+ *
+ * CUSTO FIXO, NÃO POR MOTORISTA: o alerta de todos é gravado em 3 consultas
+ * (lista, apaga os pendentes, insere um por motorista). Antes era um laço que
+ * chamava `criarAlerta` por motorista — 3 consultas cada uma, ou seja ~180
+ * consultas para 60 motoristas. Cada consulta é uma ida e volta ao banco
+ * remoto (40–120 ms no Neon/Supabase), então o pedido passava de 30 s,
+ * estourava o tempo da Function e o painel ficava para sempre em "Enviando…".
+ *
+ * Sem Push de propósito: quem está na lista não tem nenhuma inscrição ativa
+ * (é o critério da seleção), então `enviarPush` não teria para quem mandar —
+ * só gastaria uma varredura de `subscriptions` por motorista.
+ */
 export async function criarAlertaParaTodosSemNotificacao(adminNome: string, mensagem?: string) {
   const todos = await db.select({ id: motoristas.id, nome: motoristas.nome }).from(motoristas);
   const ativos = await db
@@ -95,16 +108,29 @@ export async function criarAlertaParaTodosSemNotificacao(adminNome: string, mens
     ativos.map((a) => a.motoristaId).filter((v): v is number => v != null),
   );
   const alvos = todos.filter((m) => !comNotificacao.has(m.id));
+  if (!alvos.length) return { total: 0, enviados: 0, pushEnviadas: 0, motoristas: [] };
 
-  let pushEnviadas = 0;
-  const motoristasAlertados: { id: number; nome: string; alertaId: number; criadoEm: string; pushEnviadas: number }[] = [];
-  for (const m of alvos) {
-    const texto = (typeof mensagem === "string" && mensagem.trim()) ? mensagem.trim() : mensagemPadrao(m.nome);
-    const r = await criarAlerta(m.id, texto, adminNome);
-    pushEnviadas += r.pushEnviadas ?? 0;
-    motoristasAlertados.push({ id: m.id, nome: m.nome, alertaId: r.id, criadoEm: r.criadoEm, pushEnviadas: r.pushEnviadas ?? 0 });
-  }
-  return { total: alvos.length, enviados: motoristasAlertados.length, pushEnviadas, motoristas: motoristasAlertados };
+  const bruta = typeof mensagem === "string" ? mensagem.trim().slice(0, MENSAGEM_MAX) : "";
+  const admin = adminNome.slice(0, 80);
+  const ids = alvos.map((m) => m.id);
+  // Substitui o pendente de cada um (como faz o alerta individual) e grava
+  // todos os novos num único INSERT.
+  await db.delete(alertasMotorista)
+    .where(and(inArray(alertasMotorista.motoristaId, ids), isNull(alertasMotorista.resolvidoEm)));
+  const gravados = await db.insert(alertasMotorista)
+    .values(alvos.map((m) => ({
+      motoristaId: m.id,
+      mensagem: bruta || mensagemPadrao(m.nome).slice(0, MENSAGEM_MAX),
+      adminNome: admin,
+    })))
+    .returning({ id: alertasMotorista.id, motoristaId: alertasMotorista.motoristaId, criadoEm: alertasMotorista.criadoEm });
+  const porMotorista = new Map(gravados.map((g) => [g.motoristaId, g]));
+
+  const motoristasAlertados = alvos.flatMap((m) => {
+    const g = porMotorista.get(m.id);
+    return g ? [{ id: m.id, nome: m.nome, alertaId: g.id, criadoEm: g.criadoEm.toISOString(), pushEnviadas: 0 }] : [];
+  });
+  return { total: alvos.length, enviados: motoristasAlertados.length, pushEnviadas: 0, motoristas: motoristasAlertados };
 }
 
 export const criarAlertaParaTodos = criarAlertaParaTodosSemNotificacao;

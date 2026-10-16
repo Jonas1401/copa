@@ -20,9 +20,11 @@ function ehIphone() {
  * fechar: só some quando o motorista ativa as notificações neste aparelho
  * (o servidor confere a inscrição antes de aceitar).
  *
- * Exceção: aparelho que não suporta notificações (ex.: iPhone sem o app na
- * Tela de Início). Aí mostra como instalar e permite "Fechar por agora" — o
- * alerta continua pendente e volta na próxima abertura do app.
+ * Exceções (o app NUNCA pode ficar preso atrás desta tela):
+ *  - aparelho sem suporte a notificações (ex.: iPhone sem o app na Tela de
+ *    Início) → mostra como instalar e libera o "Fechar por agora";
+ *  - qualquer falha ao ativar → o "Fechar por agora" também aparece.
+ * Em ambos o alerta continua pendente e volta na próxima abertura do app.
  */
 export default function AlertaAdmin({ motoristaId, onAtivada }: { motoristaId: number; onAtivada?: () => void }) {
   const [alerta, setAlerta] = useState<Alerta | null>(null);
@@ -31,6 +33,9 @@ export default function AlertaAdmin({ motoristaId, onAtivada }: { motoristaId: n
   const [ativando, setAtivando] = useState(false);
   const [erro, setErro] = useState("");
   const [concluido, setConcluido] = useState(false);
+  /** Quantas vezes ele já tocou em "Ativar" — a 1ª falha libera o "Fechar por
+   *  agora": a tela cobre o app inteiro e ninguém pode ficar preso nela. */
+  const [tentativas, setTentativas] = useState(0);
 
   const buscar = useCallback(async () => {
     try {
@@ -60,9 +65,14 @@ export default function AlertaAdmin({ motoristaId, onAtivada }: { motoristaId: n
   }, [alerta]);
 
   async function ativar() {
-    if (!alerta) return;
+    if (!alerta || ativando) return;
     setAtivando(true);
     setErro("");
+    setTentativas((n) => n + 1);
+    // Teto para a confirmação no servidor (a inscrição Push já tem o dela em
+    // `garantirAssinaturaPush`): o botão nunca fica girando para sempre.
+    const controlador = new AbortController();
+    const fim = setTimeout(() => controlador.abort(), 20_000);
     try {
       if (!temSuportePush()) { setSituacao("sem_suporte"); return; }
       const permissao = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
@@ -72,6 +82,7 @@ export default function AlertaAdmin({ motoristaId, onAtivada }: { motoristaId: n
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: alerta.id, endpoint: assinatura.endpoint }),
+        signal: controlador.signal,
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok || r.status === 404) {
@@ -84,6 +95,7 @@ export default function AlertaAdmin({ motoristaId, onAtivada }: { motoristaId: n
     } catch {
       setErro("Não foi possível ativar agora. Confira a internet e tente de novo.");
     } finally {
+      clearTimeout(fim);
       setAtivando(false);
     }
   }
@@ -150,7 +162,7 @@ export default function AlertaAdmin({ motoristaId, onAtivada }: { motoristaId: n
               {ativando ? <Loader2 size={19} className="animate-spin" /> : <BellRing size={19} />}
               {situacao === "negado" ? "Já liberei, ativar notificações" : "Ativar notificações"}
             </button>
-            {situacao === "sem_suporte" ? (
+            {situacao === "sem_suporte" || tentativas > 0 ? (
               <button
                 type="button"
                 onClick={() => setAdiado(alerta.id)}
