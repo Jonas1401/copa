@@ -36,14 +36,6 @@ yarn-error.log*
 # backups de banco
 *.dump
 
-# Android Monitor: configurações locais e arquivos de assinatura
-/android/**/.gradle/
-/android/**/build/
-/android/**/local.properties
-/android/**/google-services.json
-/android/**/*.keystore
-/android/**/*.jks
-/android/**/*.apk
-/android/**/*.aab
+# Contas de serviço e segredos
 **/*service-account*.json
 **/*firebase-adminsdk*.json

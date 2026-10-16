@@ -888,65 +888,6 @@ export async function garantirTabelas() {
         criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS ia_mensagens_motorista_idx ON ia_mensagens (motorista_id, id);
-      CREATE TABLE IF NOT EXISTS monitor_codes (
-        id SERIAL PRIMARY KEY,
-        motorista_id INTEGER NOT NULL REFERENCES motoristas(id) ON DELETE CASCADE,
-        codigo TEXT NOT NULL,
-        ativo INTEGER NOT NULL DEFAULT 1,
-        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        CONSTRAINT monitor_codes_dono_codigo_unico UNIQUE (motorista_id, codigo)
-      );
-      CREATE INDEX IF NOT EXISTS monitor_codes_codigo_ativo_idx ON monitor_codes (codigo, ativo);
-      CREATE TABLE IF NOT EXISTS monitor_pair_codes (
-        id SERIAL PRIMARY KEY,
-        tipo TEXT NOT NULL,
-        motorista_id INTEGER REFERENCES motoristas(id) ON DELETE CASCADE,
-        codigo_hash TEXT NOT NULL UNIQUE,
-        expira_em TIMESTAMP WITH TIME ZONE NOT NULL,
-        usado_em TIMESTAMP WITH TIME ZONE,
-        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS monitor_pair_codes_expira_em_idx ON monitor_pair_codes (expira_em);
-      CREATE TABLE IF NOT EXISTS monitor_devices (
-        id SERIAL PRIMARY KEY,
-        tipo TEXT NOT NULL,
-        motorista_id INTEGER REFERENCES motoristas(id) ON DELETE CASCADE,
-        token_hash TEXT NOT NULL UNIQUE,
-        fcm_token TEXT,
-        nome TEXT NOT NULL DEFAULT '',
-        ativo INTEGER NOT NULL DEFAULT 1,
-        ultimo_contato_em TIMESTAMP WITH TIME ZONE,
-        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS monitor_devices_tipo_ativo_idx ON monitor_devices (tipo, ativo);
-      CREATE INDEX IF NOT EXISTS monitor_devices_motorista_idx ON monitor_devices (motorista_id);
-      CREATE TABLE IF NOT EXISTS monitor_messages (
-        id SERIAL PRIMARY KEY,
-        monitor_device_id INTEGER NOT NULL REFERENCES monitor_devices(id),
-        event_id TEXT NOT NULL,
-        origem TEXT NOT NULL,
-        codigos JSONB NOT NULL,
-        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        CONSTRAINT monitor_messages_device_event_unique UNIQUE (monitor_device_id, event_id)
-      );
-      CREATE INDEX IF NOT EXISTS monitor_messages_criado_em_idx ON monitor_messages (criado_em);
-      CREATE TABLE IF NOT EXISTS monitor_deliveries (
-        id SERIAL PRIMARY KEY,
-        message_id INTEGER NOT NULL REFERENCES monitor_messages(id),
-        motorista_id INTEGER NOT NULL REFERENCES motoristas(id) ON DELETE CASCADE,
-        device_id INTEGER NOT NULL REFERENCES monitor_devices(id),
-        codigo TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'PENDING',
-        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        atualizado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        CONSTRAINT monitor_deliveries_unique UNIQUE (message_id, device_id, codigo)
-      );
-      CREATE INDEX IF NOT EXISTS monitor_deliveries_motorista_data_idx ON monitor_deliveries (motorista_id, criado_em);
-      ALTER TABLE monitor_codes ENABLE ROW LEVEL SECURITY;
-      ALTER TABLE monitor_pair_codes ENABLE ROW LEVEL SECURITY;
-      ALTER TABLE monitor_devices ENABLE ROW LEVEL SECURITY;
-      ALTER TABLE monitor_messages ENABLE ROW LEVEL SECURITY;
-      ALTER TABLE monitor_deliveries ENABLE ROW LEVEL SECURITY;
     `);
     tabelasGarantidas = true;
   } catch (e) {

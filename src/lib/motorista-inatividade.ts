@@ -1,6 +1,6 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { monitorDevices, monitorDeliveries, monitorMessages, motoristas, pontos, subscriptions } from "@/db/schema";
+import { motoristas, pontos, subscriptions } from "@/db/schema";
 
 /** Conta inativa: mais de 15 dias sem abrir o app e sem número na fila. */
 export const DIAS_INATIVIDADE = 15;
@@ -24,15 +24,6 @@ export function contaInativaParaExcluir(opts: {
 
 /** Remove o cadastro e os números/aparelhos ligados a ele. O chat antigo fica. */
 export async function excluirCadastroMotorista(motoristaId: number) {
-  const devices = await db
-    .select({ id: monitorDevices.id })
-    .from(monitorDevices)
-    .where(eq(monitorDevices.motoristaId, motoristaId));
-  const deviceIds = devices.map((d) => d.id);
-  if (deviceIds.length) {
-    await db.delete(monitorDeliveries).where(inArray(monitorDeliveries.deviceId, deviceIds));
-    await db.delete(monitorMessages).where(inArray(monitorMessages.monitorDeviceId, deviceIds));
-  }
   await db.delete(subscriptions).where(eq(subscriptions.motoristaId, motoristaId));
   await db.delete(pontos).where(eq(pontos.motoristaId, motoristaId));
   await db.delete(motoristas).where(eq(motoristas.id, motoristaId));

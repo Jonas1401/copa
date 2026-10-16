@@ -90,10 +90,8 @@ test("todos os cards da área do administrador iniciam fechados e abrem ao clica
 
   const admin = ler("src/components/admin/AdminApp.tsx");
   assert.ok(
-    admin.includes("const [monitorAberto, setMonitorAberto] = useState(false)") &&
-      admin.includes("aria-expanded={monitorAberto}") &&
-      admin.includes("{monitorAberto && ("),
-    "Card Monitor WhatsApp no AdminApp deve iniciar fechado e abrir ao clicar",
+    !admin.includes("Monitor WhatsApp") && !admin.includes("monitorAberto") && !admin.includes("InternetEsimAdmin"),
+    "Cards Internet/eSIM e Monitor WhatsApp devem ser removidos do AdminApp",
   );
   assert.ok(
     admin.includes("const [auditoriaAberta, setAuditoriaAberta] = useState(false)") &&

@@ -167,67 +167,6 @@ administrador. **Não foram modificados componentes, telas, estilos ou imagens.*
 
 Veja [a documentação do monitor](docs/MONITORAMENTO_NAVIOS.md).
 
-## Filtro do grupo SEM APK (pelo servidor)
-
-Um site/PWA não consegue ler notificações nem mensagens de outros apps. Para o
-filtro do grupo funcionar **sem o app Android**, um número de WhatsApp que
-participa do grupo fica conectado a um serviço de WhatsApp Web (recomendado:
-**Green-API**; também aceitos Z-API, Evolution API, WAHA, Whapi ou uma ponte
-própria). A cada mensagem, o serviço chama `POST /api/whatsapp/webhook`:
-
-1. o segredo é conferido (Authorization `Bearer`/`Basic`, `X-Webhook-Token`
-   ou `?token=`); sem ele → 401;
-2. só passa o grupo `INFO. OP PORTO / FOSPAR **` (nome exato, ou o ID do grupo
-   aprendido na 1ª mensagem; `WHATSAPP_GRUPO_ID` fixa o ID e torna a regra
-   estrita). Conversas privadas e outros grupos são **descartados na hora**,
-   sem gravar nada;
-3. a lista vai para o **mesmo** `processarMensagemGrupo` do monitor Android:
-   mesmo filtro, mesmos avisos ("🔔 Ponto na vez nº A014", "⚠️ Ponto pulado nº
-   A137"), mesma trava de 1 aviso por dia por ponto, Web Push só ao dono.
-
-Configuração: `/monitor` (admin) → card **Filtro do grupo sem APK** → **Gerar
-endereço** (URL + token, mostrados uma vez; no banco fica só o hash) → colar no
-serviço. O card mostra quando o serviço falou com o CopaLinks, a última
-mensagem do grupo e as listas processadas. "Revogar" o aparelho *WhatsApp sem
-APK (servidor)* em Aparelhos pareados, ou **Desligar** no card, interrompe a
-entrada. **Use um número dedicado:** é uma conexão não oficial do WhatsApp
-(risco de bloqueio do número) e o serviço escolhido recebe as mensagens dessa
-conta. No plano gratuito do Green-API cabem até 3 conversas por mês — um chip
-que só participa deste grupo fica dentro do limite.
-Testes: `tests/whatsapp-webhook.test.ts`.
-
-## Monitor WhatsApp → Firebase (Android)
-
-O recurso novo **não substitui** a fila, o chat ou o Web Push já existentes.
-Cada motorista cadastra em **Sobre → Monitor WhatsApp** os códigos A/B/M que deseja
-acompanhar (lista `monitor_codes`, independente dos pontos da fila). No `/admin →
-Monitor WhatsApp` (`/monitor`), o administrador gera um código temporário para
-parear o Android monitor. Cada motorista gera um código diferente para parear
-seu próprio Android receptor.
-
-Com o usuário concedendo **Acesso a notificações** nas configurações do Android,
-o `NotificationListenerService` aceita apenas `com.whatsapp` / `com.whatsapp.w4b`
-**do grupo** `INFO. OP PORTO / FOSPAR **`. Outros grupos, conversas privadas
-e notificações sem confirmação do grupo são ignorados. Ele lê apenas a mensagem
-mais recente, extrai códigos localmente e envia **só os códigos e o hash do
-grupo, sem conversa, título nem remetente** para `/api/monitor/messages`.
-A API rejeita hash de outro grupo e reconfirma a correspondência em PostgreSQL,
-grava somente metadados/idempotência e usa Firebase Cloud Messaging para avisar
-**apenas os receptores pareados dos motoristas inscritos naquele código**.
-Receber FCM exige o app Android nativo; o PWA mantém os avisos da fila via
-Web Push/VAPID. Não há envio para WhatsApp nem acesso às conversas.
-
-Estrutura: `src/app/api/monitor/messages`, `src/app/api/devices/register`,
-`src/app/api/codes`, `src/app/api/notifications`, `src/lib/supabase.ts`
-(adaptador do Drizzle), `src/lib/auth.ts`, `src/lib/matcher.ts`,
-`src/lib/firebase.ts`, `supabase/migrations/monitor.sql` e o projeto
-`android/MonitorApp/`. Consulte [o guia Android](./android/MonitorApp/README.md)
-para criar o projeto Firebase, instalar `google-services.json` **fora do Git**,
-configurar `FIREBASE_SERVICE_ACCOUNT_JSON` **só na Vercel** e parear os aparelhos.
-Até isso acontecer, o backend mostra "Firebase não configurado" e não afirma
-que notificou ninguém. FCM aceito não é confirmação de que o Android exibiu o
-aviso. O usuário pode revogar o acesso a notificações no Android quando quiser.
-
 ## Imagem do topo personalizável
 
 A tela inicial mostra uma foto de caminhão no topo
@@ -320,38 +259,6 @@ Consulte [GITHUB_VERCEL.md](GITHUB_VERCEL.md) e
 Testes: `npm test`; integração isolada: `tests/navios-aviso.test.ts` com
 `DATABASE_URL=TEST_DATABASE_URL` em um banco local `fila_push_test_*`.
 
-## Filtro automático do grupo (PONTOS NA VEZ / PULADAS)
-
-O Monitor Android lê as **notificações** que o WhatsApp publica no aparelho
-(`NotificationListenerService`), só do grupo **`INFO. OP PORTO / FOSPAR **`**.
-Quando a mensagem mais recente traz **PONTOS NA VEZ** ou **... PULADAS**, o
-texto dela é enviado a `POST /api/monitor/grupo` (autenticado pelo segredo do
-Monitor pareado). O servidor (`src/lib/grupo-filtro.ts` e `src/lib/grupo-aviso.ts`):
-
-1. separa os códigos de cada lista (`A014`, `B010`…: letra + **3 dígitos**);
-2. compara o **código completo** com os pontos cadastrados de cada motorista
-   (`pontos` e `monitor_codes`), sem confundir A014/A140, A019/A190 ou A001/A014;
-3. avisa **só o dono**, pelo mesmo Web Push do app, mesmo com o app fechado:
-   `🔔 Ponto na vez nº A014` ou `⚠️ Ponto pulado nº A137`.
-
-O texto não é gravado (no banco fica só "NA VEZ: 8 códigos") e o remetente
-nunca é enviado. Mensagens comuns do grupo nem saem do celular. O mesmo aviso
-(lista + código + motorista) sai no máximo **uma vez por dia**, mesmo que o
-grupo repita a lista. Não depende do Firebase. No `/monitor` (admin), o card
-**Filtro automático do grupo** simula uma mensagem colada (ou envia os avisos).
-
-Limitações do Android (o monitor lê notificações; não acessa o WhatsApp):
-- WhatsApp com notificações **ativadas** no aparelho monitor: funciona.
-- Notificações do WhatsApp **desativadas**: não há o que capturar.
-- Grupo **silenciado**: funciona enquanto o WhatsApp continuar publicando a
-  notificação no Android.
-- **Celular bloqueado**: o serviço continua recebendo o que o sistema
-  publica, conforme o conteúdo que o WhatsApp coloca na notificação.
-
-Mantenha as notificações do WhatsApp habilitadas no aparelho monitor. Testes:
-`tests/grupo-filtro.test.ts` (filtro) e `tests/grupo-aviso.test.ts` (ponta a
-ponta, banco `fila_push_test_*`); no Android, `GroupMessageFilterTest`.
-
 ## Rodar localmente
 
 ```bash
@@ -381,7 +288,6 @@ Não comite `.env` nem cole a `DATABASE_URL` no chat.
 | `SITE_URL` | recomendada | endereço público fixo para links de compartilhar |
 | `CRON_SECRET` | recomendada | autenticação do Cron diário da Vercel |
 | `SUPABASE_CRON_SECRET` | se usar pg_cron | chave separada do cron de 1 minuto; o mesmo valor fica no Supabase Vault |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | sim, para Monitor WhatsApp nativo | JSON privado de conta de serviço Firebase, só na Vercel; nunca no Android/GitHub |
 | `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
@@ -389,7 +295,7 @@ Não comite `.env` nem cole a `DATABASE_URL` no chat.
 | `CLIMA_MONITOR_*` | não | radar silencioso para memória da IA: `ATIVO`, `MIN` (minutos entre leituras), `PAINEL_MIN` (releitura do painel da APPA), `SENSIBILIDADE` (baixa/média/alta), `AVISO_MIN`, `MAX_HORA` |
 | `APPA_*` / `SIMPORT_*` | não | leitura do painel da APPA com fallback: `SIMPORT_PAINEL_URL`, `APPA_DADOS_API`, `APPA_BOLETIM_API`, `SIMPORT_AUTH_TOKEN`, `APPA_NAVEGADOR_MODULO`, `APPA_CDP_URL`, `APPA_LEITURA_TIMEOUT_MS`, `APPA_NAVEGADOR_TIMEOUT_MS`, `APPA_OCR_URL`, `APPA_OCR_IDIOMA` |
 
-Segredos opcionais (Composio, WhatsApp, IA) podem ser cadastrados no `/admin`:
+Segredos opcionais (Composio, IA) podem ser cadastrados no `/admin`:
 ficam **cifrados no banco** e nunca são enviados ao navegador. As chaves do
 Supabase REST não são usadas pelo código do app; o banco é acessado diretamente
 por `DATABASE_URL`.
