@@ -311,9 +311,30 @@ export default function CartaoMotoristasAdmin({
               disabled={enviandoTodos || !(lista?.some((m) => !m.avisos))}
               title="Enviar alerta de ativar as notificações para todos sem notificações ativadas"
               aria-label="Enviar alerta de ativar as notificações para todos sem notificações ativadas"
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-ambar/70 bg-ambar/15 px-3 text-[12.5px] font-semibold text-ambar hover:bg-ambar/25 disabled:opacity-60"
+              className="inline-flex shrink-0 items-center gap-3 rounded-full border-2 border-ambar py-2.5 pr-5 pl-5 transition-colors hover:bg-ambar/10 disabled:opacity-60"
             >
-              <Megaphone size={15} /> {enviandoTodos ? "Enviando…" : "Enviar alerta para todos sem notificações"}
+              <svg
+                viewBox="0 0 24 24"
+                width={36}
+                height={36}
+                fill="currentColor"
+                aria-hidden="true"
+                className="shrink-0 text-ambar"
+              >
+                <path d="M7.58 4.08 6.15 2.65C3.75 4.48 2.17 7.3 2.03 10.5h2c.15-2.65 1.51-4.97 3.55-6.42Zm12.39 6.42h2c-.15-3.2-1.73-6.02-4.12-7.85l-1.42 1.43c2.02 1.45 3.39 3.77 3.54 6.42ZM18 11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2v-5Zm-6 11c.14 0 .28-.01.42-.03.65-.14 1.18-.58 1.44-1.18.1-.24.15-.5.15-.78h-4c.01 1.1.9 2 2.01 2Z" />
+              </svg>
+              <span aria-hidden="true" className="w-px self-stretch bg-ambar/70" />
+              <span className="flex flex-col items-center gap-1">
+                <span className="text-center leading-tight">
+                  <b className="block text-[15px] font-bold text-ambar">
+                    {enviandoTodos ? "Enviando…" : "Enviar alerta"}
+                  </b>
+                  <span className="block text-[13px] text-gelo">para todos</span>
+                </span>
+                <span className="rounded-full border border-ambar/60 bg-ambar/15 px-3 py-0.5 text-[11px] font-semibold text-ambar">
+                  sem notificações
+                </span>
+              </span>
             </button>
             <button
               type="button"
