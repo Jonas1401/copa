@@ -170,7 +170,7 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
   const conectado = s?.painel.conectado ?? false;
   const leitura = s?.painel.leitura ?? null;
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
+    <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -178,7 +178,7 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
         className="flex w-full items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h2 className="flex flex-wrap items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+          <h2 className="flex flex-wrap items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
             <Radar size={22} strokeWidth={2.2} /> Radar da previsão
             {s && (
               <span
@@ -202,7 +202,7 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
       </button>
 
       {aberto && (
-        <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+        <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
           {!s ? (
             <p className="text-[14px] text-gelo/60">Carregando situação do radar…</p>
           ) : (
@@ -349,14 +349,14 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
                   <button
                     type="button"
                     onClick={() => setDetalhes((v) => !v)}
-                    className="flex items-center gap-1.5 text-[12.5px] font-bold text-[#8fd6ff]"
+                    className="flex items-center gap-1.5 text-[12.5px] font-bold text-[#8fb8ff]"
                   >
                     {detalhes ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                     Log de diagnóstico da leitura ({s.painel.tentativas.filter((t) => t.ok).length} de{" "}
                     {s.painel.tentativas.length} método(s) com sucesso)
                   </button>
                   {detalhes && (
-                    <ul className="mt-1.5 space-y-1 rounded-[12px] bg-[#04102a] px-2.5 py-2 text-[12px] leading-snug">
+                    <ul className="mt-1.5 space-y-1 rounded-[12px] bg-[#00032a] px-2.5 py-2 text-[12px] leading-snug">
                       {s.painel.tentativas.map((t) => (
                         <li key={`${t.metodo}-${t.ordem}`} className="flex gap-1.5">
                           <span className={t.ok ? "text-verde" : "text-ambar"}>{t.ok ? "✓" : "✗"}</span>
@@ -406,12 +406,12 @@ export default function CartaoRadarPrevisaoAdmin({ inicial }: { inicial?: Status
                 type="button"
                 onClick={() => void verificarAgora()}
                 disabled={rodando}
-                className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-[#38b6ff]/60 bg-[#0e2c63]/80 px-4 py-2.5 font-display text-[14px] font-bold tracking-wide text-[#8fd6ff] uppercase disabled:opacity-60"
+                className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-[#619bff]/60 bg-[#040d68]/80 px-4 py-2.5 font-display text-[14px] font-bold tracking-wide text-[#8fb8ff] uppercase disabled:opacity-60"
               >
                 <RefreshCw size={16} className={rodando ? "animate-spin" : ""} />
                 {rodando ? "Verificando…" : "Verificar agora"}
               </button>
-              {aviso && <p className="mt-2 px-0.5 text-[12.5px] text-[#8fd6ff]">{aviso}</p>}
+              {aviso && <p className="mt-2 px-0.5 text-[12.5px] text-[#8fb8ff]">{aviso}</p>}
             </>
           )}
         </div>

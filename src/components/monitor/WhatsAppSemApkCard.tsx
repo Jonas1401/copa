@@ -72,11 +72,11 @@ export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Rec
 
   const Linha = ({ rotulo, valor }: { rotulo: string; valor: string }) => (
     <div className="mt-3">
-      <p className="text-xs text-[#b8c9e5]">{rotulo}</p>
+      <p className="text-xs text-[#b8bde5]">{rotulo}</p>
       <div className="mt-1 flex items-center gap-2">
-        <code className="min-w-0 flex-1 break-all rounded-lg bg-[#06162f] px-3 py-2 font-mono text-[13px] text-ciano">{valor}</code>
+        <code className="min-w-0 flex-1 break-all rounded-lg bg-[#01072f] px-3 py-2 font-mono text-[13px] text-ciano">{valor}</code>
         <button type="button" onClick={() => void copiar(rotulo, valor)} aria-label={`Copiar ${rotulo}`}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#2c518d] hover:bg-white/5">
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#3542ad] hover:bg-white/5">
           {copiado === rotulo ? <CheckCircle2 size={18} className="text-verde" /> : <Copy size={18} />}
         </button>
       </div>
@@ -84,7 +84,7 @@ export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Rec
   );
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+    <section className="mt-4 rounded-[22px] border border-[#3542ad] bg-[#040b4a] p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -95,19 +95,19 @@ export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Rec
           <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
             <Link2 size={21} className="text-ciano" /> Filtro do grupo sem APK (pelo servidor)
           </h2>
-          <p className="mt-0.5 text-xs text-[#b8c9e5]">
+          <p className="mt-0.5 text-xs text-[#b8bde5]">
             {status?.configurado ? "Endereço (webhook) ativo" : "Conectar grupo pelo servidor sem instalar APK"}
           </p>
         </div>
-        <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+        <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8bde5]">
           {aberto ? "Fechar" : "Abrir"}
           {aberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </span>
       </button>
 
       {aberto && (
-        <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
-          <p className="text-sm leading-relaxed text-[#b8c9e5]">
+        <div className="mt-3 border-t border-[#3542ad]/50 pt-3">
+          <p className="text-sm leading-relaxed text-[#b8bde5]">
             Um número de WhatsApp que participa do grupo <b>{NOME_GRUPO_MONITORADO}</b> fica conectado a um serviço de WhatsApp Web
             (recomendado: <b>Green-API</b>). A cada mensagem, o serviço avisa o CopaLinks, que lê só esse grupo e avisa cada motorista do
             próprio ponto pelas notificações do app. Nenhum motorista precisa instalar nada.
@@ -118,11 +118,11 @@ export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Rec
           </p>
 
           <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Endereço (webhook)</dt>
+            <div className="rounded-xl bg-[#020936] p-3"><dt className="text-xs text-[#b8bde5]">Endereço (webhook)</dt>
               <dd className={status?.configurado ? "font-bold text-verde" : "font-bold text-ambar"}>{status?.configurado ? `ativo${status.segredoNoAmbiente ? " (variável da Vercel)" : ""}` : "não gerado"}</dd></div>
-            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Serviço falou com o CopaLinks</dt><dd>{quando(status?.ultimoContato ?? null)}</dd></div>
-            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Última mensagem do grupo</dt><dd>{quando(status?.ultimaMensagemGrupo ?? null)}</dd></div>
-            <div className="rounded-xl bg-[#071a35] p-3"><dt className="text-xs text-[#b8c9e5]">Grupo identificado</dt>
+            <div className="rounded-xl bg-[#020936] p-3"><dt className="text-xs text-[#b8bde5]">Serviço falou com o CopaLinks</dt><dd>{quando(status?.ultimoContato ?? null)}</dd></div>
+            <div className="rounded-xl bg-[#020936] p-3"><dt className="text-xs text-[#b8bde5]">Última mensagem do grupo</dt><dd>{quando(status?.ultimaMensagemGrupo ?? null)}</dd></div>
+            <div className="rounded-xl bg-[#020936] p-3"><dt className="text-xs text-[#b8bde5]">Grupo identificado</dt>
               <dd className="break-all">{status?.grupoId ? `${status.grupoId} (${status.grupoIdOrigem === "ambiente" ? "fixo na Vercel" : "automático"})` : "aguardando a 1ª mensagem do grupo"}</dd></div>
           </dl>
 
@@ -141,12 +141,12 @@ export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Rec
           {erro && <p className="mt-3 text-sm text-red-300" role="alert">{erro}</p>}
 
           {gerado && (
-            <div className="mt-4 rounded-xl border border-[#37c9ce]/50 bg-[#071a35] p-4" role="status">
+            <div className="mt-4 rounded-xl border border-[#57c2d7]/50 bg-[#020936] p-4" role="status">
               <p className="text-sm font-bold text-ciano">Mostrado uma única vez — copie agora. Não compartilhe em grupos.</p>
               <Linha rotulo="URL do webhook" valor={gerado.endereco} />
               <Linha rotulo="Token do webhook" valor={gerado.segredo} />
               <Linha rotulo="Se o serviço só aceita URL (ex.: Z-API): URL com token" valor={gerado.enderecoComSegredo} />
-              <ol className="mt-4 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-[#b8c9e5]">
+              <ol className="mt-4 list-decimal space-y-1 pl-5 text-xs leading-relaxed text-[#b8bde5]">
                 <li>Em <b>console.green-api.com</b>, crie uma instância e escaneie o QR Code com o WhatsApp do número dedicado (que participa do grupo).</li>
                 <li>Nas configurações da instância, cole a <b>URL do webhook</b> em &quot;URL para notificações&quot; e o <b>Token do webhook</b> em &quot;Token de autorização&quot;.</li>
                 <li>Ligue <b>&quot;Receber notificações sobre mensagens recebidas&quot;</b> e salve. Em alguns minutos, &quot;Serviço falou com o CopaLinks&quot; muda para agora.</li>
@@ -156,10 +156,10 @@ export default function WhatsAppSemApkCard({ cabecalho }: { cabecalho: () => Rec
 
           {Boolean(status?.listas?.length) && (
             <div className="mt-4">
-              <p className="text-xs text-[#b8c9e5]">Listas processadas pelo servidor (sem o texto):</p>
+              <p className="text-xs text-[#b8bde5]">Listas processadas pelo servidor (sem o texto):</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {status!.listas.map((l, i) => (
-                  <li key={i} className="rounded-lg bg-[#071a35] px-3 py-2"><span className="text-xs text-[#b8c9e5]">{quando(l.criadoEm)}</span> · {l.codigos.join(" · ")}</li>
+                  <li key={i} className="rounded-lg bg-[#020936] px-3 py-2"><span className="text-xs text-[#b8bde5]">{quando(l.criadoEm)}</span> · {l.codigos.join(" · ")}</li>
                 ))}
               </ul>
             </div>

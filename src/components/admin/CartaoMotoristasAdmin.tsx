@@ -98,7 +98,7 @@ function AlertaMotorista({ m, api, onSessaoExpirada, onMudou }: {
             type="button"
             onClick={() => { setMensagem(mensagemPadrao(m.nome)); setAberto(true); setRetorno(""); }}
             className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold ${
-              m.avisos ? "border border-[#2a5bb0]/70 text-gelo/85 hover:border-ciano/60" : "bg-ambar/90 text-[#281e00] hover:bg-ambar"
+              m.avisos ? "border border-[#3342d0]/70 text-gelo/85 hover:border-ciano/60" : "bg-ambar/90 text-[#281e00] hover:bg-ambar"
             }`}
           >
             <Megaphone size={15} /> {pendente ? "Reenviar alerta" : "Enviar alerta"}
@@ -120,7 +120,7 @@ function AlertaMotorista({ m, api, onSessaoExpirada, onMudou }: {
             onChange={(e) => setMensagem(e.target.value.slice(0, 400))}
             rows={3}
             aria-label={`Mensagem do alerta para ${m.nome}`}
-            className="mt-2 w-full rounded-xl border border-[#2a5bb0]/70 bg-[#06122b] p-2.5 text-[14px] text-white outline-none focus:border-ciano/70"
+            className="mt-2 w-full rounded-xl border border-[#3342d0]/70 bg-[#02042b] p-2.5 text-[14px] text-white outline-none focus:border-ciano/70"
           />
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" disabled={ocupado || !mensagem.trim()} onClick={() => void chamar("POST")}
@@ -271,7 +271,7 @@ export default function CartaoMotoristasAdmin({
   const comAvisos = lista?.filter((m) => m.avisos > 0).length ?? 0;
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
+    <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -279,10 +279,10 @@ export default function CartaoMotoristasAdmin({
         className="flex w-full items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
             <Users size={22} /> Motoristas
             {lista && (
-              <span className="rounded-full bg-[#38b6ff]/15 px-2.5 py-0.5 font-sans text-[12px] font-bold text-[#38b6ff] normal-case">
+              <span className="rounded-full bg-[#619bff]/15 px-2.5 py-0.5 font-sans text-[12px] font-bold text-[#619bff] normal-case">
                 {lista.length}
               </span>
             )}
@@ -301,7 +301,7 @@ export default function CartaoMotoristasAdmin({
       </button>
 
       {aberto && (
-        <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+        <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12.5px] font-semibold text-gelo/75">Lista de motoristas cadastrados</span>
             <div className="flex items-center gap-2">
@@ -342,7 +342,7 @@ export default function CartaoMotoristasAdmin({
               disabled={carregando}
               aria-label="Atualizar a lista de motoristas"
               title="Atualizar"
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#2a5bb0]/70 bg-[#0b2152]/80 px-3 text-[12.5px] font-semibold text-gelo hover:border-ciano/60 hover:text-ciano disabled:opacity-60"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#3342d0]/70 bg-[#030856]/80 px-3 text-[12.5px] font-semibold text-gelo hover:border-ciano/60 hover:text-ciano disabled:opacity-60"
             >
               <RefreshCw size={15} className={carregando ? "animate-spin" : ""} />
               Atualizar
@@ -358,7 +358,7 @@ export default function CartaoMotoristasAdmin({
                 onChange={(e) => setFiltro(e.target.value)}
                 placeholder="Buscar por nome ou ponto (ex.: A32)"
                 aria-label="Buscar motorista"
-                className="w-full rounded-[14px] border-[1.5px] border-[#2a5bb0]/70 bg-[#06122b]/85 py-2.5 pr-3.5 pl-10 text-[15px] text-white outline-none placeholder:text-gelo/40 focus:border-ciano/70"
+                className="w-full rounded-[14px] border-[1.5px] border-[#3342d0]/70 bg-[#02042b]/85 py-2.5 pr-3.5 pl-10 text-[15px] text-white outline-none placeholder:text-gelo/40 focus:border-ciano/70"
               />
             </label>
           )}
@@ -372,7 +372,7 @@ export default function CartaoMotoristasAdmin({
           )}
 
           {filtrados.length > 0 && (
-            <ul className="barra-rolagem mt-2 max-h-[520px] divide-y divide-[#2a5bb0]/35 overflow-y-auto">
+            <ul className="barra-rolagem mt-2 max-h-[520px] divide-y divide-[#3342d0]/35 overflow-y-auto">
               {filtrados.map((m) => (
                 <li key={m.id} className="py-3">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">

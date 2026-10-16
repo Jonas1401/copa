@@ -235,8 +235,8 @@ A tela inicial mostra uma foto de caminhão no topo
 arquivo original (1536×1024)** — nada de deformar a imagem nem sobrar azul. A
 foto é mostrada **nítida, sem véu azul** (era assim antes e sujava o céu): a
 máscara `.imagem-nitida` (`src/app/globals.css`) deixa 0–95% exatamente como o
-arquivo original e só os últimos **5% da base** se dissolvem no `#002b6b` do
-app, para não ficar linha dura.
+arquivo original e só os últimos **5% da base** se dissolvem no cobalto
+`#021285` do app, para não ficar linha dura.
 
 O **cartão do número começa exatamente nos 5% finais da foto**: 5% da altura =
 3,3333% da largura (altura = largura ÷ 1,5), e o cartão sobe com
@@ -398,6 +398,30 @@ O plano gratuito da Vercel executa Cron **no máximo uma vez ao dia**. Para
 varrer a fila também com o app fechado sem fazer upgrade, usamos
 **Supabase pg_cron + pg_net**, que chama `/api/cron` com a chave guardada no
 Supabase Vault. Consulte [GITHUB_VERCEL.md](./GITHUB_VERCEL.md).
+
+## Fundo e paleta (azul-cobalto)
+
+O fundo de todas as telas é um degradê reproduzido pixel a pixel da arte de
+referência: brilho `#0319ba` em 50% × 42%, platô `#010e5a` nas bordas e base
+`#010a38`, com um véu escurecendo os últimos 42% da tela. Tudo mora em
+`src/app/globals.css`:
+
+```css
+:root {
+  --fundo-brilho: #0319ba;  /* centro do brilho */
+  --fundo-meio:   #021285;  /* para onde as fotos de topo se dissolvem */
+  --fundo-borda:  #010e5a;  /* platô — também é o theme_color do app */
+  --fundo-base:   #010a38;  /* base da tela e cor de fallback */
+  --fundo-gradiente: ...;   /* o degradê completo, usado por html/body e .fundo-app */
+}
+```
+
+Trocar o fundo = mexer nessas quatro cores (e em `@theme`, que tem os tokens de
+tinta `abismo`/`noite`/`marinho`, os acentos `ciano`/`azulclaro` e os textos
+`gelo`/`aco`). As telas usam `bg-fundo` como fallback sólido e as classes
+`.fundo-app`, `.cartao-monitor`, `.painel`, `.vidro` herdam o mesmo cobalto —
+nenhuma tela repete o azul antigo à mão. Os PNGs de ícone (PWA) continuam com
+o fundo gerado por `scripts/gerar-logo.mjs`, que também passou a usar o cobalto.
 
 ## Trocar a logo
 

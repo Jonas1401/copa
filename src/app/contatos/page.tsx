@@ -17,14 +17,14 @@ function IconeWhatsApp({ className = "" }: { className?: string }) {
 
 export default function ContatosPage() {
   return (
-    <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
+    <div className="fundo-app relative min-h-screen w-full bg-fundo">
 
       <main className="largura-aparelho relative px-3 pt-4 pb-10">
         <header className="flex items-center gap-3">
           <Link
             href="/"
             aria-label="Voltar ao início"
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#2a5bb0]/70 bg-[#0b2152]/80 text-white transition-colors hover:border-ciano/70 hover:text-ciano"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#3342d0]/70 bg-[#030856]/80 text-white transition-colors hover:border-ciano/70 hover:text-ciano"
           >
             <ChevronLeft size={26} strokeWidth={2.2} />
           </Link>
@@ -45,7 +45,7 @@ export default function ContatosPage() {
                 href={linkWhatsApp(c.numero)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group flex items-center gap-3 rounded-[20px] border-[1.5px] border-[#1d4690]/70 bg-[linear-gradient(180deg,rgba(12,34,80,0.88),rgba(8,24,60,0.92))] px-3.5 py-3 transition-colors hover:border-[#25d366]/70 active:scale-[0.99]"
+                className="group flex items-center gap-3 rounded-[20px] border-[1.5px] border-[#222fb3]/70 bg-[linear-gradient(180deg,rgba(4, 9, 84, 0.88),rgba(2, 6, 63, 0.92))] px-3.5 py-3 transition-colors hover:border-[#25d366]/70 active:scale-[0.99]"
               >
                 <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#e63950] text-white shadow-[0_0_22px_-4px_rgba(230,57,80,0.8)]">
                   <Phone size={21} strokeWidth={2.3} />

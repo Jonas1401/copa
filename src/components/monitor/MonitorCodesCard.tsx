@@ -112,35 +112,35 @@ export default function MonitorCodesCard({ motoristaId }: { motoristaId: number 
       <form onSubmit={(e) => void adicionar(e)} className="mt-4 flex gap-2">
         <input value={value} onChange={(e) => setValue(e.target.value.toUpperCase().slice(0, 10))}
           aria-label="Código do WhatsApp" placeholder="Ex.: A184, B22, M69" inputMode="text" autoComplete="off"
-          className="min-w-0 flex-1 rounded-full border border-[#2a5bb0] bg-[#06122b] px-4 py-2.5 text-sm text-white outline-none focus:border-ciano" />
+          className="min-w-0 flex-1 rounded-full border border-[#3342d0] bg-[#02042b] px-4 py-2.5 text-sm text-white outline-none focus:border-ciano" />
         <button disabled={busy || !value.trim()} className="flex items-center gap-1 rounded-full bg-ouro px-4 py-2.5 text-sm font-bold text-[#241900] disabled:opacity-50"><Plus size={17} /> Adicionar</button>
       </form>
       {ready && <div className="mt-4 space-y-2">
         {!codes.length && <p className="text-sm text-gelo/65">Nenhum código cadastrado. Os pontos do quadro não são inscritos automaticamente aqui.</p>}
-        {codes.map((c) => <div key={c.id} className="flex items-center gap-2 rounded-xl border border-[#2a5bb0]/55 bg-[#06122b]/70 px-3 py-2 text-sm">
+        {codes.map((c) => <div key={c.id} className="flex items-center gap-2 rounded-xl border border-[#3342d0]/55 bg-[#02042b]/70 px-3 py-2 text-sm">
           <b className={c.ativo ? "flex-1 font-mono text-ciano" : "flex-1 font-mono text-gelo/45"}>{c.codigo}</b>
           <button type="button" disabled={busy} onClick={() => void alterar(c.id, !c.ativo)} className="text-xs text-gelo/80 underline disabled:opacity-50">{c.ativo ? "Pausar" : "Ativar"}</button>
           <button type="button" disabled={busy} onClick={() => void remover(c.id)} aria-label={`Remover ${c.codigo}`} className="text-red-300 disabled:opacity-50"><Trash2 size={16} /></button>
         </div>)}
       </div>}
-      <div className="mt-5 border-t border-[#2a5bb0]/45 pt-4">
+      <div className="mt-5 border-t border-[#3342d0]/45 pt-4">
         <h3 className="flex items-center gap-2 text-sm font-bold text-white"><Bell size={17} className="text-verde" /> Receber no Android</h3>
         <p className="mt-1 text-xs leading-relaxed text-gelo/70">Instale o Android Monitor CopaLinks e digite o código temporário de pareamento para associar o celular a este perfil. É necessário o Firebase configurado pelo administrador.</p>
         <button type="button" disabled={busy} onClick={() => void gerarPareamento()}
           className="mt-3 rounded-full border border-ciano/60 px-4 py-2 text-sm font-semibold text-ciano disabled:opacity-50">Gerar código para meu Android</button>
-        {pairing && <div role="status" className="mt-3 rounded-xl border border-verde/35 bg-[#0b2630] p-3">
+        {pairing && <div role="status" className="mt-3 rounded-xl border border-verde/35 bg-[#061a30] p-3">
           <p className="text-xs text-gelo/70">Digite no Android (uma vez só):</p>
           <p className="mt-1 break-all font-mono text-lg font-bold tracking-widest text-verde">{pairing.codigo}</p>
           <p className="mt-1 text-xs text-gelo/60">Vence em {new Date(pairing.expiraEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}. Não compartilhe.</p>
         </div>}
-        {aparelhos.filter((a) => a.ativo).map((a) => <div key={a.id} className="mt-2 flex items-center gap-2 rounded-xl border border-[#2a5bb0]/50 bg-[#06122b]/70 px-3 py-2 text-xs text-gelo/80">
+        {aparelhos.filter((a) => a.ativo).map((a) => <div key={a.id} className="mt-2 flex items-center gap-2 rounded-xl border border-[#3342d0]/50 bg-[#02042b]/70 px-3 py-2 text-xs text-gelo/80">
           <Smartphone size={15} className="shrink-0 text-verde" />
           <span className="min-w-0 flex-1 truncate">{a.nome || "Android pareado"}</span>
           <button type="button" disabled={busy} onClick={() => void testarAparelho(a.id)} className="rounded-full border border-ciano/50 px-3 py-1.5 font-semibold text-ciano disabled:opacity-50">Testar Firebase</button>
         </div>)}
         {resultadoTeste && <p role="status" className="mt-2 text-xs text-verde">{resultadoTeste}</p>}
       </div>
-      {!!avisos.length && <div className="mt-4 border-t border-[#2a5bb0]/45 pt-3">
+      {!!avisos.length && <div className="mt-4 border-t border-[#3342d0]/45 pt-3">
         <p className="mb-2 text-xs font-semibold text-gelo/75">Últimos envios ao Firebase (não confirma exibição no celular)</p>
         {avisos.slice(0, 4).map((a, i) => <p key={i} className="text-xs text-gelo/65">{a.codigo} · {a.status} · {new Date(a.criadoEm).toLocaleString("pt-BR")}</p>)}
       </div>}

@@ -42,13 +42,13 @@ const CORES: Record<CorServico, { cartao: string; icone: string }> = {
   },
   verde: {
     cartao:
-      "border-[#1fbf6a] bg-[linear-gradient(135deg,#0f4b33_0%,#0d3830_55%,#0b2630_100%)]",
+      "border-[#1fbf6a] bg-[linear-gradient(135deg,#084f3c_0%,#083b38_55%,#061a30_100%)]",
     icone: "bg-[#22c06d] shadow-[0_0_22px_-4px_rgba(34,192,109,0.8)]",
   },
   azul: {
     cartao:
-      "border-[#2f7fe0] bg-[linear-gradient(135deg,#153f80_0%,#10316a_55%,#0c2454_100%)]",
-    icone: "bg-[#2f8cf0] shadow-[0_0_22px_-4px_rgba(47,140,240,0.8)]",
+      "border-[#516de7] bg-[linear-gradient(135deg,#081887_0%,#061070_55%,#040958_100%)]",
+    icone: "bg-[#5376f4] shadow-[0_0_22px_-4px_rgba(83, 118, 244, 0.8)]",
   },
   vermelho: {
     cartao:
@@ -57,13 +57,13 @@ const CORES: Record<CorServico, { cartao: string; icone: string }> = {
   },
   turquesa: {
     cartao:
-      "border-[#1ba3b8] bg-[linear-gradient(135deg,#0f5166_0%,#0d3e56_55%,#0b2c45_100%)]",
-    icone: "bg-[#1aa6b8] shadow-[0_0_22px_-4px_rgba(26,166,184,0.8)]",
+      "border-[#1eaadd] bg-[linear-gradient(135deg,#05456b_0%,#04275b_55%,#041949_100%)]",
+    icone: "bg-[#1daede] shadow-[0_0_22px_-4px_rgba(29, 174, 222, 0.8)]",
   },
   indigo: {
     cartao:
-      "border-[#5b6cf0] bg-[linear-gradient(135deg,#232f7a_0%,#1b2560_55%,#141c48_100%)]",
-    icone: "bg-[#5b6cf0] shadow-[0_0_22px_-4px_rgba(91,108,240,0.8)]",
+      "border-[#7f87f5] bg-[linear-gradient(135deg,#2b329b_0%,#121764_55%,#0d114b_100%)]",
+    icone: "bg-[#7f87f5] shadow-[0_0_22px_-4px_rgba(127, 135, 245, 0.8)]",
   },
 };
 
@@ -126,7 +126,7 @@ export default function Servicos({
   const visiveis = mostrarTodos ? SERVICOS : SERVICOS.slice(0, 2);
   const temMais = SERVICOS.length > 2;
   return (
-    <section className="rounded-[26px] border border-[#1d4690]/60 bg-[#0a1c42]/70 p-4">
+    <section className="rounded-[26px] border border-[#222fb3]/60 bg-[#030845]/70 p-4">
       <header className="mb-4 flex items-center justify-between gap-3 px-1">
         <h2 className="flex items-center gap-3 font-display text-[22px] font-extrabold tracking-[0.02em] text-white uppercase">
           <LayoutGrid size={26} strokeWidth={2.2} className="text-gelo" />

@@ -155,7 +155,7 @@ export default function CartaoNotificacoesAdmin() {
   }
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
+    <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -181,7 +181,7 @@ export default function CartaoNotificacoesAdmin() {
       </button>
 
       {aberto && (
-        <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+        <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
           <div className="flex flex-wrap gap-2.5">
             <button
               type="button"

@@ -27,14 +27,14 @@ const LINHA: Record<Icone, typeof Cloud> = {
 
 const COR: Record<Icone, string> = {
   sol: "text-[#ffc83d]",
-  lua: "text-[#cfe0ff]",
-  "sol-nuvem": "text-[#9fd3ff]",
-  "lua-nuvem": "text-[#b9cff5]",
+  lua: "text-[#cfd3ff]",
+  "sol-nuvem": "text-[#9fb9ff]",
+  "lua-nuvem": "text-[#b9bff5]",
   nuvem: "text-white",
-  neblina: "text-[#c7d6ea]",
-  garoa: "text-[#5cc8ff]",
-  chuva: "text-[#38b6ff]",
-  "chuva-forte": "text-[#38b6ff]",
+  neblina: "text-[#c7cdea]",
+  garoa: "text-[#5c9dff]",
+  chuva: "text-[#619bff]",
+  "chuva-forte": "text-[#619bff]",
   tempestade: "text-[#ffd24a]",
 };
 
@@ -65,16 +65,16 @@ export function IconeGrande({ icone, className = "" }: { icone: Icone; className
       <defs>
         <radialGradient id="ig-nuvem" cx="40%" cy="30%" r="75%">
           <stop offset="0" stopColor="#ffffff" />
-          <stop offset="0.45" stopColor="#bfe3ff" />
-          <stop offset="1" stopColor="#3f8fe0" />
+          <stop offset="0.45" stopColor="#bfd2ff" />
+          <stop offset="1" stopColor="#6180e7" />
         </radialGradient>
         <radialGradient id="ig-sol" cx="40%" cy="35%" r="70%">
           <stop offset="0" stopColor="#fff3b0" />
           <stop offset="1" stopColor="#ffb300" />
         </radialGradient>
         <linearGradient id="ig-gota" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#6fe0ff" />
-          <stop offset="1" stopColor="#1e88f0" />
+          <stop offset="0" stopColor="#6fcdff" />
+          <stop offset="1" stopColor="#436df4" />
         </linearGradient>
         <filter id="ig-brilho" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="4" />
@@ -91,14 +91,14 @@ export function IconeGrande({ icone, className = "" }: { icone: Icone; className
         <g transform={soAstro ? "translate(70 62)" : "translate(94 38)"}>
           <path
             d={soAstro ? "M10 -30 A30 30 0 1 0 30 12 A24 24 0 1 1 10 -30 Z" : "M6 -20 A20 20 0 1 0 20 8 A16 16 0 1 1 6 -20 Z"}
-            fill="#dce8ff"
+            fill="#dcdfff"
           />
         </g>
       )}
 
       {!soAstro && (
         <g>
-          <ellipse cx="66" cy="66" rx="52" ry="30" fill="#6fc0ff" opacity="0.35" filter="url(#ig-brilho)" />
+          <ellipse cx="66" cy="66" rx="52" ry="30" fill="#6f9aff" opacity="0.35" filter="url(#ig-brilho)" />
           <path
             d="M34 82 C18 82 12 70 16 60 C20 50 32 47 40 50 C42 34 56 24 71 26 C86 28 96 40 96 52 C108 50 120 58 120 70 C120 80 112 86 102 86 L40 86 C38 86 36 84 34 82 Z"
             fill="url(#ig-nuvem)"
@@ -123,7 +123,7 @@ export function IconeGrande({ icone, className = "" }: { icone: Icone; className
 
       {nevoa &&
         [98, 108, 118].map((y, i) => (
-          <path key={y} d={`M${24 + i * 6} ${y} H${118 - i * 8}`} stroke="#cfe0f5" strokeWidth="6" strokeLinecap="round" opacity={0.9 - i * 0.2} />
+          <path key={y} d={`M${24 + i * 6} ${y} H${118 - i * 8}`} stroke="#cfd6f5" strokeWidth="6" strokeLinecap="round" opacity={0.9 - i * 0.2} />
         ))}
     </svg>
   );

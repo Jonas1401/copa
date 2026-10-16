@@ -68,15 +68,15 @@ const TAMANHO_MAX_MIDIA = 4 * 1024 * 1024;
 const FUSO = "America/Sao_Paulo";
 
 const CORES_NOME = [
-  "text-[#6fe7df]",
+  "text-[#8ce7ed]",
   "text-[#ffc83d]",
   "text-[#b98cf5]",
   "text-[#ff9f43]",
   "text-[#35e08a]",
-  "text-[#7fb6f0]",
+  "text-[#7f98f0]",
   "text-[#ff7a90]",
 ];
-const FUNDOS_AVATAR = ["#155c88", "#38528e", "#60458e", "#1c746c", "#8a572b", "#345c75", "#8a4057"];
+const FUNDOS_AVATAR = ["#194dad", "#434aac", "#60458e", "#11757a", "#8a572b", "#405c92", "#8a4057"];
 const ALTURAS_ONDA = [5, 9, 14, 8, 18, 11, 6, 15, 22, 10, 17, 7, 13, 20, 9, 16, 6, 12, 19, 8, 14, 22, 10, 17, 7, 13, 19, 9, 15, 6, 12, 18];
 
 const diaDe = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: FUSO });
@@ -108,11 +108,11 @@ function AvatarCopa({ tamanho = 42, classe = "", robo = false }: { tamanho?: num
     <span
       role="img"
       aria-label={robo ? "Robô oficial do CopaLinks" : "CopaLinks"}
-      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full border border-[#73b6ff]/45 bg-[#061b3b] shadow-[0_0_16px_-8px_rgba(75,164,255,.9)] ${classe}`}
+      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full border border-[#7391ff]/45 bg-[#00083e] shadow-[0_0_16px_-8px_rgba(116, 148, 255, .9)] ${classe}`}
       style={{ width: tamanho, height: tamanho }}
     >
       {robo ? (
-        <span className="grid h-full w-full place-items-center bg-[radial-gradient(circle_at_35%_25%,#1c61a1,#071b3b_72%)] text-[#9bdcff]">
+        <span className="grid h-full w-full place-items-center bg-[radial-gradient(circle_at_35%_25%,#204ac5,#01083e_72%)] text-[#9bc1ff]">
           <Bot size={Math.round(tamanho * 0.53)} strokeWidth={1.9} />
         </span>
       ) : (
@@ -134,7 +134,7 @@ function AvatarMotorista({ nome, id, tamanho = 34 }: { nome: string; id: number;
     <span
       aria-label={`Avatar de ${nome}`}
       className="grid shrink-0 place-items-center rounded-full border border-white/15 font-display font-extrabold text-white shadow-[inset_0_1px_0_rgba(255,255,255,.16)]"
-      style={{ width: tamanho, height: tamanho, background: `linear-gradient(145deg, ${fundo}, #092044)`, fontSize: Math.max(11, tamanho * 0.34) }}
+      style={{ width: tamanho, height: tamanho, background: `linear-gradient(145deg, ${fundo}, #020b48)`, fontSize: Math.max(11, tamanho * 0.34) }}
     >
       {iniciais}
     </span>
@@ -780,15 +780,15 @@ export default function ChatMotoristas({
         height: alturaVisual ? `${alturaVisual.altura}px` : "100dvh",
       }}
     >
-      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(115%_48%_at_50%_0%,rgba(44,126,230,.27),transparent_68%)]" />
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(115%_48%_at_50%_0%,rgba(79, 106, 236, .27),transparent_68%)]" />
 
-      <header className="largura-aparelho relative z-20 w-full shrink-0 border-b border-[#1d4690]/60 px-3 pb-2.5 pt-[max(8px,env(safe-area-inset-top))] sm:px-5">
+      <header className="largura-aparelho relative z-20 w-full shrink-0 border-b border-[#222fb3]/60 px-3 pb-2.5 pt-[max(8px,env(safe-area-inset-top))] sm:px-5">
         <div className="flex min-h-[54px] items-center gap-2">
           <button
             type="button"
             onClick={onFechar}
             aria-label="Voltar para o CopaLinks"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-[#061b3b]/75 text-white transition-colors hover:border-[#6fe7df]/50 hover:bg-[#0c2a4a]"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-[#00083e]/75 text-white transition-colors hover:border-[#8ce7ed]/50 hover:bg-[#05154e]"
           >
             <ArrowLeft size={21} strokeWidth={2.3} />
           </button>
@@ -798,7 +798,7 @@ export default function ChatMotoristas({
             <p className="mt-0.5 flex min-w-0 items-center justify-center gap-1 truncate text-[11px] leading-tight text-gelo/65 sm:text-[12px]">
               <span className="truncate">Recados sobre o trabalho</span>
               <span className="shrink-0 text-gelo/30">·</span>
-              <Users size={11} className="shrink-0 text-[#7fb6f0]" />
+              <Users size={11} className="shrink-0 text-[#7f98f0]" />
               <span className="shrink-0">{participantes === null ? "motoristas" : `${participantes} motorista${participantes === 1 ? "" : "s"}`}</span>
             </p>
           </div>
@@ -809,7 +809,7 @@ export default function ChatMotoristas({
             aria-pressed={silenciado}
             aria-label={silenciado ? "Ativar notificações do chat" : "Silenciar notificações do chat"}
             title={silenciado ? "Ativar notificações do chat" : "Silenciar notificações do chat"}
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-45 ${silenciado ? "border-amber-300/20 bg-amber-400/10 text-amber-200" : "border-white/10 bg-[#061b3b]/75 text-gelo/90 hover:border-[#6fe7df]/45 hover:text-ciano"}`}
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-45 ${silenciado ? "border-amber-300/20 bg-amber-400/10 text-amber-200" : "border-white/10 bg-[#00083e]/75 text-gelo/90 hover:border-[#8ce7ed]/45 hover:text-ciano"}`}
           >
             {silenciado ? <BellOff size={18} /> : <Bell size={18} />}
           </button>
@@ -819,22 +819,22 @@ export default function ChatMotoristas({
               onClick={() => setMenuAberto((aberto) => !aberto)}
               aria-expanded={menuAberto}
               aria-label="Mais opções do chat"
-              className={`grid h-10 w-10 place-items-center rounded-full border transition-colors ${menuAberto ? "border-[#6fe7df]/50 bg-[#0b2152] text-ciano" : "border-white/10 bg-[#061b3b]/75 text-gelo/90 hover:border-[#6fe7df]/45 hover:text-ciano"}`}
+              className={`grid h-10 w-10 place-items-center rounded-full border transition-colors ${menuAberto ? "border-[#8ce7ed]/50 bg-[#030856] text-ciano" : "border-white/10 bg-[#00083e]/75 text-gelo/90 hover:border-[#8ce7ed]/45 hover:text-ciano"}`}
             >
               <EllipsisVertical size={20} />
             </button>
             {menuAberto && (
-              <div role="menu" className="absolute right-0 top-[48px] z-30 w-[236px] overflow-hidden rounded-[20px] border border-[#3972bb]/50 bg-[#071b3a]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl">
+              <div role="menu" className="absolute right-0 top-[48px] z-30 w-[236px] overflow-hidden rounded-[20px] border border-[#5166cc]/50 bg-[#01093d]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl">
                 <button type="button" role="menuitem" onClick={() => void atualizarAgora()} className="flex min-h-11 w-full items-center gap-3 rounded-[14px] px-3 text-left text-[13px] font-semibold text-gelo/90 hover:bg-white/[.07]">
-                  <RefreshCw size={16} className="text-[#7fb6f0]" /> Atualizar conversa
+                  <RefreshCw size={16} className="text-[#7f98f0]" /> Atualizar conversa
                 </button>
                 <button type="button" role="menuitem" onClick={() => { setMenuAberto(false); void alternarSilencio(); }} disabled={!motorista} className="flex min-h-11 w-full items-center gap-3 rounded-[14px] px-3 text-left text-[13px] font-semibold text-gelo/90 hover:bg-white/[.07] disabled:opacity-45">
-                  {silenciado ? <Bell size={16} className="text-ciano" /> : <BellOff size={16} className="text-[#7fb6f0]" />}
+                  {silenciado ? <Bell size={16} className="text-ciano" /> : <BellOff size={16} className="text-[#7f98f0]" />}
                   {silenciado ? "Ativar notificações" : "Silenciar notificações"}
                 </button>
                 <div className="my-1 h-px bg-white/[.08]" />
                 <button type="button" role="menuitem" onClick={() => { setMenuAberto(false); setInfoAberta(true); }} className="flex min-h-11 w-full items-center gap-3 rounded-[14px] px-3 text-left text-[13px] font-semibold text-gelo/90 hover:bg-white/[.07]">
-                  <Info size={16} className="text-[#7fb6f0]" /> Sobre este grupo
+                  <Info size={16} className="text-[#7f98f0]" /> Sobre este grupo
                 </button>
               </div>
             )}
@@ -848,7 +848,7 @@ export default function ChatMotoristas({
           type="button"
           onClick={() => setIaAberta(true)}
           aria-label="Abrir conversa com a Assistente IA"
-          className="group relative flex min-h-[78px] w-full items-center gap-3 overflow-hidden rounded-[22px] border border-[#a271ff]/40 bg-[linear-gradient(112deg,#211344_0%,#32175c_52%,#18275d_100%)] px-3.5 py-3 text-left shadow-[0_10px_32px_-22px_rgba(139,61,255,.85),inset_0_1px_0_rgba(255,255,255,.09)] transition duration-200 hover:border-[#b98cf5]/70 hover:shadow-[0_12px_34px_-18px_rgba(139,61,255,.75)] active:scale-[.99] sm:px-4"
+          className="group relative flex min-h-[78px] w-full items-center gap-3 overflow-hidden rounded-[22px] border border-[#a271ff]/40 bg-[linear-gradient(112deg,#211344_0%,#32175c_52%,#0f1461_100%)] px-3.5 py-3 text-left shadow-[0_10px_32px_-22px_rgba(139,61,255,.85),inset_0_1px_0_rgba(255,255,255,.09)] transition duration-200 hover:border-[#b98cf5]/70 hover:shadow-[0_12px_34px_-18px_rgba(139,61,255,.75)] active:scale-[.99] sm:px-4"
         >
           <span aria-hidden className="pointer-events-none absolute -right-8 -top-16 h-36 w-36 rounded-full bg-[#8b3dff]/15 blur-2xl" />
           <span className="relative grid h-[48px] w-[48px] shrink-0 place-items-center rounded-[17px] border border-white/15 bg-[linear-gradient(145deg,#8b3dff,#5f43c2)] text-white shadow-[0_0_24px_-8px_rgba(139,61,255,.9)]">
@@ -882,18 +882,18 @@ export default function ChatMotoristas({
           <div className="mx-auto flex min-h-full w-full max-w-[728px] flex-col py-3.5 sm:py-5">
             {!carregado && msgs.length === 0 && (
               <div className="flex flex-1 items-center justify-center py-12 text-center text-[13px] text-gelo/55">
-                <span className="inline-flex items-center gap-2"><LoaderCircle size={17} className="animate-spin text-[#7fb6f0]" /> Carregando recados…</span>
+                <span className="inline-flex items-center gap-2"><LoaderCircle size={17} className="animate-spin text-[#7f98f0]" /> Carregando recados…</span>
               </div>
             )}
             {carregado && msgs.length === 0 && (
-              <div className="my-auto rounded-[25px] border border-[#2a5bb0]/55 bg-[linear-gradient(145deg,rgba(12,38,83,.78),rgba(5,20,49,.72))] px-5 py-7 text-center shadow-[inset_0_1px_0_rgba(255,255,255,.06)] sm:px-8">
-                <span className="mx-auto grid h-[58px] w-[58px] place-items-center rounded-[20px] border border-[#6fe7df]/20 bg-[#2f8cf0]/15 text-[#8dd8ff]">
+              <div className="my-auto rounded-[25px] border border-[#3342d0]/55 bg-[linear-gradient(145deg,rgba(4, 12, 87, .78),rgba(0, 4, 50, .72))] px-5 py-7 text-center shadow-[inset_0_1px_0_rgba(255,255,255,.06)] sm:px-8">
+                <span className="mx-auto grid h-[58px] w-[58px] place-items-center rounded-[20px] border border-[#8ce7ed]/20 bg-[#5376f4]/15 text-[#8dbaff]">
                   <Waves size={27} />
                 </span>
                 <h3 className="mt-4 font-display text-[17px] font-extrabold text-white">A conversa começa aqui</h3>
                 <p className="mx-auto mt-1.5 max-w-[330px] text-[13.5px] leading-relaxed text-gelo/70">Compartilhe uma informação da estrada, da fila ou do porto com os motoristas do CopaLinks.</p>
                 {motorista && (
-                  <button type="button" onClick={() => campo.current?.focus()} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-[#6fe7df]/30 bg-[#2f8cf0]/10 px-4 text-[12.5px] font-bold text-[#a7e6ff] transition-colors hover:bg-[#2f8cf0]/20">
+                  <button type="button" onClick={() => campo.current?.focus()} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-[#8ce7ed]/30 bg-[#5376f4]/10 px-4 text-[12.5px] font-bold text-[#a7cfff] transition-colors hover:bg-[#5376f4]/20">
                     <Send size={14} /> Enviar o primeiro recado
                   </button>
                 )}
@@ -931,31 +931,31 @@ export default function ChatMotoristas({
                 <div key={mensagem.id} className={`${recuo}${listaReacoes.length ? " mb-3" : ""}`}>
                   {novoDia && (
                     <div className="my-2.5 flex justify-center">
-                      <span className="rounded-full border border-white/[.06] bg-[#071b3b]/85 px-3.5 py-1 text-[11px] font-bold capitalize tracking-wide text-gelo/65 shadow-sm">
+                      <span className="rounded-full border border-white/[.06] bg-[#01083e]/85 px-3.5 py-1 text-[11px] font-bold capitalize tracking-wide text-gelo/65 shadow-sm">
                         {rotuloDia(diaDe(mensagem.criadoEm))}
                       </span>
                     </div>
                   )}
                   {sistema ? (
                     <div className={`flex max-w-full items-end gap-2 ${oficial ? "" : "opacity-95"}`}>
-                      <AvatarCopa tamanho={35} robo={oficial} classe={oficial ? "border-[#6fb8ff]/55" : "border-white/10 opacity-85"} />
+                      <AvatarCopa tamanho={35} robo={oficial} classe={oficial ? "border-[#6f92ff]/55" : "border-white/10 opacity-85"} />
                       <div
                         className="relative min-w-0 max-w-[80%]"
                         data-reacao-area
                         onDoubleClick={() => { if (motorista) void reagir(mensagem, "👍"); }}
                         title={motorista ? "Toque duas vezes para curtir com 👍" : undefined}
                       >
-                        <div className={`relative min-w-0 w-fit max-w-full overflow-hidden rounded-[20px] border px-3 pt-2.5 pb-2 ${oficial ? "border-[#3477c1]/55 bg-[linear-gradient(135deg,rgba(11,38,83,.98),rgba(7,25,58,.96))] shadow-[0_10px_26px_-24px_rgba(65,158,255,.8)]" : "border-[#2a5bb0]/45 bg-[#091d43]/85"}`}>
-                          {oficial && <span aria-hidden className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#6fe7df,#2f8cf0)]" />}
+                        <div className={`relative min-w-0 w-fit max-w-full overflow-hidden rounded-[20px] border px-3 pt-2.5 pb-2 ${oficial ? "border-[#4d69d1]/55 bg-[linear-gradient(135deg,rgba(3, 12, 87, .98),rgba(1, 6, 61, .96))] shadow-[0_10px_26px_-24px_rgba(106, 139, 255, .8)]" : "border-[#3342d0]/45 bg-[#020847]/85"}`}>
+                          {oficial && <span aria-hidden className="absolute inset-y-3 left-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#8ce7ed,#5376f4)]" />}
                           <div className="flex items-center gap-1.5 pl-1">
                             {oficial ? (
                               <>
                                 <span className="font-display text-[13px] font-extrabold text-white">CopaLinks</span>
-                                <BadgeCheck size={15} className="fill-[#2f8cf0] text-white" aria-label="Conta oficial verificada" />
-                                <span className="ml-auto rounded-full border border-[#6fe7df]/20 bg-[#2f8cf0]/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[.13em] text-[#9bdaff]">Oficial</span>
+                                <BadgeCheck size={15} className="fill-[#5376f4] text-white" aria-label="Conta oficial verificada" />
+                                <span className="ml-auto rounded-full border border-[#8ce7ed]/20 bg-[#5376f4]/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[.13em] text-[#9bbfff]">Oficial</span>
                               </>
                             ) : (
-                              <span className="font-display text-[12.5px] font-bold text-[#9bc5f1]">{mensagem.nome}</span>
+                              <span className="font-display text-[12.5px] font-bold text-[#9baef1]">{mensagem.nome}</span>
                             )}
                           </div>
                           <div className="mt-1 flex flex-wrap items-end gap-x-2 pl-1">
@@ -980,9 +980,9 @@ export default function ChatMotoristas({
                         data-reacao-area
                         onDoubleClick={() => { if (motorista) void reagir(mensagem, "👍"); }}
                         title={motorista ? "Toque duas vezes para curtir com 👍" : undefined}
-                        className={`${classesLargura} relative min-w-0 rounded-[20px] border shadow-[0_8px_22px_-20px_rgba(0,0,0,.9)] ${temMidia ? "px-2.5 pt-2.5 pb-2" : "px-3 pt-2.5 pb-2"} ${meu ? "border-[#4c92e8]/45 bg-[linear-gradient(145deg,rgba(19,64,129,.93),rgba(10,43,91,.95))]" : "border-[#2a5bb0]/55 bg-[linear-gradient(145deg,rgba(10,31,70,.97),rgba(7,24,57,.96))]"}`}
+                        className={`${classesLargura} relative min-w-0 rounded-[20px] border shadow-[0_8px_22px_-20px_rgba(0,0,0,.9)] ${temMidia ? "px-2.5 pt-2.5 pb-2" : "px-3 pt-2.5 pb-2"} ${meu ? "border-[#6f86ee]/45 bg-[linear-gradient(145deg,rgba(6, 25, 136, .93),rgba(1, 14, 96, .95))]" : "border-[#3342d0]/55 bg-[linear-gradient(145deg,rgba(3, 9, 74, .97),rgba(1, 6, 60, .96))]"}`}
                       >
-                        {!seguida && <div className={`mb-1 font-display text-[12px] leading-tight font-extrabold ${meu ? "text-[#a9dbff]" : CORES_NOME[Math.abs(mensagem.motoristaId) % CORES_NOME.length]}`}>{meu ? "Você" : mensagem.nome}</div>}
+                        {!seguida && <div className={`mb-1 font-display text-[12px] leading-tight font-extrabold ${meu ? "text-[#a9c4ff]" : CORES_NOME[Math.abs(mensagem.motoristaId) % CORES_NOME.length]}`}>{meu ? "Você" : mensagem.nome}</div>}
                         {temAudio ? (
                           <>
                             <PlayerAudio mensagem={mensagem} />
@@ -1002,8 +1002,8 @@ export default function ChatMotoristas({
                           </>
                         ) : temArquivo && mensagem.mediaUrl ? (
                           <>
-                            <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-[14px] border border-[#6fa7e7]/20 bg-[#071b3b]/65 p-2.5 transition-colors hover:bg-[#0d2b58]">
-                              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-[#2f8cf0]/15 text-[#9bd7ff]"><FileText size={19} /></span>
+                            <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-[14px] border border-[#8ca0ed]/20 bg-[#01083e]/65 p-2.5 transition-colors hover:bg-[#04105d]">
+                              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-[#5376f4]/15 text-[#9bbcff]"><FileText size={19} /></span>
                               <span className="min-w-0 flex-1"><span className="block truncate text-[12.5px] font-bold text-white">{mensagem.mediaNome || "Arquivo"}</span><span className="mt-0.5 block text-[10.5px] text-gelo/50">Toque para abrir ou baixar</span></span>
                               <ExternalLink size={15} className="shrink-0 text-gelo/45" />
                             </a>
@@ -1040,21 +1040,21 @@ export default function ChatMotoristas({
           </div>
         </div>
         {mensagensNovas > 0 && (
-          <button type="button" onClick={irParaUltimaMensagem} className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-[#6fe7df]/35 bg-[#092451]/95 px-4 py-2.5 text-[12px] font-extrabold text-white shadow-[0_12px_26px_-12px_rgba(0,0,0,.8)] backdrop-blur-lg">
-            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#2f8cf0] px-1 tabular text-[10px]">{mensagensNovas > 9 ? "9+" : mensagensNovas}</span>
+          <button type="button" onClick={irParaUltimaMensagem} className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-[#8ce7ed]/35 bg-[#010a55]/95 px-4 py-2.5 text-[12px] font-extrabold text-white shadow-[0_12px_26px_-12px_rgba(0,0,0,.8)] backdrop-blur-lg">
+            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#5376f4] px-1 tabular text-[10px]">{mensagensNovas > 9 ? "9+" : mensagensNovas}</span>
             Nova mensagem
             <ChevronRight size={14} className="rotate-90 text-ciano" />
           </button>
         )}
       </main>
 
-      <footer className="relative z-20 w-full shrink-0 border-t border-[#1d4690]/60 bg-[#06122b]/[.96] px-3 pt-2.5 backdrop-blur-xl sm:px-5" style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+      <footer className="relative z-20 w-full shrink-0 border-t border-[#222fb3]/60 bg-[#02042b]/[.96] px-3 pt-2.5 backdrop-blur-xl sm:px-5" style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
         <div className="largura-aparelho">
           {erro && motorista && <p role="alert" className="mb-1.5 rounded-xl border border-amber-300/20 bg-amber-300/[.07] px-3 py-2 text-[12px] leading-snug text-amber-100/90">{erro}</p>}
-          {aviso && <p role="status" className="mb-1.5 flex items-center gap-2 rounded-xl border border-[#6fe7df]/15 bg-[#2f8cf0]/[.08] px-3 py-1.5 text-[11.5px] text-[#b7e5ff]"><Check size={14} />{aviso}</p>}
+          {aviso && <p role="status" className="mb-1.5 flex items-center gap-2 rounded-xl border border-[#8ce7ed]/15 bg-[#5376f4]/[.08] px-3 py-1.5 text-[11.5px] text-[#b7d2ff]"><Check size={14} />{aviso}</p>}
 
           {painel === "anexos" && (
-            <div className="mb-2.5 rounded-[19px] border border-[#2a5bb0]/55 bg-[#081d40]/[.98] p-2.5 shadow-[0_12px_30px_-20px_rgba(0,0,0,.8)]">
+            <div className="mb-2.5 rounded-[19px] border border-[#3342d0]/55 bg-[#020943]/[.98] p-2.5 shadow-[0_12px_30px_-20px_rgba(0,0,0,.8)]">
               <div className="mb-2 flex items-center justify-between px-1">
                 <span className="font-display text-[12px] font-extrabold text-white">Compartilhar com o grupo</span>
                 <button type="button" onClick={() => setPainel(null)} aria-label="Fechar menu de anexos" className="grid h-8 w-8 place-items-center rounded-full text-gelo/55 hover:bg-white/10 hover:text-white"><X size={16} /></button>
@@ -1070,10 +1070,10 @@ export default function ChatMotoristas({
           )}
 
           {(painel === "emojis" || painel === "figurinhas") && (
-            <div className="mb-2.5 rounded-[20px] border border-[#2a5bb0]/60 bg-[#081d40]/[.98] p-2.5 shadow-[0_12px_30px_-20px_rgba(0,0,0,.8)]">
+            <div className="mb-2.5 rounded-[20px] border border-[#3342d0]/60 bg-[#020943]/[.98] p-2.5 shadow-[0_12px_30px_-20px_rgba(0,0,0,.8)]">
               <div className="mb-2 flex gap-1.5" role="tablist" aria-label="Emojis e figurinhas">
                 {(["emojis", "figurinhas"] as const).map((aba) => (
-                  <button key={aba} type="button" role="tab" aria-selected={painel === aba} onClick={() => setPainel(aba)} className={`flex-1 rounded-full px-3 py-2 text-[12px] font-extrabold transition-colors ${painel === aba ? "bg-[#2f7fe8] text-white" : "bg-white/[.05] text-gelo/65 hover:bg-white/10"}`}>
+                  <button key={aba} type="button" role="tab" aria-selected={painel === aba} onClick={() => setPainel(aba)} className={`flex-1 rounded-full px-3 py-2 text-[12px] font-extrabold transition-colors ${painel === aba ? "bg-[#526cee] text-white" : "bg-white/[.05] text-gelo/65 hover:bg-white/10"}`}>
                     {aba === "emojis" ? "😀 Emojis" : "🚛 Figurinhas"}
                   </button>
                 ))}
@@ -1109,7 +1109,7 @@ export default function ChatMotoristas({
               disabled={!motorista || enviando || enviandoMidia || gravando}
               aria-label={painel === "anexos" ? "Fechar anexos" : "Adicionar anexo"}
               aria-expanded={painel === "anexos"}
-              className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-40 ${painel === "anexos" ? "rotate-45 border-[#6fe7df]/40 bg-[#2f8cf0]/20 text-ciano" : "border-white/10 bg-white/[.07] text-gelo/90 hover:border-[#6fe7df]/35 hover:bg-white/10"}`}
+              className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full border transition-colors disabled:opacity-40 ${painel === "anexos" ? "rotate-45 border-[#8ce7ed]/40 bg-[#5376f4]/20 text-ciano" : "border-white/10 bg-white/[.07] text-gelo/90 hover:border-[#8ce7ed]/35 hover:bg-white/10"}`}
             >
               <Plus size={23} strokeWidth={2.1} />
             </button>
@@ -1124,7 +1124,7 @@ export default function ChatMotoristas({
                 <button type="button" onClick={() => encerrarGravacao(false)} aria-label="Cancelar gravação" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[.07] text-gelo/75 hover:bg-white/15 hover:text-white"><X size={17} /></button>
               </div>
             ) : solicitandoMicrofone ? (
-              <div className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2 rounded-[22px] border border-[#2a5bb0]/55 bg-[#0b2152]/75 px-4 text-[12.5px] text-gelo/65"><LoaderCircle size={16} className="animate-spin text-ciano" /> Aguardando acesso ao microfone…</div>
+              <div className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2 rounded-[22px] border border-[#3342d0]/55 bg-[#030856]/75 px-4 text-[12.5px] text-gelo/65"><LoaderCircle size={16} className="animate-spin text-ciano" /> Aguardando acesso ao microfone…</div>
             ) : (
               <div className="relative min-w-0 flex-1">
                 <textarea
@@ -1141,7 +1141,7 @@ export default function ChatMotoristas({
                   disabled={!motorista || enviando || enviandoMidia}
                   placeholder={motorista ? "Escreva um recado para os motoristas…" : "Cadastre seu nome para participar…"}
                   aria-label="Mensagem para o chat dos motoristas"
-                  className="barra-rolagem block max-h-[112px] min-h-[52px] w-full resize-none rounded-[23px] border border-[#2a5bb0]/75 bg-[#0b2152]/80 py-[15px] pl-4 pr-[76px] text-[13px] leading-[20px] text-white outline-none transition-colors placeholder:text-gelo/40 focus:border-[#6fe7df]/65 focus:ring-2 focus:ring-[#6fe7df]/10 disabled:opacity-50 sm:text-[14px]"
+                  className="barra-rolagem block max-h-[112px] min-h-[52px] w-full resize-none rounded-[23px] border border-[#3342d0]/75 bg-[#030856]/80 py-[15px] pl-4 pr-[76px] text-[13px] leading-[20px] text-white outline-none transition-colors placeholder:text-gelo/40 focus:border-[#8ce7ed]/65 focus:ring-2 focus:ring-[#8ce7ed]/10 disabled:opacity-50 sm:text-[14px]"
                 />
                 <div className="absolute right-1.5 bottom-1.5 flex items-center gap-0.5">
                   <button type="button" onClick={() => setPainel((atual) => atual === "emojis" ? null : "emojis")} disabled={!motorista || enviando || enviandoMidia} aria-label="Abrir emojis" aria-expanded={painel === "emojis" || painel === "figurinhas"} className={`grid h-9 w-8 place-items-center rounded-full transition-colors disabled:opacity-35 ${painel === "emojis" || painel === "figurinhas" ? "text-ciano" : "text-gelo/55 hover:bg-white/[.07] hover:text-gelo"}`}>
@@ -1154,7 +1154,7 @@ export default function ChatMotoristas({
             )}
 
             {gravando ? (
-              <button type="button" onClick={() => encerrarGravacao(true)} aria-label="Enviar gravação de áudio" className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-[#2f8cf0] text-white shadow-[0_0_22px_-7px_rgba(47,140,240,.9)] transition-transform hover:scale-[1.03] active:scale-95"><Send size={19} strokeWidth={2.3} /></button>
+              <button type="button" onClick={() => encerrarGravacao(true)} aria-label="Enviar gravação de áudio" className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full bg-[#5376f4] text-white shadow-[0_0_22px_-7px_rgba(83, 118, 244, .9)] transition-transform hover:scale-[1.03] active:scale-95"><Send size={19} strokeWidth={2.3} /></button>
             ) : (
               <button
                 type="button"
@@ -1162,7 +1162,7 @@ export default function ChatMotoristas({
                 disabled={!motorista || enviando || enviandoMidia || solicitandoMicrofone || (!texto.trim() && !carregado)}
                 aria-label={texto.trim() ? "Enviar mensagem" : enviandoMidia ? "Enviando anexo" : "Gravar áudio"}
                 title={texto.trim() ? "Enviar mensagem" : "Gravar áudio"}
-                className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full text-white transition-all disabled:opacity-40 ${texto.trim() ? "bg-[linear-gradient(145deg,#39a5ff,#236dd0)] shadow-[0_0_22px_-8px_rgba(55,165,255,.85)]" : "bg-[linear-gradient(145deg,#2f8cf0,#2366c5)] shadow-[0_0_22px_-7px_rgba(47,140,240,.85)] hover:shadow-[0_0_26px_-6px_rgba(47,140,240,.9)]"}`}
+                className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full text-white transition-all disabled:opacity-40 ${texto.trim() ? "bg-[linear-gradient(145deg,#628eff,#3c56e0)] shadow-[0_0_22px_-8px_rgba(96, 141, 255, .85)]" : "bg-[linear-gradient(145deg,#5376f4,#344ddd)] shadow-[0_0_22px_-7px_rgba(83, 118, 244, .85)] hover:shadow-[0_0_26px_-6px_rgba(83, 118, 244, .9)]"}`}
               >
                 {enviando || enviandoMidia ? <LoaderCircle size={20} className="animate-spin" /> : texto.trim() ? <Send size={19} strokeWidth={2.3} /> : <Mic size={20} strokeWidth={2.2} />}
               </button>
@@ -1170,7 +1170,7 @@ export default function ChatMotoristas({
           </form>
 
           <div className="mt-1.5 flex min-h-[17px] items-center justify-center gap-1.5 pb-0.5 text-center text-[10.5px] leading-tight text-gelo/45 sm:text-[11px]">
-            <Users size={12} className="shrink-0 text-[#7fb6f0]/70" />
+            <Users size={12} className="shrink-0 text-[#7f98f0]/70" />
             <span>Aparece para todos os motoristas do CopaLinks</span>
           </div>
 
@@ -1182,15 +1182,15 @@ export default function ChatMotoristas({
       </footer>
 
       {infoAberta && (
-        <div className="absolute inset-0 z-[68] flex items-end justify-center bg-[#020a19]/70 p-3 backdrop-blur-sm sm:items-center" onClick={() => setInfoAberta(false)}>
-          <section role="dialog" aria-modal="true" aria-label="Sobre o chat dos motoristas" onClick={(evento) => evento.stopPropagation()} className="largura-aparelho relative overflow-hidden rounded-[26px] border border-[#3877c1]/45 bg-[linear-gradient(150deg,#0b2858,#071a3b_70%)] p-5 shadow-[0_24px_80px_-30px_rgba(0,0,0,.9)] sm:max-w-[440px]">
+        <div className="absolute inset-0 z-[68] flex items-end justify-center bg-[#000219]/70 p-3 backdrop-blur-sm sm:items-center" onClick={() => setInfoAberta(false)}>
+          <section role="dialog" aria-modal="true" aria-label="Sobre o chat dos motoristas" onClick={(evento) => evento.stopPropagation()} className="largura-aparelho relative overflow-hidden rounded-[26px] border border-[#536bcf]/45 bg-[linear-gradient(150deg,#020c5d,#01073e_70%)] p-5 shadow-[0_24px_80px_-30px_rgba(0,0,0,.9)] sm:max-w-[440px]">
             <button type="button" onClick={() => setInfoAberta(false)} aria-label="Fechar detalhes" className="absolute top-3 right-3 grid h-9 w-9 place-items-center rounded-full bg-white/[.06] text-gelo/70 hover:bg-white/10 hover:text-white"><X size={18} /></button>
             <div className="flex items-center gap-3 pr-9"><AvatarCopa tamanho={48} /><div><h3 className="font-display text-[17px] font-extrabold text-white">Chat dos motoristas</h3><p className="mt-0.5 text-[11.5px] text-gelo/55">Comunidade CopaLinks · Paranaguá</p></div></div>
             <div className="mt-4 space-y-2.5">
-              <p className="flex items-start gap-2.5 rounded-[15px] bg-white/[.04] px-3 py-3 text-[12.5px] leading-relaxed text-gelo/80"><Users size={16} className="mt-0.5 shrink-0 text-[#7fb6f0]" />{participantes === null ? "Motoristas CopaLinks" : `${participantes} motorista${participantes === 1 ? "" : "s"}`} na comunidade. Seus recados podem ser vistos por todos.</p>
+              <p className="flex items-start gap-2.5 rounded-[15px] bg-white/[.04] px-3 py-3 text-[12.5px] leading-relaxed text-gelo/80"><Users size={16} className="mt-0.5 shrink-0 text-[#7f98f0]" />{participantes === null ? "Motoristas CopaLinks" : `${participantes} motorista${participantes === 1 ? "" : "s"}`} na comunidade. Seus recados podem ser vistos por todos.</p>
               <p className="flex items-start gap-2.5 rounded-[15px] bg-white/[.04] px-3 py-3 text-[12.5px] leading-relaxed text-gelo/80"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-ciano" />As mensagens ficam disponíveis por até 7 dias. Áudios e anexos são armazenados junto da mensagem.</p>
             </div>
-            <button type="button" onClick={() => setInfoAberta(false)} className="mt-4 min-h-11 w-full rounded-full bg-[#2f8cf0] font-display text-[13px] font-extrabold text-white shadow-[0_8px_24px_-12px_rgba(47,140,240,.9)]">Entendi</button>
+            <button type="button" onClick={() => setInfoAberta(false)} className="mt-4 min-h-11 w-full rounded-full bg-[#5376f4] font-display text-[13px] font-extrabold text-white shadow-[0_8px_24px_-12px_rgba(83, 118, 244, .9)]">Entendi</button>
           </section>
         </div>
       )}
@@ -1203,7 +1203,7 @@ export default function ChatMotoristas({
 function AcaoAnexo({ icone: Icone, rotulo, onClick }: { icone: typeof Camera; rotulo: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className="flex min-w-0 flex-col items-center gap-1.5 rounded-[15px] px-1 py-2.5 text-center transition-colors hover:bg-white/[.07] active:scale-95">
-      <span className="grid h-10 w-10 place-items-center rounded-[14px] border border-[#5794d6]/20 bg-[#2f8cf0]/[.13] text-[#a9dfff]"><Icone size={19} strokeWidth={1.9} /></span>
+      <span className="grid h-10 w-10 place-items-center rounded-[14px] border border-[#778ddf]/20 bg-[#5376f4]/[.13] text-[#a9c8ff]"><Icone size={19} strokeWidth={1.9} /></span>
       <span className="max-w-full truncate text-[9.5px] font-bold leading-tight text-gelo/75 sm:text-[10.5px]">{rotulo}</span>
     </button>
   );
@@ -1234,7 +1234,7 @@ function PilulaReacoes({
       onClick={onVerQuem}
       aria-label={`${lista.length} ${lista.length === 1 ? "curtida" : "curtidas"}: ${emojis.join(" ")}. Toque para ver quem curtiu.`}
       title="Ver quem curtiu"
-      className={`absolute -bottom-3 z-10 flex items-center gap-[3px] rounded-full border px-1.5 py-[3px] leading-none shadow-[0_4px_14px_-6px_rgba(0,0,0,.8)] backdrop-blur transition-transform hover:scale-[1.05] active:scale-95 ${lado} ${eu ? "border-[#6fe7df]/55 bg-[#0a2a56]" : "border-white/15 bg-[#0a2349]"}`}
+      className={`absolute -bottom-3 z-10 flex items-center gap-[3px] rounded-full border px-1.5 py-[3px] leading-none shadow-[0_4px_14px_-6px_rgba(0,0,0,.8)] backdrop-blur transition-transform hover:scale-[1.05] active:scale-95 ${lado} ${eu ? "border-[#8ce7ed]/55 bg-[#010f5b]" : "border-white/15 bg-[#030c4d]"}`}
     >
       {emojis.map((emoji) => (
         <span key={emoji} className="text-[13px] leading-none">{emoji}</span>
@@ -1263,7 +1263,7 @@ function SeletorReacao({
     <div
       role="toolbar"
       aria-label="Curtir com emoji"
-      className={`absolute bottom-full z-20 mb-2 flex max-w-[176px] flex-wrap items-center gap-0.5 rounded-[20px] border border-[#3972bb]/55 bg-[#071b3a]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl ${lado}`}
+      className={`absolute bottom-full z-20 mb-2 flex max-w-[176px] flex-wrap items-center gap-0.5 rounded-[20px] border border-[#5166cc]/55 bg-[#01093d]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl ${lado}`}
     >
       {REACOES_RAPIDAS.map((emoji) => {
         const ativo = minhaReacao === emoji;
@@ -1275,7 +1275,7 @@ function SeletorReacao({
             aria-label={ativo ? `Remover curtida ${emoji}` : `Curtir com ${emoji}`}
             aria-pressed={ativo}
             title={ativo ? "Remover curtida" : `Curtir com ${emoji}`}
-            className={`grid h-9 w-9 place-items-center rounded-full text-[21px] transition-all hover:bg-white/10 active:scale-90 ${ativo ? "bg-[#2f8cf0]/25 ring-1 ring-[#6fe7df]/60" : ""}`}
+            className={`grid h-9 w-9 place-items-center rounded-full text-[21px] transition-all hover:bg-white/10 active:scale-90 ${ativo ? "bg-[#5376f4]/25 ring-1 ring-[#8ce7ed]/60" : ""}`}
           >
             {emoji}
           </button>
@@ -1300,7 +1300,7 @@ function DetalheReacoes({
     <div
       role="dialog"
       aria-label="Quem curtiu esta mensagem"
-      className={`absolute bottom-full z-20 mb-2 max-h-[180px] w-max max-w-[220px] overflow-y-auto rounded-[16px] border border-[#3972bb]/55 bg-[#071b3a]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl ${lado}`}
+      className={`absolute bottom-full z-20 mb-2 max-h-[180px] w-max max-w-[220px] overflow-y-auto rounded-[16px] border border-[#5166cc]/55 bg-[#01093d]/[.98] p-1.5 shadow-[0_18px_50px_-18px_rgba(0,0,0,.85)] backdrop-blur-xl ${lado}`}
     >
       {lista.slice(0, 30).map((r) => (
         <div key={r.motoristaId} className="flex items-center gap-2 rounded-[10px] px-2 py-1.5 text-[12px] leading-tight">
@@ -1336,7 +1336,7 @@ function MetaMensagem({
   className?: string;
 }) {
   return (
-    <div className={`flex shrink-0 items-center justify-end gap-1.5 text-[10.5px] leading-none ${meu ? "text-[#d6eaff]/60" : "text-gelo/45"} ${className}`}>
+    <div className={`flex shrink-0 items-center justify-end gap-1.5 text-[10.5px] leading-none ${meu ? "text-[#d6dfff]/60" : "text-gelo/45"} ${className}`}>
       {onReagir && (
         <button
           type="button"
@@ -1363,7 +1363,7 @@ function MetaMensagem({
         </button>
       )}
       <span className="tabular">{hora(mensagem.criadoEm)}</span>
-      {meu && <Check size={13} className="text-[#8ed8ff]" aria-label="Enviada" />}
+      {meu && <Check size={13} className="text-[#8ebaff]" aria-label="Enviada" />}
     </div>
   );
 }
@@ -1447,7 +1447,7 @@ function PlayerAudio({ mensagem }: { mensagem: MensagemChat }) {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       <audio ref={audio} src={mensagem.mediaUrl ?? undefined} preload={mensagem.duracaoSegundos ? "none" : "metadata"} className="hidden" />
-      <button type="button" onClick={() => void alternar()} disabled={!mensagem.mediaUrl} aria-label={tocando ? "Pausar áudio" : "Reproduzir áudio"} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#8ddcff]/25 bg-[#2f8cf0] text-white shadow-[0_0_18px_-8px_rgba(47,140,240,.8)] transition-transform hover:scale-[1.04] active:scale-95 disabled:opacity-40">
+      <button type="button" onClick={() => void alternar()} disabled={!mensagem.mediaUrl} aria-label={tocando ? "Pausar áudio" : "Reproduzir áudio"} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#8dbeff]/25 bg-[#5376f4] text-white shadow-[0_0_18px_-8px_rgba(83, 118, 244, .8)] transition-transform hover:scale-[1.04] active:scale-95 disabled:opacity-40">
         {tocando ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="ml-0.5" />}
       </button>
       <div className="min-w-0 flex-1">
@@ -1458,7 +1458,7 @@ function PlayerAudio({ mensagem }: { mensagem: MensagemChat }) {
               <motion.span
                 key={`${mensagem.id}-${indice}`}
                 aria-hidden
-                className={`chat-wave-bar w-[3px] shrink-0 rounded-full ${ativa ? "bg-[#7fe5e3]" : "bg-[#64a9ec]/65"}`}
+                className={`chat-wave-bar w-[3px] shrink-0 rounded-full ${ativa ? "bg-[#7fd9e5]" : "bg-[#87a1f1]/65"}`}
                 style={{ height: `${Math.min(24, altura)}px`, transformOrigin: "center" }}
                 animate={tocando ? { scaleY: [0.62, 1, 0.7, 0.92] } : { scaleY: 1 }}
                 transition={tocando ? { duration: 0.58 + (indice % 4) * 0.09, repeat: Infinity, repeatType: "mirror", delay: (indice % 7) * 0.035, ease: "easeInOut" } : { duration: 0.15 }}
@@ -1477,7 +1477,7 @@ function PlayerAudio({ mensagem }: { mensagem: MensagemChat }) {
               title="Velocidade do áudio (1x, 1,5x, 2x)"
               className={`relative grid h-6 min-w-[34px] place-items-center rounded-full border px-1.5 font-display text-[10.5px] font-extrabold tabular transition-colors after:absolute after:-inset-2 after:content-[''] active:scale-95 ${
                 velocidade > 1
-                  ? "border-[#6fe7df]/55 bg-[#6fe7df]/15 text-[#8ff0e7]"
+                  ? "border-[#8ce7ed]/55 bg-[#8ce7ed]/15 text-[#8fecf0]"
                   : "border-white/15 bg-white/[.06] text-gelo/70 hover:bg-white/[.12]"
               }`}
             >
@@ -1497,7 +1497,7 @@ function ConteudoMensagem({ texto, meu }: { texto: string; meu: boolean }) {
     return (
       <div className="flex flex-col items-center px-2 pt-1 pb-0.5 text-center">
         <span className="text-[48px] leading-none drop-shadow-[0_4px_10px_rgba(0,0,0,.4)]">{figurinha.emoji}</span>
-        <span className={`mt-1.5 rounded-full px-3 py-1 font-display text-[13px] font-extrabold ${meu ? "bg-white/15 text-white" : "bg-[#2f7fe8]/20 text-white"}`}>{figurinha.texto}</span>
+        <span className={`mt-1.5 rounded-full px-3 py-1 font-display text-[13px] font-extrabold ${meu ? "bg-white/15 text-white" : "bg-[#526cee]/20 text-white"}`}>{figurinha.texto}</span>
       </div>
     );
   }
@@ -1507,9 +1507,9 @@ function ConteudoMensagem({ texto, meu }: { texto: string; meu: boolean }) {
   const localizacao = texto.match(/📍\s*Localização compartilhada:\s*\n?(https:\/\/www\.google\.com\/maps\?q=[-\d.,]+)/i);
   if (localizacao) {
     return (
-      <div className="rounded-[14px] border border-[#6da9e8]/20 bg-[#061b3b]/55 p-2.5">
+      <div className="rounded-[14px] border border-[#8ba1ee]/20 bg-[#00083e]/55 p-2.5">
         <div className="flex items-center gap-2 text-[13px] font-bold text-white"><MapPin size={16} className="text-ciano" /> Localização compartilhada</div>
-        <a href={localizacao[1]} target="_blank" rel="noreferrer" className="mt-2 flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-[#2f8cf0]/15 px-3 text-[11.5px] font-extrabold text-[#a9ddff] transition-colors hover:bg-[#2f8cf0]/25">Abrir no mapa <ExternalLink size={13} /></a>
+        <a href={localizacao[1]} target="_blank" rel="noreferrer" className="mt-2 flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-[#5376f4]/15 px-3 text-[11.5px] font-extrabold text-[#a9c6ff] transition-colors hover:bg-[#5376f4]/25">Abrir no mapa <ExternalLink size={13} /></a>
       </div>
     );
   }

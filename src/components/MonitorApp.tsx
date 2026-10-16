@@ -178,7 +178,7 @@ function LinhaPonto({
       className={`rounded-[16px] border px-4 py-3 transition-colors ${
         selecionado
           ? "border-ciano/45 bg-ciano/[0.06]"
-          : "border-[#1d4690]/45 bg-[#06122b]/55"
+          : "border-[#222fb3]/45 bg-[#02042b]/55"
       }`}
     >
       <button
@@ -547,7 +547,7 @@ function FaixaInfo({
   divisor?: boolean;
 }) {
   return (
-    <div className="flex min-h-[67px] w-full items-center gap-3 rounded-[24px] border border-[#2a5bb0]/70 bg-[#0a2144]/85 py-2.5 pr-2.5 pl-3 text-left">
+    <div className="flex min-h-[67px] w-full items-center gap-3 rounded-[24px] border border-[#3342d0]/70 bg-[#030c48]/85 py-2.5 pr-2.5 pl-3 text-left">
       <span
         className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full border-[1.5px] ${anel}`}
       >
@@ -1308,7 +1308,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
 
 
   return (
-    <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
+    <div className="fundo-app relative min-h-screen w-full bg-fundo">
 
       {/* pb: o rodapé de navegação é estreito (~72 px) — o conteúdo só precisa
           de folga para não ficar embaixo dele. */}
@@ -1395,7 +1395,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     }`}
                   >
                     <span
-                      className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(47,155,255,0.45)] ${
+                      className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(88, 130, 255, 0.45)] ${
                         alvo && alvo.codigo.length > 3
                           ? "text-[clamp(50px,15.5vw,66px)]"
                           : "text-[clamp(64px,21.5vw,92px)]"
@@ -1405,7 +1405,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     </span>
                     {alvo && (
                       <span
-                        className={`flex translate-y-[5px] items-center gap-3.5 rounded-full border border-[#1d4690]/80 bg-[#06122b]/90 ${
+                        className={`flex translate-y-[5px] items-center gap-3.5 rounded-full border border-[#222fb3]/80 bg-[#02042b]/90 ${
                           alvo.status === "AGUARDANDO" ? "px-3 py-[7px]" : "px-4 py-3.5"
                         }`}
                       >
@@ -1436,8 +1436,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 {/* informações da fila */}
                 <div className="mt-[18px] space-y-3">
                   <FaixaInfo
-                    icone={<Clock size={24} strokeWidth={2.1} className="text-[#3b82f6]" />}
-                    anel="border-[#3b82f6]/70 bg-[#3b82f6]/10 shadow-[0_0_20px_-6px_rgba(59,130,246,0.9)]"
+                    icone={<Clock size={24} strokeWidth={2.1} className="text-[#6172f9]" />}
+                    anel="border-[#6172f9]/70 bg-[#6172f9]/10 shadow-[0_0_20px_-6px_rgba(97, 114, 249, 0.9)]"
                     rotulo="Último escalado"
                     valor={ultimoEscalado}
                     corValor="text-white"
@@ -1467,7 +1467,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 {/* rodapé do cartão */}
                 <div className="mt-[22px] flex items-center justify-between gap-3 pl-1.5">
                   <span className="flex items-center gap-2 text-[15px] leading-6 text-gelo/90">
-                    <Clock size={24} strokeWidth={2} className="shrink-0 text-[#3b82f6]" />
+                    <Clock size={24} strokeWidth={2} className="shrink-0 text-[#6172f9]" />
                     <span className="tabular" title={estado.temLeitura ? `Última leitura real do quadro: ${hora(estado.atualizadoEm)}` : undefined}>
                       {estado.temLeitura === false
                         ? "Aguardando 1ª leitura"
@@ -1553,7 +1553,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
             {/* motoristas: contagem + o próprio nome (com troca) */}
             <section className="painel p-4">
               <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#2f8cf0] text-white shadow-[0_0_22px_-4px_rgba(47,140,240,0.8)]">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#5376f4] text-white shadow-[0_0_22px_-4px_rgba(83, 118, 244, 0.8)]">
                   <Users size={23} strokeWidth={2.2} />
                 </span>
                 <div className="min-w-0">
@@ -1567,7 +1567,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               </div>
 
               {motorista && (
-                <div className="mt-3 flex min-h-[48px] items-center gap-2 rounded-[14px] border border-[#2a5bb0]/55 bg-[#06122b]/70 px-3 py-2">
+                <div className="mt-3 flex min-h-[48px] items-center gap-2 rounded-[14px] border border-[#3342d0]/55 bg-[#02042b]/70 px-3 py-2">
                   {editandoNome ? (
                     <>
                       <input
@@ -1579,7 +1579,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                         maxLength={60}
                         autoFocus
                         aria-label="Seu nome"
-                        className="min-w-0 flex-1 rounded-full border-[1.5px] border-ouro/60 bg-[#06122b] px-3.5 py-2 font-display text-[15px] font-bold text-white outline-none"
+                        className="min-w-0 flex-1 rounded-full border-[1.5px] border-ouro/60 bg-[#02042b] px-3.5 py-2 font-display text-[15px] font-bold text-white outline-none"
                       />
                       <button
                         type="button"

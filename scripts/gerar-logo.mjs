@@ -33,8 +33,8 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-/** Mesmo azul-marinho do theme_color/background_color do manifest. */
-export const FUNDO_APP = "#01101e";
+/** Mesmo cobalto do fundo do app (usado no fundo dos ícones gerados). */
+export const FUNDO_APP = "#010a38";
 
 /* ------------------------------------------------------ 1. tirar o fundo */
 
@@ -131,7 +131,7 @@ const fundoSvg = (w, h) =>
   Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
       `<defs><radialGradient id="g" cx="50%" cy="42%" r="72%">` +
-      `<stop offset="0" stop-color="#0c2b5e"/><stop offset="1" stop-color="${FUNDO_APP}"/>` +
+      `<stop offset="0" stop-color="#0216a5"/><stop offset="1" stop-color="${FUNDO_APP}"/>` +
       `</radialGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`,
   );
 
