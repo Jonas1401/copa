@@ -9,6 +9,12 @@ export const TEMPO_MINIMO_MS = 900;
 export const TEMPO_MAXIMO_MS = 10_000;
 /** Duração da saída (caminhão chega ao fim + esmaece). */
 export const TEMPO_SAIDA_MS = 550;
+/**
+ * Prazo da conferência do perfil na abertura. A tela de carregamento só sai
+ * quando o perfil confirma (ou no máximo em TEMPO_MAXIMO_MS): sem este prazo,
+ * uma rede lenta/travada prendia a abertura na tela de carregamento.
+ */
+export const PRAZO_SESSAO_MS = 6_000;
 
 /** Frases que vão trocando enquanto carrega. */
 export const FRASES = [
