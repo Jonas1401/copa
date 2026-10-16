@@ -128,11 +128,15 @@ test("backend: Composio → comparação persistente → um navio por chat/Push 
   process.env.VAPID_PUBLIC_KEY = vapid.publicKey; process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
   let atracados = atracadosTexto(), manobras = manobrasTexto(), erroAtracados = false;
   let falharEndpoint: string | null = null;
-  const leituras: string[] = [], pushes: { endpoint: string; body: string; tag: string }[] = [], prompts: string[] = [];
+  const leituras: string[] = [], pushes: { endpoint: string; body: string; tag: string }[] = [], prompts: string[] = [], chamadasDiretasIA: string[] = [];
   globalThis.fetch = async (_input, init) => {
     const url = String(_input);
-    assert.ok(url.startsWith("https://backend.composio.dev/"), `nenhuma chamada fora do Composio: ${url}`);
     const body = JSON.parse(String(init?.body ?? "{}"));
+    if (url === "https://api.openai.com/v1/chat/completions") {
+      chamadasDiretasIA.push(JSON.stringify(body));
+      return Response.json({ choices: [{ message: { content: "A previsão do AFENTIS XRISTOS ATH continua PREVISTA." } }] });
+    }
+    assert.ok(url.startsWith("https://backend.composio.dev/"), `nenhuma chamada fora do Composio/API de teste: ${url}`);
     if (url.endsWith("GEMINI_GENERATE_CONTENT")) {
       prompts.push(body.arguments.system_instruction + "\n" + body.arguments.prompt);
       return Response.json({ successful: true, data: { text: "Mantenha os faróis acesos ao circular no porto e siga a sinalização vigente." } });
@@ -260,6 +264,27 @@ test("backend: Composio → comparação persistente → um navio por chat/Push 
       const p = { atualizadoEm: "2026-10-08T18:00:00.000Z", agora: {}, alerta: {}, dias: [], fontes: { simport: false, estacao: true, openMeteo: false, composio: false } } as unknown as Previsao;
       await memorizarClima(p); await memorizarClima({ ...p, atualizadoEm: "2026-10-07T18:00:00.000Z" });
       assert.equal((await lerMemoriaClima())?.atualizadoEm, p.atualizadoEm);
+    });
+
+    await t.test("pergunta sobre previsão usa a nova API com o conteúdo dos sites já lidos", async () => {
+      const chaveAnterior = process.env.AI_API_KEY, provedorAnterior = process.env.AI_PROVIDER;
+      process.env.AI_API_KEY = "sk-chave-ficticia-de-teste";
+      process.env.AI_PROVIDER = "openai";
+      try {
+        const { perguntarIA } = await import("../src/lib/ia");
+        const resposta = await perguntarIA("Qual a previsão de atracação do AFENTIS XRISTOS ATH?", [], ana.id);
+        assert.equal(resposta.via, "direta");
+        assert.match(resposta.texto, /PREVISTA/);
+        assert.equal(chamadasDiretasIA.length, 1);
+        const corpo = JSON.parse(chamadasDiretasIA[0]);
+        const contexto = corpo.messages.at(-1).content as string;
+        assert.match(contexto, /AFENTIS XRISTOS ATH/);
+        assert.match(contexto, /PREVISTA/);
+        assert.match(contexto, /berth-bloom-tracker\.lovable\.app/);
+      } finally {
+        if (chaveAnterior === undefined) delete process.env.AI_API_KEY; else process.env.AI_API_KEY = chaveAnterior;
+        if (provedorAnterior === undefined) delete process.env.AI_PROVIDER; else process.env.AI_PROVIDER = provedorAnterior;
+      }
     });
 
     await t.test("cron autenticado lê e publica navios sem pontos cadastrados, sem clima/regras", async () => {

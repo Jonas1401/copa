@@ -32,6 +32,8 @@ A política bloqueia boletins, radar, alertas meteorológicos, dicas de comporta
 
 A tela de tempo e o radar do administrador continuam intactos. Leituras do tempo e perguntas à IA atualizam a memória silenciosamente. As orientações de porto continuam disponíveis quando perguntadas; não substituem o regulamento oficial vigente.
 
+Nas perguntas sobre navios, uma `AI_API_KEY` configurada é usada primeiro para responder usando o contexto obtido das duas fontes públicas já fixadas; o Composio continua como reserva. A chave não navega nas páginas: o backend lê os sites pelo Composio, valida e registra os dados, e só então entrega o contexto ao modelo. Sem chave própria, o chat continua pelo Gemini/OpenAI do Composio. O botão **Testar conexão** em `/admin` faz uma chamada real de geração de texto ao provedor escolhido. Os avisos automáticos permanecem sem IA, com os parsers e as validações determinísticas descritas abaixo.
+
 Memória no PostgreSQL (`configuracao`):
 
 - `ia_porto_politica_v2`: regras permanentes desta automação.
