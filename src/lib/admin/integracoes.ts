@@ -12,6 +12,7 @@ import {
 } from "@/lib/admin/segredos";
 import { ROTULO_METODO, lerPainelAppa } from "@/lib/appa-painel";
 import { composioConfigurado, ErroComposio, geminiViaComposio, testarComposio } from "@/lib/composio";
+import { chatDiretoIA, ErroIA, nomeProvedorIA } from "@/lib/ia-provedor";
 import { statusRadarClima } from "@/lib/clima-monitor";
 import { chavePublica, notificarTeste, vapidConfigurado } from "@/lib/push";
 import { obterPrevisao } from "@/lib/tempo";
@@ -68,12 +69,13 @@ export const INTEGRACOES: Definicao[] = [
     id: "ia",
     nome: "IA",
     descricao:
-      "Assistente do chat (navios, caminhão, tempo e ajuda do app) e alertas inteligentes do clima. Respondem pelo Composio (Google Gemini, sem chave extra; reserva: conta OpenAI conectada no Composio). Esta chave é opcional: só é usada se o Composio falhar.",
+      "Assistente do chat. Em perguntas sobre previsão de navios, a API configurada usa os dados recentes dos dois sites existentes (lidos no servidor pelo Composio); o Composio é a reserva. Nos demais assuntos, Composio primeiro e esta API como reserva. Avisos automáticos continuam sem IA.",
     campos: [
       {
         chave: "AI_PROVIDER",
         rotulo: "Provedor",
         secreto: false,
+        dica: "A chave OpenRouter (sk-or-...) é detectada automaticamente; também pode selecionar OpenRouter aqui.",
         opcoes: [
           { valor: "auto", rotulo: "Detectar pela chave" },
           { valor: "openai", rotulo: "OpenAI" },
@@ -170,7 +172,7 @@ export async function listarEstados(): Promise<EstadoIntegracao[]> {
         .from(iaMensagens)
         .where(eq(iaMensagens.papel, "user"));
       detalhes.push({ rotulo: "Perguntas respondidas", valor: String(total?.n ?? 0) });
-      detalhes.push({ rotulo: "Ordem de resposta", valor: "1º Composio (OpenAI conectada) · 2º AI API Key" });
+      detalhes.push({ rotulo: "Uso da IA", valor: "Navios: AI API Key → Composio · demais assuntos: Composio → AI API Key; leitura e alertas de navios preservam os dados literais das fontes" });
     }
     if (d.id === "clima") {
       detalhes.push({ rotulo: "Fonte", valor: "weather-appa.app.simport.com.br" });
@@ -274,20 +276,11 @@ export async function limparStatus(id: IdIntegracao) {
 }
 
 /* --------------------------------------------------------------- testes */
-function provedorPelaChave(chave: string) {
-  if (chave.startsWith("sk-ant-")) return "anthropic";
-  if (chave.startsWith("sk-or-")) return "openrouter";
-  if (chave.startsWith("gsk_")) return "groq";
-  if (chave.startsWith("AIza")) return "gemini";
-  if (chave.startsWith("sk-")) return "openai";
-  return null;
-}
-
 async function testarIA() {
   const chave = await obterSegredo("AI_API_KEY");
   if (!chave) {
-    // Sem chave própria: o assistente e os alertas do clima usam o Gemini pelo Composio.
-    if (!(await composioConfigurado())) return { ok: false, naoConfig: true, msg: "Configure o Composio para ligar a IA." };
+    // Sem chave própria: o assistente usa Gemini pelo Composio.
+    if (!(await composioConfigurado())) return { ok: false, naoConfig: true, msg: "Configure uma AI API Key ou o Composio para ligar a IA." };
     try {
       const r = await geminiViaComposio("Responda apenas com a palavra OK.", "Teste de conexão.", {
         rapido: true,
@@ -295,30 +288,31 @@ async function testarIA() {
         maxTokens: 20,
         timeoutMs: 15000,
       });
-      return { ok: true, msg: `Conectado · IA pelo Composio (${r.modelo}) · assistente e alertas do clima ativos.` };
+      return { ok: true, msg: `Conectado · IA pelo Composio (${r.modelo}) respondeu ao teste.` };
     } catch (e) {
       return { ok: false, msg: `IA pelo Composio indisponível: ${e instanceof ErroComposio ? e.message : "erro desconhecido"}` };
     }
   }
+
   const escolhido = (await obterSegredo("AI_PROVIDER")) ?? "auto";
-  const provedor = escolhido === "auto" ? provedorPelaChave(chave) : escolhido;
-  const pedidos: Record<string, { url: string; headers: Record<string, string>; nome: string }> = {
-    openai: { nome: "OpenAI", url: "https://api.openai.com/v1/models", headers: { Authorization: `Bearer ${chave}` } },
-    anthropic: {
-      nome: "Anthropic",
-      url: "https://api.anthropic.com/v1/models",
-      headers: { "x-api-key": chave, "anthropic-version": "2023-06-01" },
-    },
-    gemini: { nome: "Google Gemini", url: "https://generativelanguage.googleapis.com/v1beta/models", headers: { "x-goog-api-key": chave } },
-    groq: { nome: "Groq", url: "https://api.groq.com/openai/v1/models", headers: { Authorization: `Bearer ${chave}` } },
-    openrouter: { nome: "OpenRouter", url: "https://openrouter.ai/api/v1/key", headers: { Authorization: `Bearer ${chave}` } },
-  };
-  const p = provedor ? pedidos[provedor] : null;
-  if (!p) return { ok: false, msg: "Provedor não reconhecido pela chave. Escolha o provedor no campo acima." };
-  const r = await fetch(p.url, { headers: p.headers, cache: "no-store", signal: AbortSignal.timeout(12000) });
-  if (r.ok) return { ok: true, msg: `Conectado · ${p.nome} aceitou a chave.` };
-  if (r.status === 401 || r.status === 403) return { ok: false, msg: `${p.nome} recusou a chave (inválida ou sem permissão).` };
-  return { ok: false, msg: `${p.nome} respondeu ${r.status}.` };
+  const nome = nomeProvedorIA(escolhido, chave);
+  if (!nome) return { ok: false, msg: "Provedor não reconhecido pela chave. Escolha o provedor no campo acima." };
+  try {
+    // Faz uma geração mínima de verdade: validar /models sozinho não confirma
+    // que a chave tem acesso ao modelo de chat usado pelo CopaLinks.
+    await chatDiretoIA(
+      [
+        { role: "system", content: "Responda somente com OK." },
+        { role: "user", content: "Teste de conexão da API." },
+      ],
+      chave,
+      escolhido,
+      { temperatura: 0, maxTokens: 128, timeoutMs: 15000 },
+    );
+    return { ok: true, msg: `Conectado · ${nome} completou uma chamada real de chat (AI API Key).` };
+  } catch (e) {
+    return { ok: false, naoConfig: e instanceof ErroIA && e.codigo === "nao_configurada", msg: e instanceof ErroIA ? e.message : `Não foi possível testar ${nome}.` };
+  }
 }
 
 /**

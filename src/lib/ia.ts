@@ -2,28 +2,19 @@ import { MEMORIA_POLITICA_PORTO } from "@/lib/politica-automacao";
 import { contextoOrientacoesPorto, garantirMemoriaPorto, lerMemoriaClima, memorizarClima } from "@/lib/ia-memoria-porto";
 import { obterSegredo, semSegredos } from "@/lib/admin/segredos";
 import { chatViaComposio, chatViaGeminiComposio, composioConfigurado, ErroComposio } from "@/lib/composio";
+import { chatDiretoIA, ErroIA } from "@/lib/ia-provedor";
+export { ErroIA };
 
 /**
  * Assistente de IA do CopaLinks — SOMENTE servidor.
  *
- * Caminho principal: TUDO VIA COMPOSIO (toolkit OpenAI, com a conta OpenAI
- * conectada no dashboard do Composio). Reserva: AI_API_KEY do cofre (/admin),
- * chamada direta ao provedor. A ordem é sempre: Composio primeiro.
+ * Para perguntas de navios, a AI_API_KEY configurada é a primeira opção para
+ * interpretar os dados recentes dos sites já lidos pelo Composio. Nos demais
+ * assuntos, a ordem permanece Composio primeiro e API direta como reserva.
  *
- * O assistente responde sobre:
- *   1. Mecânica pesada (caminhões e carretas): do simples ao avançado.
- *   2. Como funciona o próprio aplicativo CopaLinks.
- *   3. Clima no porto (recebe o resumo atual como contexto quando relevante).
+ * A leitura das páginas é feita no backend; o modelo nunca recebe uma URL para
+ * navegar por conta própria. Avisos automáticos continuam determinísticos.
  */
-
-export class ErroIA extends Error {
-  constructor(
-    mensagem: string,
-    public codigo: "nao_configurada" | "falha",
-  ) {
-    super(mensagem);
-  }
-}
 
 const PROMPT_SISTEMA = `Você é o Assistente do CopaLinks, o app dos motoristas de caminhão do Porto de Paranaguá (PR). Você conversa de motorista para motorista: como um parceiro de estrada que já rodou muito, conhece caminhão, pátio, balança e fila, e gosta de ajudar o colega.
 
@@ -104,106 +95,12 @@ async function contextoFila(motoristaId: number | null): Promise<string> {
   }
 }
 
-function provedorPelaChave(chave: string) {
-  if (chave.startsWith("sk-ant-")) return "anthropic";
-  if (chave.startsWith("sk-or-")) return "openrouter";
-  if (chave.startsWith("gsk_")) return "groq";
-  if (chave.startsWith("AIza")) return "gemini";
-  if (chave.startsWith("sk-")) return "openai";
-  return null;
-}
-
-/** Chamada direta ao provedor (reserva quando o Composio falha). */
-async function chatDireto(
-  mensagens: { role: string; content: string }[],
-  chave: string,
-  provedorEscolhido: string,
-): Promise<string> {
-  const provedor = provedorEscolhido === "auto" ? provedorPelaChave(chave) : provedorEscolhido;
-  const sistema = mensagens.find((m) => m.role === "system")?.content ?? PROMPT_SISTEMA;
-  const conversa = mensagens.filter((m) => m.role !== "system");
-
-  if (provedor === "anthropic") {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": chave, "anthropic-version": "2023-06-01" },
-      signal: AbortSignal.timeout(30000),
-      body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 700,
-        system: sistema,
-        messages: conversa.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content })),
-      }),
-    });
-    if (!r.ok) throw new ErroIA(`Provedor de IA respondeu ${r.status}.`, "falha");
-    const j = (await r.json()) as { content?: { text?: string }[] };
-    const t = j.content?.map((c) => c.text ?? "").join("").trim();
-    if (!t) throw new ErroIA("Resposta vazia do provedor de IA.", "falha");
-    return t;
-  }
-
-  if (provedor === "gemini") {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(chave)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(30000),
-        body: JSON.stringify({
-          systemInstruction: { role: "system", parts: [{ text: sistema }] },
-          contents: conversa.map((m) => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: m.content }],
-          })),
-          generationConfig: { temperature: 0.4, maxOutputTokens: 700 },
-        }),
-      },
-    );
-    if (!r.ok) throw new ErroIA(`Provedor de IA respondeu ${r.status}.`, "falha");
-    const j = (await r.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    const t = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim();
-    if (!t) throw new ErroIA("Resposta vazia do provedor de IA.", "falha");
-    return t;
-  }
-
-  // OpenAI / Groq / OpenRouter: API compatível com OpenAI.
-  const alvo =
-    provedor === "groq"
-      ? { url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile", nome: "Groq" }
-      : provedor === "openrouter"
-        ? { url: "https://openrouter.ai/api/v1/chat/completions", model: "openai/gpt-4o-mini", nome: "OpenRouter" }
-        : provedor === "openai"
-          ? { url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini", nome: "OpenAI" }
-          : null;
-  if (!alvo) throw new ErroIA("Provedor de IA não reconhecido. Escolha o provedor no /admin.", "nao_configurada");
-  const r = await fetch(alvo.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${chave}` },
-    signal: AbortSignal.timeout(30000),
-    body: JSON.stringify({
-      model: alvo.model,
-      temperature: 0.4,
-      max_tokens: 700,
-      messages: [{ role: "system", content: sistema }, ...conversa],
-    }),
-  });
-  if (!r.ok) {
-    if (r.status === 401 || r.status === 403) {
-      throw new ErroIA(`${alvo.nome} recusou a chave de IA. Confira a AI API Key no /admin.`, "nao_configurada");
-    }
-    throw new ErroIA(`${alvo.nome} respondeu ${r.status}.`, "falha");
-  }
-  const j = (await r.json()) as { choices?: { message?: { content?: string } }[] };
-  const t = j.choices?.[0]?.message?.content?.trim();
-  if (!t) throw new ErroIA("Resposta vazia do provedor de IA.", "falha");
-  return t;
-}
-
 export type HistoricoIA = { papel: "user" | "assistant"; texto: string }[];
 
 /**
- * Pergunta ao assistente. Ordem: 1º Composio (toolkit OpenAI), 2º AI_API_KEY
- * direta. Enriquece com clima/fila reais quando a pergunta pede.
+ * Pergunta ao assistente. Navios: API direta configurada → Composio de reserva.
+ * Outros assuntos: Composio → AI_API_KEY de reserva. O contexto dos navios é
+ * sempre montado antes da geração a partir das fontes fixadas do CopaLinks.
  */
 export async function perguntarIA(
   pergunta: string,
@@ -219,7 +116,8 @@ export async function perguntarIA(
   if (/porto|regra|seguran[cç]a|comport|orienta|far[oó]l|lona|costado|guindaste|funil/i.test(limpa)) contexto += await contextoOrientacoesPorto().catch(() => "");
   if (querClima(limpa)) contexto += await contextoClima();
   if (querFila(limpa)) contexto += await contextoFila(motoristaId);
-  if (querNavios(limpa)) contexto += await contextoNavios(limpa);
+  const perguntaSobreNavios = querNavios(limpa);
+  if (perguntaSobreNavios) contexto += await contextoNavios(limpa);
 
   const mensagens = [
     { role: "system", content: PROMPT_SISTEMA + "\n\n" + MEMORIA_POLITICA_PORTO },
@@ -227,10 +125,23 @@ export async function perguntarIA(
     { role: "user", content: limpa + contexto },
   ];
 
-  // 1º: VIA COMPOSIO (o pedido do dono: tudo pelo Composio).
+  const chaveDireta = await obterSegredo("AI_API_KEY");
+  const provedorDireto = (await obterSegredo("AI_PROVIDER")) ?? "auto";
+  let erroDiretoNavios: unknown = null;
+
+  // A nova API responde primeiro às consultas de navios usando o contexto
+  // validado dos sites existentes. Se falhar, Composio continua como reserva.
+  if (perguntaSobreNavios && chaveDireta) {
+    try {
+      const texto = await chatDiretoIA(mensagens, chaveDireta, provedorDireto);
+      return { texto: texto.slice(0, 3000), via: "direta" };
+    } catch (e) {
+      erroDiretoNavios = e;
+      console.error("[ia] API direta falhou em consulta de navios; tentando Composio", e);
+    }
+  }
+
   if (await composioConfigurado()) {
-    // Gemini sem login pelo Composio: funciona só com a COMPOSIO_API_KEY,
-    // sem conta conectada e sem chave de IA própria.
     try {
       const texto = await chatViaGeminiComposio(mensagens);
       return { texto: texto.slice(0, 3000), via: "composio" };
@@ -241,10 +152,8 @@ export async function perguntarIA(
       const texto = await chatViaComposio(mensagens);
       return { texto: texto.slice(0, 3000), via: "composio" };
     } catch (e) {
-      // Sem conta OpenAI conectada no Composio: cai para a chave direta.
-      const semConta =
-        e instanceof ErroComposio && (e.status === 401 || e.status === 403 || e.status === 404);
-      const chaveDireta = await obterSegredo("AI_API_KEY");
+      const semConta = e instanceof ErroComposio && (e.status === 401 || e.status === 403 || e.status === 404);
+      if (erroDiretoNavios) throw erroDiretoNavios;
       if (!semConta && !chaveDireta) {
         throw new ErroIA(
           e instanceof Error ? semSegredos(e.message, [chaveDireta]) : "Falha na IA.",
@@ -257,10 +166,8 @@ export async function perguntarIA(
           "nao_configurada",
         );
       }
-      // Tem chave direta: tenta como reserva.
       try {
-        const provedor = (await obterSegredo("AI_PROVIDER")) ?? "auto";
-        const texto = await chatDireto(mensagens, chaveDireta, provedor);
+        const texto = await chatDiretoIA(mensagens, chaveDireta, provedorDireto);
         return { texto: texto.slice(0, 3000), via: "direta" };
       } catch (e2) {
         if (e2 instanceof ErroIA) throw e2;
@@ -269,15 +176,13 @@ export async function perguntarIA(
     }
   }
 
-  // 2º: sem Composio, só a chave direta.
-  const chave = await obterSegredo("AI_API_KEY");
-  if (!chave) {
+  if (erroDiretoNavios) throw erroDiretoNavios;
+  if (!chaveDireta) {
     throw new ErroIA(
       "IA ainda não configurada: cadastre a COMPOSIO_API_KEY (com conta OpenAI conectada) ou a AI API Key no /admin.",
       "nao_configurada",
     );
   }
-  const provedor = (await obterSegredo("AI_PROVIDER")) ?? "auto";
-  const texto = await chatDireto(mensagens, chave, provedor);
+  const texto = await chatDiretoIA(mensagens, chaveDireta, provedorDireto);
   return { texto: texto.slice(0, 3000), via: "direta" };
 }

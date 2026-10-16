@@ -277,6 +277,15 @@ O `/api/cron` usa o Composio para abrir e ler estas duas fontes:
 - **Navios atracados / saldos:** https://berth-bloom-buddy.lovable.app/
 - **Manobras previstas / SINPRAPAR:** https://berth-bloom-tracker.lovable.app/
 
+No assistente do chat, perguntas sobre navios carregam os dados recentes dessas
+fontes no servidor antes de responder. Se `AI_API_KEY` estiver configurada, a
+nova API direta responde primeiro a essas perguntas; se não estiver disponível,
+o assistente usa o Composio como reserva. Em `/admin` → IA → **Testar conexão**,
+o botão faz uma geração mínima real de chat (não apenas uma consulta de modelos).
+A API de IA interpreta os dados fornecidos; ela não navega na web por conta
+própria. O `/api/cron` continua lendo e validando as páginas pelo Composio e os
+avisos automáticos continuam determinísticos, sem texto inventado por IA.
+
 Uma leitura válida inicial de cada fonte cria a referência silenciosa. Depois:
 
 1. Novos navios atracados e mudanças do berço informadas pela fonte geram aviso.
