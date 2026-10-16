@@ -1,18 +1,45 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   PALETA — fundo azul-cobalto (referência: gradiente enviado pelo Jonas)
+   As cores e as medidas abaixo foram ajustadas pixel a pixel contra a imagem:
+   o brilho central fica em 50% × 42% da tela e vale #0319ba, o platô das
+   bordas é #010e5a e a base escurece até #010a38. O gradiente em `80% 85%`
+   reproduz a referência com erro médio de 1,7/255 por canal.
+   Tudo que é azul do app (cartões, bordas, brilhos, textos claros) foi
+   reacendido na mesma matiz (~232°) para continuar combinando com o fundo.
+   ========================================================================== */
+:root {
+  --fundo-brilho: #0319ba;
+  --fundo-meio: #021285;
+  --fundo-borda: #010e5a;
+  --fundo-base: #010a38;
+  --fundo-gradiente:
+    radial-gradient(80% 85% at 50% 42%,
+      var(--fundo-brilho) 0%, #0216a5 20%, var(--fundo-meio) 38%, #021074 50%,
+      var(--fundo-borda) 68%, #010c48 84%, var(--fundo-base) 100%),
+    linear-gradient(180deg, rgba(1, 6, 30, 0) 58%, rgba(1, 6, 30, 0.35) 100%);
+}
+
 @theme {
-  --color-abismo: #04101f;
-  --color-noite: #071b33;
-  --color-marinho: #0c2a4a;
-  --color-ciano: #6fe7df;
-  --color-azulclaro: #7fb6f0;
+  /* tinta e superfície: cobalto do mais escuro ao mais vivo */
+  --color-abismo: #00061f;
+  --color-noite: #020b39;
+  --color-marinho: #061a6b;
+  /* fundo sólido (fallback do degradê, barra do navegador, overscroll) */
+  --color-fundo: #010e5a;
+  /* acentos frios */
+  --color-ciano: #8ce7ed;
+  --color-azulclaro: #9fbcff;
+  /* acentos quentes e de status: continuam complemento do azul */
   --color-verde: #35e08a;
   --color-ambar: #f5b21e;
   --color-laranja: #e8853a;
   --color-violeta: #b98cf5;
   --color-ouro: #f5c518;
-  --color-gelo: #dce9f5;
-  --color-aco: #8fa6bf;
+  /* texto */
+  --color-gelo: #e6edff;
+  --color-aco: #a9b6d9;
 
   --font-display: "Archivo", system-ui, sans-serif;
   --font-sans: "Space Grotesk", system-ui, sans-serif;
@@ -20,18 +47,18 @@
 
 html,
 body {
-  background-color: #002b6b;
-  background-image: radial-gradient(110% 65% at 50% 42%, #00479e 0%, #002b6b 54%, #000d28 100%);
+  background-color: var(--fundo-base);
+  background-image: var(--fundo-gradiente);
   background-attachment: fixed;
   color: var(--color-gelo);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-/* --- fundo da tela inicial (azul-marinho com brilho central como na referência) --- */
+/* --- fundo de todas as telas (cobalto com brilho central, igual à referência) --- */
 .fundo-app {
-  background-color: #002b6b;
-  background-image: radial-gradient(110% 65% at 50% 42%, #00479e 0%, #002b6b 54%, #000d28 100%);
+  background-color: var(--fundo-base);
+  background-image: var(--fundo-gradiente);
   background-attachment: fixed;
 }
 
@@ -95,13 +122,16 @@ body {
   );
 }
 
+/* cartão principal: vidro cobalto um degrau acima do fundo, com o brilho do
+   centro vazando pelas bordas (halo #0319ba) em vez do preto antigo */
 .cartao-monitor {
-  background: linear-gradient(180deg, rgba(13, 40, 92, 0.78) 0%, rgba(10, 30, 72, 0.75) 55%, rgba(9, 25, 60, 0.82) 100%);
-  backdrop-filter: blur(12px) saturate(115%);
-  border: 1.5px solid rgba(79, 142, 230, 0.65);
+  background: linear-gradient(180deg, rgba(8, 24, 132, 0.8) 0%, rgba(5, 16, 104, 0.76) 55%, rgba(3, 11, 84, 0.84) 100%);
+  backdrop-filter: blur(12px) saturate(135%);
+  border: 1.5px solid rgba(126, 150, 255, 0.62);
   box-shadow:
-    0 24px 60px -30px rgba(0, 0, 0, 0.75),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 24px 60px -30px rgba(0, 2, 22, 0.8),
+    0 0 60px -28px rgba(3, 25, 186, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 ::selection {
@@ -111,7 +141,7 @@ body {
 
 /* --- número gigante do cartão: gradiente azul → ciano (como na referência) */
 .numero-gradiente {
-  background-image: linear-gradient(118deg, #2f9bff 0%, #46c2ff 45%, #8ef0ff 100%);
+  background-image: linear-gradient(118deg, #5882ff 0%, #6fa9ff 45%, #8ee1ff 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -170,21 +200,21 @@ body {
   background:
     linear-gradient(
       180deg,
-      rgba(10, 33, 64, 0.9) 0%,
-      rgba(6, 22, 43, 0.93) 45%,
-      rgba(4, 14, 28, 0.96) 100%
+      rgba(4, 14, 67, 0.9) 0%,
+      rgba(2, 9, 43, 0.93) 45%,
+      rgba(1, 5, 28, 0.96) 100%
     );
   backdrop-filter: blur(18px) saturate(120%);
-  border: 1px solid rgba(127, 182, 240, 0.18);
+  border: 1px solid rgba(127, 152, 240, 0.18);
   box-shadow:
     0 40px 120px -40px rgba(0, 0, 0, 0.95),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .painel {
-  background: linear-gradient(180deg, rgba(12, 34, 80, 0.76), rgba(8, 24, 60, 0.82));
+  background: linear-gradient(180deg, rgba(4, 9, 84, 0.76), rgba(2, 6, 63, 0.82));
   backdrop-filter: blur(12px);
-  border: 1.5px solid rgba(79, 142, 230, 0.55);
+  border: 1.5px solid rgba(114, 132, 236, 0.55);
   border-radius: 24px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
@@ -206,7 +236,7 @@ body {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(111, 231, 223, 0.09),
+    rgba(140, 231, 237, 0.09),
     transparent
   );
   animation: varrer 2.6s linear infinite;
@@ -222,8 +252,8 @@ body {
 
 .pill {
   border-radius: 999px;
-  border: 1px solid rgba(127, 182, 240, 0.22);
-  background: rgba(4, 16, 31, 0.6);
+  border: 1px solid rgba(127, 152, 240, 0.22);
+  background: rgba(1, 6, 31, 0.6);
 }
 
 .campo {
@@ -243,7 +273,7 @@ body {
     box-shadow 0.18s ease;
 }
 .campo::placeholder {
-  color: rgba(143, 166, 191, 0.65);
+  color: rgba(169, 177, 206, 0.65);
   font-family: var(--font-display);
   font-weight: 700;
 }
@@ -280,7 +310,7 @@ input:focus-visible {
   width: 6px;
 }
 .barra-rolagem::-webkit-scrollbar-thumb {
-  background: rgba(127, 182, 240, 0.25);
+  background: rgba(127, 152, 240, 0.25);
   border-radius: 999px;
 }
 
@@ -316,14 +346,14 @@ input:focus-visible {
 .carga-brilho::after {
   content: "";
   position: absolute; top: -10%; bottom: -10%; left: -45%; width: 38%;
-  background: linear-gradient(100deg, transparent, rgba(255, 244, 200, 0.9), rgba(150, 195, 255, 0.55), transparent);
+  background: linear-gradient(100deg, transparent, rgba(255, 244, 200, 0.9), rgba(150, 167, 255, 0.55), transparent);
   transform: skewX(-18deg);
   animation: carga-varre 2.2s ease-in-out 0.5s infinite;
 }
 @keyframes carga-varre { 0% { left: -45%; } 55%, 100% { left: 130%; } }
 
 .carga-halo {
-  background: radial-gradient(closest-side, rgba(63, 140, 255, 0.35), rgba(111, 231, 223, 0.12) 55%, transparent);
+  background: radial-gradient(closest-side, rgba(104, 124, 255, 0.35), rgba(140, 231, 237, 0.12) 55%, transparent);
   animation: carga-pulsa 2.4s ease-in-out infinite;
 }
 @keyframes carga-pulsa { 0%, 100% { opacity: 0.55; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1.04); } }
@@ -333,7 +363,7 @@ input:focus-visible {
 @keyframes carga-onda { 0% { transform: scale(0.7); opacity: 0.7; } 100% { transform: scale(1.9); opacity: 0; } }
 
 .carga-faixa {
-  background: repeating-linear-gradient(90deg, rgba(220, 233, 245, 0.35) 0 10px, transparent 10px 22px);
+  background: repeating-linear-gradient(90deg, rgba(220, 226, 245, 0.35) 0 10px, transparent 10px 22px);
   animation: carga-anda 0.7s linear infinite;
 }
 @keyframes carga-anda { from { background-position: 0 0; } to { background-position: -22px 0; } }

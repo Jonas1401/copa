@@ -137,10 +137,10 @@ const ABAS: { id: Aba; label: string }[] = [
   { id: "webhooks", label: "Webhooks / erros" },
   { id: "config", label: "Configurações" },
 ];
-const CARD = "rounded-[20px] border border-[#2a5bb0]/55 bg-[#061735]/80 p-3.5 sm:p-4";
+const CARD = "rounded-[20px] border border-[#3342d0]/55 bg-[#010636]/80 p-3.5 sm:p-4";
 const MUTED = "text-[12px] leading-relaxed text-gelo/60";
-const BUTTON = "inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-[#3768b8]/70 bg-[#0b2655] px-3.5 py-2 text-[12px] font-bold text-white transition hover:border-ciano/70 hover:text-ciano disabled:cursor-not-allowed disabled:opacity-45";
-const INPUT = "w-full rounded-[12px] border border-[#2a5bb0]/70 bg-[#06122b] px-3 py-2.5 text-[14px] text-white outline-none placeholder:text-gelo/40 focus:border-ciano/70";
+const BUTTON = "inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-[#4d5bcb]/70 bg-[#030b5a] px-3.5 py-2 text-[12px] font-bold text-white transition hover:border-ciano/70 hover:text-ciano disabled:cursor-not-allowed disabled:opacity-45";
+const INPUT = "w-full rounded-[12px] border border-[#3342d0]/70 bg-[#02042b] px-3 py-2.5 text-[14px] text-white outline-none placeholder:text-gelo/40 focus:border-ciano/70";
 
 function moeda(value: string | number | null | undefined, currency = "USD") {
   if (value == null || !Number.isFinite(Number(value))) return "—";
@@ -344,9 +344,9 @@ export default function InternetEsimAdmin({ api, onSessaoExpirada }: Props) {
   }
 
   return (
-    <section className="mt-4 overflow-hidden rounded-[24px] border-[1.5px] border-ciano/35 bg-[linear-gradient(180deg,rgba(9,30,68,0.97),rgba(4,16,39,0.98))] shadow-[0_16px_50px_rgba(0,12,40,0.22)]">
+    <section className="mt-4 overflow-hidden rounded-[24px] border-[1.5px] border-ciano/35 bg-[linear-gradient(180deg,rgba(2, 8, 72, 0.97),rgba(0, 3, 39, 0.98))] shadow-[0_16px_50px_rgba(0, 2, 37, 0.22)]">
       <button type="button" onClick={() => setAberto((value) => !value)} aria-expanded={aberto} className="flex w-full items-center gap-3 p-4 text-left sm:p-5">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-cyan-300 to-blue-500 text-[#04142f] shadow-lg shadow-cyan-950/40"><Wifi size={25} strokeWidth={2.4} /></span>
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-cyan-300 to-blue-500 text-[#00052f] shadow-lg shadow-cyan-950/40"><Wifi size={25} strokeWidth={2.4} /></span>
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-display text-[18px] font-extrabold text-white sm:text-[20px]">📶 Internet / eSIM</span>
@@ -358,7 +358,7 @@ export default function InternetEsimAdmin({ api, onSessaoExpirada }: Props) {
       </button>
 
       {aberto && (
-        <div className="border-t border-[#2a5bb0]/40 p-3 sm:p-5">
+        <div className="border-t border-[#3342d0]/40 p-3 sm:p-5">
           {(erro || aviso) && <div role="status" className={`mb-3 flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] ${erro ? "border-red-400/30 bg-red-500/10 text-red-100" : "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"}`}>
             {erro ? <AlertTriangle size={17} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={17} className="mt-0.5 shrink-0" />}{erro || aviso}
           </div>}
@@ -369,7 +369,7 @@ export default function InternetEsimAdmin({ api, onSessaoExpirada }: Props) {
             </button>
           </div>
           <nav aria-label="Seções Internet/eSIM" className="barra-rolagem mb-4 flex gap-2 overflow-x-auto pb-2">
-            {ABAS.map((item) => <button key={item.id} type="button" onClick={() => setAba(item.id)} className={`shrink-0 rounded-full border px-3.5 py-2 text-[11px] font-extrabold transition ${aba === item.id ? "border-ciano/65 bg-ciano/15 text-ciano" : "border-[#2a5bb0]/45 bg-[#081b3d] text-gelo/65 hover:text-white"}`}>{item.label}</button>)}
+            {ABAS.map((item) => <button key={item.id} type="button" onClick={() => setAba(item.id)} className={`shrink-0 rounded-full border px-3.5 py-2 text-[11px] font-extrabold transition ${aba === item.id ? "border-ciano/65 bg-ciano/15 text-ciano" : "border-[#3342d0]/45 bg-[#020840] text-gelo/65 hover:text-white"}`}>{item.label}</button>)}
           </nav>
           {!dashboard && carregando && <div className="grid min-h-48 place-items-center text-gelo/65"><span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Carregando Internet/eSIM…</span></div>}
           {dashboard && <>
@@ -412,15 +412,15 @@ export default function InternetEsimAdmin({ api, onSessaoExpirada }: Props) {
         </div>
       )}
 
-      {detalhe && <div className="fixed inset-0 z-[100] grid place-items-center bg-[#020817]/85 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="esim-install-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetalhe(null); }}>
-        <div className="barra-rolagem max-h-[94dvh] w-full max-w-[560px] overflow-y-auto rounded-[22px] border border-ciano/30 bg-[#071831] p-4 shadow-2xl sm:p-5">
+      {detalhe && <div className="fixed inset-0 z-[100] grid place-items-center bg-[#000217]/85 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="esim-install-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetalhe(null); }}>
+        <div className="barra-rolagem max-h-[94dvh] w-full max-w-[560px] overflow-y-auto rounded-[22px] border border-ciano/30 bg-[#020931] p-4 shadow-2xl sm:p-5">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ciano/15 text-ciano"><QrCode size={21} /></span>
             <div className="min-w-0 flex-1"><h3 id="esim-install-title" className="font-display text-lg font-extrabold text-white">Instalar eSIM</h3><p className={MUTED}>Dados de instalação protegidos · administrador</p></div>
             <button type="button" onClick={() => setDetalhe(null)} className="grid h-9 w-9 place-items-center rounded-full text-gelo/65 hover:bg-white/10 hover:text-white" aria-label="Fechar"><X size={19} /></button>
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-[240px_1fr]">
-            {detalhe.qrCode ? <QRPreview value={detalhe.qrCode} /> : <div className="grid min-h-44 place-items-center rounded-2xl border border-white/10 bg-[#0b2249] p-4 text-center text-xs text-gelo/60">A NexaEsim não enviou o conteúdo do QR neste evento.</div>}
+            {detalhe.qrCode ? <QRPreview value={detalhe.qrCode} /> : <div className="grid min-h-44 place-items-center rounded-2xl border border-white/10 bg-[#040b4d] p-4 text-center text-xs text-gelo/60">A NexaEsim não enviou o conteúdo do QR neste evento.</div>}
             <div className="space-y-3">
               {detalhe.iccid && <CampoInstalacao label="ICCID" value={detalhe.iccid} />}
               {detalhe.smDp && <CampoInstalacao label="SM-DP+" value={detalhe.smDp} />}
@@ -430,7 +430,7 @@ export default function InternetEsimAdmin({ api, onSessaoExpirada }: Props) {
               {detalhe.qrUrl && <a href={detalhe.qrUrl} target="_blank" rel="noreferrer" className={`${BUTTON} w-full`}><ExternalLink size={15} /> Abrir QR hospedado pela NexaEsim</a>}
             </div>
           </div>
-          {detalhe.qrCode && <div className="mt-4"><p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-gelo/55">Conteúdo para instalação manual</p><div className="flex gap-2 rounded-xl border border-[#2a5bb0]/40 bg-[#041026] p-2.5"><code className="barra-rolagem min-w-0 flex-1 overflow-x-auto break-all text-[11px] leading-relaxed text-gelo/80">{detalhe.qrCode}</code><button className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ciano hover:bg-white/10" type="button" onClick={() => void copiarCodigo(detalhe.qrCode!)} aria-label="Copiar conteúdo do QR">{copiado ? <CheckCircle2 size={16} /> : <Copy size={16} />}</button></div></div>}
+          {detalhe.qrCode && <div className="mt-4"><p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-gelo/55">Conteúdo para instalação manual</p><div className="flex gap-2 rounded-xl border border-[#3342d0]/40 bg-[#000426] p-2.5"><code className="barra-rolagem min-w-0 flex-1 overflow-x-auto break-all text-[11px] leading-relaxed text-gelo/80">{detalhe.qrCode}</code><button className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ciano hover:bg-white/10" type="button" onClick={() => void copiarCodigo(detalhe.qrCode!)} aria-label="Copiar conteúdo do QR">{copiado ? <CheckCircle2 size={16} /> : <Copy size={16} />}</button></div></div>}
           <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.035] p-3.5">
             <h4 className="flex items-center gap-2 text-[13px] font-extrabold text-white"><BookOpen size={16} className="text-ciano" /> Instalação manual</h4>
             <ol className="mt-2 list-decimal space-y-1 pl-4 text-[12px] leading-relaxed text-gelo/70">
@@ -449,7 +449,7 @@ export default function InternetEsimAdmin({ api, onSessaoExpirada }: Props) {
 }
 
 function CampoInstalacao({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl border border-[#2a5bb0]/35 bg-[#041026] p-2.5"><span className="block text-[10px] font-extrabold uppercase tracking-wide text-gelo/45">{label}</span><span className="mt-1 block break-all font-mono text-[11px] text-white">{value}</span></div>;
+  return <div className="rounded-xl border border-[#3342d0]/35 bg-[#000426] p-2.5"><span className="block text-[10px] font-extrabold uppercase tracking-wide text-gelo/45">{label}</span><span className="mt-1 block break-all font-mono text-[11px] text-white">{value}</span></div>;
 }
 
 function Resumo({ data }: { data: Dashboard }) {
@@ -530,6 +530,6 @@ function Configuracoes({ data, margin, onMargin, onSaveMargin, busy }: { data: D
   return <div className="space-y-3"><div className={CARD}><h3 className="flex items-center gap-2 text-sm font-extrabold text-white"><CircleDollarSign size={17} className="text-ciano" /> Margem CopaLinks</h3><p className={`${MUTED} mt-1`}>A margem percentual é calculada sobre o custo wholesale do catálogo. O preço final é arredondado em centavos. Os valores de referência da NexaEsim são USD.</p><div className="mt-3 flex max-w-md flex-col gap-2 sm:flex-row"><label className="relative flex-1"><input className={`${INPUT} pr-9`} type="number" min="0" max="500" step="0.01" value={margin} onChange={(event) => onMargin(event.target.value)} aria-label="Margem em percentual" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-gelo/45">%</span></label><button type="button" className={BUTTON} onClick={onSaveMargin} disabled={busy}>{busy ? <LoaderCircle size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}Salvar margem</button></div><p className="mt-2 text-[10px] text-gelo/45">A margem fica no banco; modo TESTE/PRODUÇÃO depende exclusivamente da variável NEXAESIM_MODE no backend.</p></div>
     <div className={CARD}><h3 className="flex items-center gap-2 text-sm font-extrabold text-white"><KeyRound size={17} className="text-ciano" /> Ambiente e conexão NexaEsim</h3><div className="mt-3 grid gap-2 sm:grid-cols-2"><LinhaConfig label="Modo de teste ativo" value={data.provider.mode === "TEST"} /><LinhaConfig label="API Key presente no servidor" value={data.provider.apiKeyConfigured} /><LinhaConfig label="API URL oficial presente" value={data.provider.apiUrlConfigured} /><LinhaConfig label="Webhook secret presente no servidor" value={data.provider.webhookSecretConfigured} /></div><p className="mt-3 text-[11px] leading-relaxed text-gelo/60">A troca de ambiente é feita apenas com <code>NEXAESIM_MODE</code>. Não existe botão para enviar a integração a produção. Mantenha as três variáveis NexaEsim exclusivamente nos Secrets/Environment Variables do backend.</p><a href={data.provider.docsUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-extrabold text-ciano hover:underline">Documentação oficial NexaEsim Partner API <ExternalLink size={14} /></a></div>
     <div className={CARD}><h3 className="flex items-center gap-2 text-sm font-extrabold text-white"><CircleDollarSign size={17} className="text-amber-200" /> Pagamento, saldo e recarga</h3><ul className="mt-2 list-disc space-y-1.5 pl-4 text-[11px] leading-relaxed text-gelo/70"><li>O repositório não tinha gateway Pix/cartão configurado. A confirmação recebe um contrato backend assinado; um adaptador específico do provedor de pagamento precisa ser configurado antes de cobrar clientes.</li><li>A API NexaEsim documenta o saldo pelo Account API (Bearer token do portal), separado da API Key de comércio; sem token e schema público completo, o saldo não é consultado/exibido.</li><li>A documentação atual não publica endpoint de recarga de eSIM. A tabela está preparada, mas o botão não envia pedido nem cobrança.</li><li>Cancelamento/reembolso depende do gateway configurado. A integração não solicita cancelamento de perfil Nexa sem endpoint oficial documentado.</li></ul></div>
-    <div className="flex items-start gap-2 rounded-xl border border-[#2a5bb0]/30 bg-[#07162e] p-3 text-[11px] text-gelo/55"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-ciano" /><span>Sem acesso público ao painel: nenhum link Internet/eSIM foi adicionado à página inicial ou à navegação dos motoristas. Rotas internas exigem autenticação de administrador; callbacks são protegidos por HMAC e idempotência.</span></div>
+    <div className="flex items-start gap-2 rounded-xl border border-[#3342d0]/30 bg-[#02082e] p-3 text-[11px] text-gelo/55"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-ciano" /><span>Sem acesso público ao painel: nenhum link Internet/eSIM foi adicionado à página inicial ou à navegação dos motoristas. Rotas internas exigem autenticação de administrador; callbacks são protegidos por HMAC e idempotência.</span></div>
   </div>;
 }

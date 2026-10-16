@@ -47,13 +47,13 @@ function Identidade({ nome }: { nome?: string | null }) {
         alt="CopaLinks"
         width={LOGO.largura}
         height={LOGO.altura}
-        className="h-[26px] w-auto shrink-0 object-contain drop-shadow-[0_2px_10px_rgba(0,10,30,0.9)] sm:h-[30px]"
+        className="h-[26px] w-auto shrink-0 object-contain drop-shadow-[0_2px_10px_rgba(0, 2, 28, 0.9)] sm:h-[30px]"
       />
-      <span className="min-w-0 truncate font-display text-[17px] leading-tight font-extrabold text-white drop-shadow-[0_2px_10px_rgba(0,10,30,0.95)] sm:text-[19px]">
+      <span className="min-w-0 truncate font-display text-[17px] leading-tight font-extrabold text-white drop-shadow-[0_2px_10px_rgba(0, 2, 28, 0.95)] sm:text-[19px]">
         {nome ? (
           <>
             Olá,{" "}
-            <span className="text-[#3a9dff] drop-shadow-[0_0_18px_rgba(58,157,255,0.55)]">
+            <span className="text-[#6388ff] drop-shadow-[0_0_18px_rgba(99, 136, 255, 0.55)]">
               {nome}!
             </span>
           </>
@@ -159,8 +159,8 @@ export default function BannerCaminhao({
             onError={() => setFalhou(true)}
             className={`banner-entra absolute inset-0 h-full w-full ${src === BANNER_PADRAO ? "object-contain object-center" : "object-cover object-[68%_46%]"}`}
           />
-          {/* integração com o fundo azul: só a base da foto (5%) se dissolve no #002b6b */}
-          <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0,43,107,0)_0%,#002b6b_100%)]" />
+          {/* integração com o fundo cobalto: só a base da foto (5%) se dissolve no meio do degradê do app */}
+          <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(2,18,133,0)_0%,var(--fundo-meio)_100%)]" />
         </div>
 
         {/* controles do topo (compartilhar e previsão do tempo) */}
@@ -190,8 +190,8 @@ export default function BannerCaminhao({
         )}
 
         {estado === "processando" && (
-          <div className="absolute inset-0 z-20 grid place-items-center bg-[#030c20]/55 backdrop-blur-[2px]" role="status">
-            <div className="flex items-center gap-2 rounded-full bg-[#06173a]/90 px-4 py-2.5 text-[14px] font-bold text-white">
+          <div className="absolute inset-0 z-20 grid place-items-center bg-[#000220]/55 backdrop-blur-[2px]" role="status">
+            <div className="flex items-center gap-2 rounded-full bg-[#00043d]/90 px-4 py-2.5 text-[14px] font-bold text-white">
               <Sparkles size={17} className="animate-pulse text-ouro" /> {mensagem}
             </div>
           </div>
@@ -234,7 +234,7 @@ export default function BannerCaminhao({
                 <Camera size={18} /> Tirar foto
               </button>
               <button type="button" onClick={() => galeria.current?.click()}
-                className="flex items-center justify-center gap-2 rounded-full border border-[#2a5bb0]/80 bg-[#0b2152]/80 px-5 py-3.5 font-display text-[15px] font-bold text-white hover:border-ciano hover:text-ciano">
+                className="flex items-center justify-center gap-2 rounded-full border border-[#3342d0]/80 bg-[#030856]/80 px-5 py-3.5 font-display text-[15px] font-bold text-white hover:border-ciano hover:text-ciano">
                 <ImageIcon size={18} /> Escolher da galeria
               </button>
               {versao && (

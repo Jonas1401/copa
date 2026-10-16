@@ -77,17 +77,17 @@ const ICONES: Record<string, typeof Plug> = {
 
 const COR_ICONE: Record<string, string> = {
   composio: "bg-[#8b3dff]",
-  clima: "bg-[#2f8cf0]",
+  clima: "bg-[#5376f4]",
   ia: "bg-[#e8892d]",
   notificacoes: "bg-[#e63950]",
-  banco: "bg-[#1aa6b8]",
+  banco: "bg-[#1daede]",
 };
 
 const STATUS: Record<Status, { rotulo: string; ponto: string; texto: string; borda: string }> = {
   conectado: { rotulo: "Conectado", ponto: "bg-verde shadow-[0_0_10px_#35e08a]", texto: "text-verde", borda: "border-verde/45" },
   erro: { rotulo: "Erro", ponto: "bg-red-500 shadow-[0_0_10px_#ef4444]", texto: "text-red-400", borda: "border-red-500/45" },
   nao_configurado: { rotulo: "Não configurado", ponto: "bg-ambar shadow-[0_0_10px_#f5b21e]", texto: "text-ambar", borda: "border-ambar/45" },
-  nao_testado: { rotulo: "Não testado", ponto: "bg-azulclaro", texto: "text-azulclaro", borda: "border-[#2a5bb0]/60" },
+  nao_testado: { rotulo: "Não testado", ponto: "bg-azulclaro", texto: "text-azulclaro", borda: "border-[#3342d0]/60" },
 };
 
 const MASCARA = "••••••••••••";
@@ -170,7 +170,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; s
 
 /* -------------------------------------------------------------- campos */
 const inputBase =
-  "w-full rounded-[14px] border-[1.5px] border-[#2a5bb0]/70 bg-[#06122b]/85 px-3.5 py-2.5 text-[15px] text-white outline-none transition-colors placeholder:text-gelo/40 focus:border-ciano/70";
+  "w-full rounded-[14px] border-[1.5px] border-[#3342d0]/70 bg-[#02042b]/85 px-3.5 py-2.5 text-[15px] text-white outline-none transition-colors placeholder:text-gelo/40 focus:border-ciano/70";
 
 function CampoSecreto({
   campo,
@@ -211,7 +211,7 @@ function CampoSecreto({
       </div>
 
       {info.configurado && (
-        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[12px] border border-[#2a5bb0]/50 bg-black/25 px-3 py-2">
+        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[12px] border border-[#3342d0]/50 bg-black/25 px-3 py-2">
           <KeyRound size={14} className="text-azulclaro" />
           <span className="tabular font-mono text-[14px] text-white">
             {campo.rotulo.includes("Key") || campo.rotulo.includes("Token") ? "Chave" : "Valor"}: {MASCARA}
@@ -285,7 +285,7 @@ function CardIntegracao({
   const final4Principal = it.campos.find((c) => c.secreto && c.info.configurado)?.info.final4;
 
   return (
-    <section className={`rounded-[22px] border-[1.5px] bg-[linear-gradient(180deg,rgba(13,40,92,0.9),rgba(8,24,60,0.94))] p-4 ${st.borda}`}>
+    <section className={`rounded-[22px] border-[1.5px] bg-[linear-gradient(180deg,rgba(4, 11, 97, 0.9),rgba(2, 6, 63, 0.94))] p-4 ${st.borda}`}>
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -311,11 +311,11 @@ function CardIntegracao({
       </button>
 
       {aberto && (
-        <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+        <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
           <p className="text-[13px] leading-snug text-gelo/75">{it.descricao}</p>
 
           {/* resumo: chave mascarada + status */}
-          <div className="mt-3 grid gap-1.5 rounded-[14px] border border-[#2a5bb0]/50 bg-[#06122b]/70 px-3.5 py-2.5 text-[13.5px]">
+          <div className="mt-3 grid gap-1.5 rounded-[14px] border border-[#3342d0]/50 bg-[#02042b]/70 px-3.5 py-2.5 text-[13.5px]">
             {it.campos.some((c) => c.secreto) && (
               <div className="flex items-center justify-between gap-2">
                 <span className="text-gelo/70">API Key</span>
@@ -452,8 +452,8 @@ function Entrada({
   }
 
   return (
-    <form onSubmit={enviar} className="mx-auto mt-6 w-full max-w-[420px] rounded-[24px] border-[1.5px] border-[#2a5bb0]/60 bg-[linear-gradient(180deg,rgba(13,40,92,0.92),rgba(8,24,60,0.95))] p-5">
-      <span className="grid h-14 w-14 place-items-center rounded-full bg-[#2f8cf0] text-white shadow-[0_0_24px_-4px_rgba(47,140,240,0.8)]">
+    <form onSubmit={enviar} className="mx-auto mt-6 w-full max-w-[420px] rounded-[24px] border-[1.5px] border-[#3342d0]/60 bg-[linear-gradient(180deg,rgba(4, 11, 97, 0.92),rgba(2, 6, 63, 0.95))] p-5">
+      <span className="grid h-14 w-14 place-items-center rounded-full bg-[#5376f4] text-white shadow-[0_0_24px_-4px_rgba(83, 118, 244, 0.8)]">
         <ShieldCheck size={28} />
       </span>
       <h2 className="mt-3 font-display text-[22px] font-extrabold text-white">
@@ -532,8 +532,8 @@ function RecuperarSenha({
   }
 
   return (
-    <form onSubmit={enviar} className="mx-auto mt-6 w-full max-w-[420px] rounded-[24px] border-[1.5px] border-[#2a5bb0]/60 bg-[linear-gradient(180deg,rgba(13,40,92,0.92),rgba(8,24,60,0.95))] p-5">
-      <span className="grid h-14 w-14 place-items-center rounded-full bg-[#2f8cf0] text-white shadow-[0_0_24px_-4px_rgba(47,140,240,0.8)]">
+    <form onSubmit={enviar} className="mx-auto mt-6 w-full max-w-[420px] rounded-[24px] border-[1.5px] border-[#3342d0]/60 bg-[linear-gradient(180deg,rgba(4, 11, 97, 0.92),rgba(2, 6, 63, 0.95))] p-5">
+      <span className="grid h-14 w-14 place-items-center rounded-full bg-[#5376f4] text-white shadow-[0_0_24px_-4px_rgba(83, 118, 244, 0.8)]">
         <KeyRound size={28} />
       </span>
       <h2 className="mt-3 font-display text-[22px] font-extrabold text-white">Esqueci a senha</h2>
@@ -595,7 +595,7 @@ function TrocarSenha({
   }
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
+    <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -603,7 +603,7 @@ function TrocarSenha({
         className="flex w-full items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
             <KeyRound size={22} /> Trocar senha
           </h2>
           <p className="mt-0.5 text-[12.5px] text-gelo/60">
@@ -616,7 +616,7 @@ function TrocarSenha({
         </span>
       </button>
       {aberto && (
-        <form onSubmit={salvar} className="mt-3 grid gap-2.5 border-t border-[#2a5bb0]/35 pt-3 sm:grid-cols-3">
+        <form onSubmit={salvar} className="mt-3 grid gap-2.5 border-t border-[#3342d0]/35 pt-3 sm:grid-cols-3">
           <input className={inputBase} type="password" placeholder="Senha atual" value={atual} onChange={(e) => setAtual(e.target.value)} autoComplete="current-password" aria-label="Senha atual" />
           <input className={inputBase} type="password" placeholder="Nova senha (mín. 8)" value={nova} onChange={(e) => setNova(e.target.value)} autoComplete="new-password" aria-label="Nova senha" />
           <input className={inputBase} type="password" placeholder="Repita a nova senha" value={nova2} onChange={(e) => setNova2(e.target.value)} autoComplete="new-password" aria-label="Repita a nova senha" />
@@ -759,11 +759,11 @@ export default function AdminApp() {
   }
 
   return (
-    <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
+    <div className="fundo-app relative min-h-screen w-full bg-fundo">
 
       <main className="relative mx-auto w-full max-w-[980px] px-3 pt-4 pb-12">
         <header className="flex items-center gap-3">
-          <Link href="/" aria-label="Voltar ao início" className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#2a5bb0]/70 bg-[#0b2152]/80 text-white hover:border-ciano/70 hover:text-ciano">
+          <Link href="/" aria-label="Voltar ao início" className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#3342d0]/70 bg-[#030856]/80 text-white hover:border-ciano/70 hover:text-ciano">
             <ChevronLeft size={26} strokeWidth={2.2} />
           </Link>
           <div className="min-w-0 flex-1">
@@ -771,7 +771,7 @@ export default function AdminApp() {
             <p className="text-[13.5px] text-gelo/75">Gerencie as integrações externas utilizadas pelo CopaLinks.</p>
           </div>
           {admin && (
-            <button type="button" onClick={() => void sair()} className="flex shrink-0 items-center gap-2 rounded-full border border-[#2a5bb0]/70 bg-[#0b2152]/80 px-3 py-2 text-[13px] font-semibold text-gelo hover:border-red-400/60 hover:text-red-300">
+            <button type="button" onClick={() => void sair()} className="flex shrink-0 items-center gap-2 rounded-full border border-[#3342d0]/70 bg-[#030856]/80 px-3 py-2 text-[13px] font-semibold text-gelo hover:border-red-400/60 hover:text-red-300">
               <LogOut size={16} /> <span className="hidden sm:inline">{admin.nome.split(" ")[0]} ·</span> Sair
             </button>
           )}
@@ -794,7 +794,7 @@ export default function AdminApp() {
             <CartaoMotoristasAdmin api={api} onSessaoExpirada={sair401} />
             <InternetEsimAdmin api={api} onSessaoExpirada={sair401} />
 
-            <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
+            <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
               <button
                 type="button"
                 onClick={() => setMonitorAberto((v) => !v)}
@@ -802,7 +802,7 @@ export default function AdminApp() {
                 className="flex w-full items-center justify-between gap-3 text-left"
               >
                 <div className="min-w-0">
-                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
                     <Smartphone size={22} /> Monitor WhatsApp
                   </h2>
                   <p className="mt-0.5 text-[12.5px] text-gelo/60">
@@ -815,13 +815,13 @@ export default function AdminApp() {
                 </span>
               </button>
               {monitorAberto && (
-                <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
+                <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
                   <p className="text-[13.5px] leading-snug text-gelo/80">
                     Gerencie o pareamento do Android monitor, acompanhe códigos enviados pelo grupo, configure o filtro sem APK (webhook) e simule avisos para os motoristas.
                   </p>
                   <Link
                     href="/monitor"
-                    className="mt-3 inline-flex items-center justify-between gap-3 rounded-full border border-ciano/60 bg-[#0b2146] px-5 py-2.5 font-display text-[14px] font-bold text-ciano uppercase transition-colors hover:border-ciano hover:bg-ciano/10"
+                    className="mt-3 inline-flex items-center justify-between gap-3 rounded-full border border-ciano/60 bg-[#040b4a] px-5 py-2.5 font-display text-[14px] font-bold text-ciano uppercase transition-colors hover:border-ciano hover:bg-ciano/10"
                   >
                     <span>Abrir Monitor WhatsApp</span>
                     <span aria-hidden className="text-lg">→</span>
@@ -844,7 +844,7 @@ export default function AdminApp() {
 
             <TrocarSenha onAviso={setAviso} onSessaoExpirada={sair401} />
 
-            <section className="mt-4 rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-4">
+            <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
               <button
                 type="button"
                 onClick={() => setAuditoriaAberta((v) => !v)}
@@ -852,7 +852,7 @@ export default function AdminApp() {
                 className="flex w-full items-center justify-between gap-3 text-left"
               >
                 <div className="min-w-0">
-                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
                     <History size={22} /> Auditoria
                   </h2>
                   <p className="mt-0.5 text-[12.5px] text-gelo/60">
@@ -865,15 +865,15 @@ export default function AdminApp() {
                 </span>
               </button>
               {auditoriaAberta && (
-                <div className="mt-3 border-t border-[#2a5bb0]/35 pt-3">
-                  <ul className="barra-rolagem max-h-[380px] divide-y divide-[#2a5bb0]/35 overflow-y-auto">
+                <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
+                  <ul className="barra-rolagem max-h-[380px] divide-y divide-[#3342d0]/35 overflow-y-auto">
                     {registros.length === 0 && <li className="py-3 text-[14px] text-gelo/60">Nenhum registro ainda.</li>}
                     {registros.map((r) => (
                       <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-2.5 text-[13.5px]">
                         <span className="tabular shrink-0 text-[12px] text-gelo/55">{dataHora(r.criadoEm)}</span>
                         <b className="text-white">{r.admin}</b>
                         <span className="text-gelo/85">{r.acao}</span>
-                        <span className="rounded-full bg-[#2f8cf0]/15 px-2 py-0.5 text-[11.5px] font-semibold text-azulclaro">
+                        <span className="rounded-full bg-[#5376f4]/15 px-2 py-0.5 text-[11.5px] font-semibold text-azulclaro">
                           {NOMES_INTEGRACAO[r.integracao] ?? r.integracao}
                         </span>
                         {r.detalhe && <span className="w-full text-[12px] text-gelo/55">{r.detalhe}</span>}
@@ -919,7 +919,7 @@ export default function AdminApp() {
               <p className="mt-1.5 text-[14px] text-gelo/80">Essa ação pode interromper a integração.</p>
               <p className="mt-1 text-[13px] text-gelo/60">Integração: {remover.nome}</p>
               <div className="mt-5 grid grid-cols-2 gap-2.5">
-                <button type="button" onClick={() => setRemover(null)} autoFocus className="rounded-full border-[1.5px] border-[#2a5bb0]/70 py-3 font-display text-[15px] font-bold text-white uppercase hover:bg-white/5">
+                <button type="button" onClick={() => setRemover(null)} autoFocus className="rounded-full border-[1.5px] border-[#3342d0]/70 py-3 font-display text-[15px] font-bold text-white uppercase hover:bg-white/5">
                   Cancelar
                 </button>
                 <button type="button" onClick={() => void confirmarRemocao()} className="rounded-full bg-red-500 py-3 font-display text-[15px] font-extrabold text-white uppercase hover:bg-red-600">
@@ -933,7 +933,7 @@ export default function AdminApp() {
 
       {aviso && (
         <div role="status" className="fixed inset-x-0 bottom-5 z-[60] flex justify-center px-4">
-          <div className={`max-w-[520px] rounded-full border px-4 py-3 text-[14px] font-medium shadow-lg ${aviso.erro ? "border-red-400/50 bg-[#2a0f18] text-red-200" : "border-verde/50 bg-[#0b2a1f] text-verde"}`}>
+          <div className={`max-w-[520px] rounded-full border px-4 py-3 text-[14px] font-medium shadow-lg ${aviso.erro ? "border-red-400/50 bg-[#2a0f18] text-red-200" : "border-verde/50 bg-[#072a22] text-verde"}`}>
             {aviso.texto}
           </div>
         </div>

@@ -58,7 +58,7 @@ async function main() {
   const webp = await sharp(bruto)
     .rotate() // aplica a orientação EXIF (foto de celular "deitada")
     .resize({ width: LADO_MAX, height: LADO_MAX, fit: "inside", withoutEnlargement: true, kernel: "lanczos3" })
-    .flatten({ background: "#01101e" }) // PNG com transparência: fundo azul-marinho do app
+    .flatten({ background: "#010a38" }) // PNG com transparência: fundo cobalto do app
     .webp({ quality: 80, effort: 6 })
     .toBuffer();
   const m = await sharp(webp).metadata();

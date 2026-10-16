@@ -67,7 +67,7 @@ export default function CarregamentoLogo({ pronto, onTerminar }: { pronto: boole
       className={`carga-tela fixed inset-0 z-[95] flex flex-col items-center justify-center overflow-hidden px-6 transition-[opacity,transform] duration-500 ease-out ${
         saindo ? "pointer-events-none scale-[1.04] opacity-0" : "opacity-100"
       }`}
-      style={{ background: "radial-gradient(110% 65% at 50% 42%, #00479e 0%, #002b6b 54%, #000d28 100%)" }}
+      style={{ background: "var(--fundo-gradiente)", backgroundColor: "var(--fundo-base)" }}
     >
       {/* grade suave do pátio ao fundo */}
       <div
@@ -75,7 +75,7 @@ export default function CarregamentoLogo({ pronto, onTerminar }: { pronto: boole
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(127,182,240,1) 1px, transparent 1px), linear-gradient(90deg, rgba(127,182,240,1) 1px, transparent 1px)",
+            "linear-gradient(rgba(127, 152, 240, 1) 1px, transparent 1px), linear-gradient(90deg, rgba(127, 152, 240, 1) 1px, transparent 1px)",
           backgroundSize: "44px 44px",
           maskImage: "radial-gradient(60% 50% at 50% 45%, black, transparent)",
           WebkitMaskImage: "radial-gradient(60% 50% at 50% 45%, black, transparent)",
@@ -123,7 +123,7 @@ export default function CarregamentoLogo({ pronto, onTerminar }: { pronto: boole
         <div className="relative h-[6px] overflow-hidden rounded-full bg-white/[0.08]">
           <div className="carga-faixa absolute inset-y-[2.5px] left-0 right-0" />
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-ouro via-[#ffd95a] to-ciano shadow-[0_0_14px_rgba(111,231,223,0.7)] transition-[width] duration-300 ease-out"
+            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-ouro via-[#ffd95a] to-ciano shadow-[0_0_14px_rgba(140, 231, 237, 0.7)] transition-[width] duration-300 ease-out"
             style={{ width: `${Math.round(progresso * 100)}%` }}
           />
         </div>

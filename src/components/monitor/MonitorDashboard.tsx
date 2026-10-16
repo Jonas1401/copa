@@ -84,35 +84,35 @@ export default function MonitorDashboard() {
   }
 
   return (
-    <main className="fundo-app min-h-screen bg-[#002b6b] px-4 pb-16 text-white">
+    <main className="fundo-app min-h-screen bg-fundo px-4 pb-16 text-white">
       <div className="mx-auto max-w-4xl pt-7">
-        <Link href="/admin" className="inline-flex items-center gap-2 text-sm text-[#9cbbeb] hover:text-white">
+        <Link href="/admin" className="inline-flex items-center gap-2 text-sm text-[#9ca6eb] hover:text-white">
           <ArrowLeft size={18} /> Voltar ao administrador
         </Link>
         <div className="mt-7 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.22em] text-ciano">CopaLinks · área restrita</div>
             <h1 className="mt-1 font-display text-3xl font-extrabold">Monitor WhatsApp</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#b8c9e5]">
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#b8bde5]">
               Acompanhe apenas códigos escolhidos pelos motoristas. Nenhuma conversa, remetente ou telefone é salvo.
             </p>
           </div>
-          <button onClick={() => void carregar()} type="button" aria-label="Atualizar monitor" className="rounded-full border border-[#365e9f] bg-[#0c2248] p-3 text-ciano hover:bg-[#143367]">
+          <button onClick={() => void carregar()} type="button" aria-label="Atualizar monitor" className="rounded-full border border-[#3f4ebf] bg-[#050c4c] p-3 text-ciano hover:bg-[#0a146c]">
             <RefreshCw size={19} />
           </button>
         </div>
 
         {semAcesso ? (
-          <section className="mt-8 rounded-3xl border border-amber-500/50 bg-[#1d1d31] p-6">
+          <section className="mt-8 rounded-3xl border border-amber-500/50 bg-[#181a32] p-6">
             <h2 className="font-display text-lg font-bold">Acesso restrito</h2>
-            <p className="mt-2 text-[#b8c9e5]">Entre primeiro no painel de administração do CopaLinks.</p>
+            <p className="mt-2 text-[#b8bde5]">Entre primeiro no painel de administração do CopaLinks.</p>
             <Link href="/admin" className="mt-4 inline-block rounded-full bg-ouro px-5 py-3 font-bold text-[#282000]">Entrar no /admin</Link>
           </section>
         ) : (
           <>
             {erro && <p role="alert" className="mt-5 rounded-xl border border-red-400/40 bg-red-950/40 px-4 py-3 text-red-100">{erro}</p>}
 
-            <section className="mt-6 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+            <section className="mt-6 rounded-[22px] border border-[#3542ad] bg-[#040b4a] p-4">
               <button
                 type="button"
                 onClick={() => setResumoAberto((v) => !v)}
@@ -123,37 +123,37 @@ export default function MonitorDashboard() {
                   <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
                     <ShieldCheck size={20} className="text-ciano" /> Resumo e grupo monitorado
                   </h2>
-                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                  <p className="mt-0.5 text-xs text-[#b8bde5]">
                     {resumo ? `${resumo.monitorCount} monitor · ${resumo.receptorCount} receptores · ${resumo.codigoCount} códigos ativos` : "Situação do grupo e contadores do monitor"}
                   </p>
                 </div>
-                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8bde5]">
                   {resumoAberto ? "Fechar" : "Abrir"}
                   {resumoAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </span>
               </button>
               {resumoAberto && (
-                <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
-                  <div className="rounded-[18px] border border-ciano/45 bg-[#071a35] px-4 py-3">
+                <div className="mt-3 border-t border-[#3542ad]/50 pt-3">
+                  <div className="rounded-[18px] border border-ciano/45 bg-[#020936] px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-ciano">Grupo permitido no Android monitor</p>
                     <p className="mt-1 break-words font-display text-lg font-bold text-white">{NOME_GRUPO_MONITORADO}</p>
-                    <p className="mt-1 text-xs text-[#b8c9e5]">Somente notificações confirmadas deste grupo; outros grupos e conversas individuais são ignorados.</p>
+                    <p className="mt-1 text-xs text-[#b8bde5]">Somente notificações confirmadas deste grupo; outros grupos e conversas individuais são ignorados.</p>
                   </div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-3">
                     {[
                       { icon: Wifi, titulo: "Aparelhos monitor", valor: resumo?.monitorCount ?? "—" },
                       { icon: Bell, titulo: "Celulares receptores", valor: resumo?.receptorCount ?? "—" },
                       { icon: ShieldCheck, titulo: "Códigos ativos", valor: resumo?.codigoCount ?? "—" },
-                    ].map((x) => <div key={x.titulo} className="rounded-[18px] border border-[#2c518d] bg-[#071a35] p-4">
+                    ].map((x) => <div key={x.titulo} className="rounded-[18px] border border-[#3542ad] bg-[#020936] p-4">
                       <x.icon className="text-ciano" size={22} /><p className="mt-3 text-2xl font-bold">{x.valor}</p>
-                      <p className="mt-1 text-sm text-[#b8c9e5]">{x.titulo}</p>
+                      <p className="mt-1 text-sm text-[#b8bde5]">{x.titulo}</p>
                     </div>)}
                   </div>
                 </div>
               )}
             </section>
 
-            <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+            <section className="mt-4 rounded-[22px] border border-[#3542ad] bg-[#040b4a] p-4">
               <button
                 type="button"
                 onClick={() => setParearAberto((v) => !v)}
@@ -164,31 +164,31 @@ export default function MonitorDashboard() {
                   <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
                     <Smartphone size={21} className="text-ciano" /> Parear Android monitor
                   </h2>
-                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                  <p className="mt-0.5 text-xs text-[#b8bde5]">
                     Gerar código de uso único para o app Android Monitor
                   </p>
                 </div>
-                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8bde5]">
                   {parearAberto ? "Fechar" : "Abrir"}
                   {parearAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </span>
               </button>
               {parearAberto && (
-                <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
-                  <p className="text-sm leading-relaxed text-[#b8c9e5]">Instale o app Android Monitor em um aparelho sob sua responsabilidade, conceda acesso a notificações nas Configurações do Android e digite o código gerado aqui. O código dura 10 minutos e só funciona uma vez.</p>
+                <div className="mt-3 border-t border-[#3542ad]/50 pt-3">
+                  <p className="text-sm leading-relaxed text-[#b8bde5]">Instale o app Android Monitor em um aparelho sob sua responsabilidade, conceda acesso a notificações nas Configurações do Android e digite o código gerado aqui. O código dura 10 minutos e só funciona uma vez.</p>
                   <p className="mt-3 text-sm">Firebase: <strong className={resumo?.firebaseConfigurado ? "text-verde" : "text-ambar"}>{resumo?.firebaseConfigurado ? "configurado" : "ainda não configurado"}</strong></p>
                   <button type="button" disabled={ocupado} onClick={() => void gerarCodigo()}
                     className="mt-4 rounded-full bg-ouro px-6 py-3 font-display text-sm font-bold text-[#281e00] disabled:opacity-50">{ocupado ? "Aguarde…" : "Gerar código do monitor"}</button>
-                  {codigo && <div className="mt-4 rounded-xl border border-[#37c9ce]/50 bg-[#06162f] p-4" role="status">
-                    <p className="text-sm text-[#b8c9e5]">Mostrado uma única vez; digite no Android Monitor:</p>
+                  {codigo && <div className="mt-4 rounded-xl border border-[#57c2d7]/50 bg-[#01072f] p-4" role="status">
+                    <p className="text-sm text-[#b8bde5]">Mostrado uma única vez; digite no Android Monitor:</p>
                     <p className="mt-2 break-all font-mono text-xl font-bold tracking-[0.16em] text-ciano">{codigo.codigo}</p>
-                    <p className="mt-2 text-xs text-[#b8c9e5]">Vence em {hora(codigo.expiraEm)}. Não compartilhe em grupos.</p>
+                    <p className="mt-2 text-xs text-[#b8bde5]">Vence em {hora(codigo.expiraEm)}. Não compartilhe em grupos.</p>
                   </div>}
                 </div>
               )}
             </section>
 
-            <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+            <section className="mt-4 rounded-[22px] border border-[#3542ad] bg-[#040b4a] p-4">
               <button
                 type="button"
                 onClick={() => setAparelhosAberto((v) => !v)}
@@ -199,23 +199,23 @@ export default function MonitorDashboard() {
                   <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
                     <Wifi size={20} className="text-ciano" /> Aparelhos pareados
                   </h2>
-                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                  <p className="mt-0.5 text-xs text-[#b8bde5]">
                     {resumo?.devices?.length ? `${resumo.devices.length} aparelho(s) registrado(s)` : "Nenhum Android pareado ainda"}
                   </p>
                 </div>
-                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8bde5]">
                   {aparelhosAberto ? "Fechar" : "Abrir"}
                   {aparelhosAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </span>
               </button>
               {aparelhosAberto && (
-                <div className="mt-3 space-y-2 border-t border-[#2c518d]/50 pt-3">
-                  {resumo?.devices?.length ? resumo.devices.map((d) => <div key={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-[#2c518d]/65 bg-[#071a35] p-3 text-sm">
+                <div className="mt-3 space-y-2 border-t border-[#3542ad]/50 pt-3">
+                  {resumo?.devices?.length ? resumo.devices.map((d) => <div key={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-[#3542ad]/65 bg-[#020936] p-3 text-sm">
                     {d.ativo ? <CheckCircle2 size={18} className="text-verde" /> : <WifiOff size={18} className="text-gelo/45" />}
-                    <span className="min-w-0 flex-1"><b>{d.nome || "Android CopaLinks"}</b> <span className="text-[#b8c9e5]">· {d.tipo === "MONITOR" ? "monitor" : "receptor"}{d.ativo ? " · ativo" : " · revogado"}</span></span>
-                    <span className="text-xs text-[#b8c9e5]">{d.ultimoContatoEm ? `Visto ${hora(d.ultimoContatoEm)}` : "Sem contato"}</span>
+                    <span className="min-w-0 flex-1"><b>{d.nome || "Android CopaLinks"}</b> <span className="text-[#b8bde5]">· {d.tipo === "MONITOR" ? "monitor" : "receptor"}{d.ativo ? " · ativo" : " · revogado"}</span></span>
+                    <span className="text-xs text-[#b8bde5]">{d.ultimoContatoEm ? `Visto ${hora(d.ultimoContatoEm)}` : "Sem contato"}</span>
                     {!!d.ativo && <button type="button" disabled={ocupado} onClick={() => void desativar(d.id)} className="rounded-full border border-red-400/40 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/40">Revogar</button>}
-                  </div>) : <p className="text-sm text-[#b8c9e5]">Nenhum Android pareado ainda.</p>}
+                  </div>) : <p className="text-sm text-[#b8bde5]">Nenhum Android pareado ainda.</p>}
                 </div>
               )}
             </section>
@@ -224,7 +224,7 @@ export default function MonitorDashboard() {
 
             <FiltroGrupoCard cabecalho={cabecalho} />
 
-            <section className="mt-4 rounded-[22px] border border-[#2c518d] bg-[#0b2146] p-4">
+            <section className="mt-4 rounded-[22px] border border-[#3542ad] bg-[#040b4a] p-4">
               <button
                 type="button"
                 onClick={() => setEventosAberto((v) => !v)}
@@ -235,25 +235,25 @@ export default function MonitorDashboard() {
                   <h2 className="flex items-center gap-2 font-display text-lg font-bold text-white">
                     <Clock3 size={20} className="text-ciano" /> Eventos recentes
                   </h2>
-                  <p className="mt-0.5 text-xs text-[#b8c9e5]">
+                  <p className="mt-0.5 text-xs text-[#b8bde5]">
                     {resumo?.eventos?.length ? `${resumo.eventos.length} evento(s) recente(s)` : "Histórico de códigos e entregas do monitor"}
                   </p>
                 </div>
-                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8c9e5]">
+                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-[#b8bde5]">
                   {eventosAberto ? "Fechar" : "Abrir"}
                   {eventosAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </span>
               </button>
               {eventosAberto && (
-                <div className="mt-3 border-t border-[#2c518d]/50 pt-3">
-                  <p className="text-xs text-[#b8c9e5]">Só códigos ou a contagem de códigos (filtro do grupo), sem o texto das mensagens. &quot;Aceitos&quot; conta o FCM do receptor Android; os avisos do filtro do grupo saem pelo Web Push do app.</p>
+                <div className="mt-3 border-t border-[#3542ad]/50 pt-3">
+                  <p className="text-xs text-[#b8bde5]">Só códigos ou a contagem de códigos (filtro do grupo), sem o texto das mensagens. &quot;Aceitos&quot; conta o FCM do receptor Android; os avisos do filtro do grupo saem pelo Web Push do app.</p>
                   <div className="mt-4 space-y-2">
-                    {resumo?.eventos?.length ? resumo.eventos.map((e) => <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-[#2c518d]/65 bg-[#071a35] p-3 text-sm">
-                      <Clock3 size={17} className="text-ciano" /> <span className="text-xs text-[#b8c9e5]">{hora(e.criadoEm)}</span>
+                    {resumo?.eventos?.length ? resumo.eventos.map((e) => <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-[#3542ad]/65 bg-[#020936] p-3 text-sm">
+                      <Clock3 size={17} className="text-ciano" /> <span className="text-xs text-[#b8bde5]">{hora(e.criadoEm)}</span>
                       <span className="font-mono font-bold text-white">{e.codigos.join(", ")}</span>
                       <span className="ml-auto text-xs text-verde">{e.aceitas} aceitos</span>
                       {e.falhas > 0 && <span className="text-xs text-red-200">{e.falhas} falhas</span>}
-                    </div>) : <p className="text-sm text-[#b8c9e5]">Nenhum evento recebido. Confira se há monitor pareado, permissão de notificações e códigos ativos.</p>}
+                    </div>) : <p className="text-sm text-[#b8bde5]">Nenhum evento recebido. Confira se há monitor pareado, permissão de notificações e códigos ativos.</p>}
                   </div>
                 </div>
               )}

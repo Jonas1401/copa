@@ -58,16 +58,16 @@ function Tile({
   sub?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-[14px] border border-[#2a5bb0]/55 bg-[#071a3d]/75 px-3 py-2.5">
+    <div className="flex min-w-0 flex-col rounded-[14px] border border-[#3342d0]/55 bg-[#010640]/75 px-3 py-2.5">
       <div className="flex items-center gap-2">
-        <span className="shrink-0 text-[#38b6ff] [&>svg]:h-5 [&>svg]:w-5">{icone}</span>
+        <span className="shrink-0 text-[#619bff] [&>svg]:h-5 [&>svg]:w-5">{icone}</span>
         <span className="min-w-0 text-[12.5px] leading-tight text-gelo/85">{rotulo}</span>
       </div>
       <div className="min-w-0">
         <div className="tabular mt-1.5 font-display text-[clamp(20px,6vw,24px)] leading-tight font-bold text-white">
           {valor}
         </div>
-        {sub && <div className="mt-0.5 flex items-center gap-1 text-[12px] text-[#5cc8ff]">{sub}</div>}
+        {sub && <div className="mt-0.5 flex items-center gap-1 text-[12px] text-[#5c9dff]">{sub}</div>}
       </div>
     </div>
   );
@@ -79,21 +79,21 @@ function CardHora({ h, ativo }: { h: Hora; ativo: boolean }) {
       data-dia={h.dia}
       className={`relative flex w-[76px] shrink-0 snap-start flex-col items-center gap-1 overflow-hidden rounded-[16px] border px-1.5 pt-2.5 pb-3 ${
         ativo
-          ? "border-[#38b6ff]/80 bg-[#0e2c63]/90"
-          : "border-[#2a5bb0]/55 bg-[#071a3d]/75"
+          ? "border-[#619bff]/80 bg-[#040d68]/90"
+          : "border-[#3342d0]/55 bg-[#010640]/75"
       }`}
     >
       <span className="tabular text-[15px] font-semibold text-white">{h.hora}</span>
       <IconeLinha icone={h.icone} tamanho={28} className="my-0.5" />
       <span className="tabular font-display text-[18px] font-bold text-white">{h.temperatura}°C</span>
       <span className="tabular flex items-center gap-0.5 text-[13px] text-white">
-        <Droplet size={12} className="text-[#5cc8ff]" /> {h.chanceChuva}%
+        <Droplet size={12} className="text-[#5c9dff]" /> {h.chanceChuva}%
       </span>
       <span className="tabular text-[12.5px] text-gelo/85">{h.chuvaMm} mm</span>
       <span className="tabular flex items-center gap-1 text-[12.5px] text-gelo/90" title={`Vento ${h.ventoDirecao}`}>
         <SetaVento graus={h.ventoGraus} tamanho={12} /> {h.ventoKmh}
       </span>
-      {ativo && <span className="absolute inset-x-0 bottom-0 h-[3px] bg-[#38b6ff]" />}
+      {ativo && <span className="absolute inset-x-0 bottom-0 h-[3px] bg-[#619bff]" />}
     </div>
   );
 }
@@ -114,8 +114,8 @@ function CardDia({
       aria-pressed={selecionado}
       className={`flex w-[132px] shrink-0 snap-start flex-col rounded-[16px] border px-3 pt-2.5 pb-3 text-left transition-colors ${
         selecionado
-          ? "border-[#38b6ff]/80 bg-[#0e2c63]/90"
-          : "border-[#2a5bb0]/55 bg-[#071a3d]/75 hover:border-[#38b6ff]/60"
+          ? "border-[#619bff]/80 bg-[#040d68]/90"
+          : "border-[#3342d0]/55 bg-[#010640]/75 hover:border-[#619bff]/60"
       }`}
     >
       <span className="font-display text-[16px] font-bold text-white">{d.rotulo}</span>
@@ -128,7 +128,7 @@ function CardDia({
       <span className="tabular mt-1 font-display text-[18px] font-bold text-white">
         {d.max}° <span className="text-gelo/70">/ {d.min}°</span>
       </span>
-      <span className="tabular mt-1 flex items-center gap-1 text-[13px] text-[#5cc8ff]">
+      <span className="tabular mt-1 flex items-center gap-1 text-[13px] text-[#5c9dff]">
         <Droplets size={14} /> {d.chanceChuva}%
       </span>
     </button>
@@ -151,7 +151,7 @@ function Faixa({
       >
         {children}
       </div>
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#08183a] to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#02063d] to-transparent" />
     </div>
   );
 }
@@ -199,10 +199,10 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
       ? { borda: "border-verde/60", barra: "bg-verde", texto: "text-verde" }
       : p?.alerta.nivel === "vento"
         ? { borda: "border-ambar/60", barra: "bg-ambar", texto: "text-ambar" }
-        : { borda: "border-[#38b6ff]/60", barra: "bg-[#38b6ff]", texto: "text-[#38b6ff]" };
+        : { borda: "border-[#619bff]/60", barra: "bg-[#619bff]", texto: "text-[#619bff]" };
 
   return (
-    <div className="fundo-app relative min-h-screen w-full bg-[#002b6b]">
+    <div className="fundo-app relative min-h-screen w-full bg-fundo">
 
       <main className="largura-aparelho relative pb-10">
         {/* ------------------------------------------------ cabeçalho */}
@@ -214,7 +214,7 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
               aria-hidden
               className="absolute inset-0 h-full w-full object-cover object-right"
             />
-            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,18,52,0.88)_0%,rgba(0,28,78,0.55)_55%,rgba(0,28,78,0.12)_100%),linear-gradient(180deg,transparent_48%,rgba(0,43,107,0.75)_78%,#002b6b_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(1,6,50,0.88)_0%,rgba(2,14,95,0.55)_55%,rgba(2,14,95,0.12)_100%),linear-gradient(180deg,transparent_48%,rgba(2,18,133,0.72)_78%,var(--fundo-meio)_100%)]" />
           </div>
           <div className="relative flex items-center gap-3">
             <IconeLinha icone="sol-nuvem" tamanho={44} className="!text-[#ffc83d]" />
@@ -264,11 +264,11 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
           {p && a && (
             <>
               {/* ---------------------------------------------- agora */}
-              <section className="rounded-[22px] border border-[#2a5bb0]/60 bg-[linear-gradient(180deg,rgba(13,40,92,0.92),rgba(8,24,60,0.94))] p-3.5 shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)]">
+              <section className="rounded-[22px] border border-[#3342d0]/60 bg-[linear-gradient(180deg,rgba(4, 11, 97, 0.92),rgba(2, 6, 63, 0.94))] p-3.5 shadow-[0_20px_50px_-30px_rgba(0,0,0,0.9)]">
                 <div className="flex items-start gap-2">
-                  <IconeGrande icone={a.icone} className="h-[92px] w-[96px] shrink-0 drop-shadow-[0_0_18px_rgba(90,180,255,0.35)] min-[440px]:h-[112px] min-[440px]:w-[118px]" />
+                  <IconeGrande icone={a.icone} className="h-[92px] w-[96px] shrink-0 drop-shadow-[0_0_18px_rgba(122, 159, 255, 0.35)] min-[440px]:h-[112px] min-[440px]:w-[118px]" />
                   <div className="min-w-0 flex-1 pt-1">
-                    <div className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-[#2a5bb0]/70 bg-[#06122b]/80 px-2.5 py-1 text-[12.5px] text-gelo/85 min-[440px]:hidden">
+                    <div className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-[#3342d0]/70 bg-[#02042b]/80 px-2.5 py-1 text-[12.5px] text-gelo/85 min-[440px]:hidden">
                       Agora <b className="tabular text-white">{a.hora}</b>
                     </div>
                     <div className="tabular font-display text-[clamp(46px,14vw,70px)] leading-[0.95] font-extrabold text-white">
@@ -279,7 +279,7 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
                       <Thermometer size={16} className="shrink-0" /> Sensação térmica <b className="tabular text-white">{a.sensacao}°C</b>
                     </div>
                   </div>
-                  <div className="hidden shrink-0 items-center gap-2 rounded-[18px] border border-[#2a5bb0]/70 bg-[#06122b]/80 px-3 py-1.5 min-[440px]:flex">
+                  <div className="hidden shrink-0 items-center gap-2 rounded-[18px] border border-[#3342d0]/70 bg-[#02042b]/80 px-3 py-1.5 min-[440px]:flex">
                     <IconeLinha icone={a.icone} tamanho={24} />
                     <div className="leading-tight">
                       <div className="text-[12.5px] text-gelo/85">Agora</div>
@@ -325,11 +325,11 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
                   type="button"
                   onClick={() => setBoletimAberto((v) => !v)}
                   aria-expanded={boletimAberto}
-                  className={`mt-3 flex w-full items-center gap-3 overflow-hidden rounded-[16px] border bg-[#06122b]/80 py-3 pr-3 text-left ${alertaCor.borda}`}
+                  className={`mt-3 flex w-full items-center gap-3 overflow-hidden rounded-[16px] border bg-[#02042b]/80 py-3 pr-3 text-left ${alertaCor.borda}`}
                 >
                   <span className={`h-12 w-1 shrink-0 rounded-r-full ${alertaCor.barra}`} />
                   <CloudRain size={28} className={`shrink-0 ${alertaCor.texto}`} />
-                  <span className="h-10 w-px shrink-0 bg-[#2a5bb0]/70" />
+                  <span className="h-10 w-px shrink-0 bg-[#3342d0]/70" />
                   <span className="min-w-0 flex-1">
                     <span className={`block font-display text-[16px] font-bold uppercase ${alertaCor.texto}`}>
                       {p.alerta.titulo}
@@ -350,7 +350,7 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
                       exit={{ opacity: 0, height: 0 }}
                       className="overflow-hidden"
                     >
-                      <div className="mt-2 space-y-2 rounded-[16px] border border-[#2a5bb0]/55 bg-[#06122b]/70 p-3">
+                      <div className="mt-2 space-y-2 rounded-[16px] border border-[#3342d0]/55 bg-[#02042b]/70 p-3">
                         <div className="text-[12px] font-bold tracking-[0.08em] text-azulclaro uppercase">
                           Boletim meteorológico APPA
                         </div>
@@ -371,9 +371,9 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
               </section>
 
               {/* --------------------------------------- próximas horas */}
-              <section className="rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-3">
+              <section className="rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-3">
                 <div className="mb-2.5 flex items-center justify-between gap-2 px-0.5">
-                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
                     <Clock size={26} strokeWidth={2.2} /> Próximas horas
                   </h2>
                   <a
@@ -393,9 +393,9 @@ export default function TempoApp({ inicial }: { inicial: Previsao | null }) {
               </section>
 
               {/* ----------------------------------------- próximos dias */}
-              <section className="rounded-[22px] border border-[#2a5bb0]/60 bg-[#08183a]/90 p-3">
+              <section className="rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-3">
                 <div className="mb-2.5 flex items-center justify-between gap-2 px-0.5">
-                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#38b6ff] uppercase">
+                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
                     <CalendarDays size={26} strokeWidth={2.2} /> Próximos dias
                   </h2>
                   <span className="flex items-center gap-1 text-[13.5px] text-gelo/85">

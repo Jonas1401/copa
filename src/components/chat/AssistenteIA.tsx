@@ -129,11 +129,11 @@ export default function AssistenteIA({
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22 }}
-      className="fundo-app fixed inset-0 z-[70] flex flex-col bg-[#002b6b]"
+      className="fundo-app fixed inset-0 z-[70] flex flex-col bg-fundo"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_50%_at_50%_0%,rgba(139,61,255,0.22),transparent_60%)]" />
 
-      <header className="largura-aparelho relative flex items-center gap-3 border-b border-[#1d4690]/60 px-3 py-3">
+      <header className="largura-aparelho relative flex items-center gap-3 border-b border-[#222fb3]/60 px-3 py-3">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#8b3dff] text-white shadow-[0_0_22px_-6px_rgba(139,61,255,0.9)]">
           <Bot size={22} strokeWidth={2.2} />
         </span>
@@ -214,7 +214,7 @@ export default function AssistenteIA({
           {msgs.map((m, i) =>
             m.papel === "user" ? (
               <div key={i} className="flex justify-end">
-                <div className="max-w-[84%] rounded-[18px] rounded-tr-md bg-[#2f7fe8] px-3.5 py-2.5 text-[15px] leading-snug break-words whitespace-pre-wrap text-white">
+                <div className="max-w-[84%] rounded-[18px] rounded-tr-md bg-[#526cee] px-3.5 py-2.5 text-[15px] leading-snug break-words whitespace-pre-wrap text-white">
                   {m.texto}
                 </div>
               </div>
@@ -240,7 +240,7 @@ export default function AssistenteIA({
       </div>
 
       <div
-        className="relative border-t border-[#1d4690]/60 bg-[#06122b]/95 px-3 pt-2"
+        className="relative border-t border-[#222fb3]/60 bg-[#02042b]/95 px-3 pt-2"
         style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
       >
         <div className="largura-aparelho">
