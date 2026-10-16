@@ -35,6 +35,7 @@ import AlertaAdmin from "@/components/alerta/AlertaAdmin";
 import BoasVindas, { type DadosBoasVindas } from "@/components/motoristas/BoasVindas";
 import CarregamentoLogo from "@/components/inicio/CarregamentoLogo";
 import { CHAVE_MOTORISTA, COOKIE_MOTORISTA, primeiroNome, type Motorista } from "@/lib/motoristas";
+import { PRAZO_SESSAO_MS } from "@/lib/carregamento";
 import { IMAGEM_COMPARTILHAR, NOME_APP, linkDoApp, mensagemCompartilhar } from "@/lib/compartilhar";
 import { LOGO } from "@/lib/logo";
 
@@ -785,9 +786,15 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       salvo = null;
     }
     document.cookie = `${COOKIE_MOTORISTA}=; path=/; max-age=0; samesite=lax`;
+    // A tela de carregamento só sai quando o perfil confirma: limita a espera
+    // para a rede lenta não prender a abertura na animação de carregamento.
+    const controlador = new AbortController();
+    const prazo = setTimeout(() => controlador.abort(), PRAZO_SESSAO_MS);
+    const sessao = (init?: RequestInit) =>
+      fetch("/api/motoristas/sessao", { ...init, cache: "no-store", signal: controlador.signal });
     void (async () => {
       try {
-        let r = await fetch("/api/motoristas/sessao", { cache: "no-store" });
+        let r = await sessao();
         if (r.status === 401 && salvo?.id && salvo.criadoEm) {
           let assinatura: PushSubscriptionJSON | null = null;
           try {
@@ -796,7 +803,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
           } catch {
             // Funciona também se o aparelho nunca ativou as notificações.
           }
-          r = await fetch("/api/motoristas/sessao", {
+          r = await sessao({
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ id: salvo.id, criadoEm: salvo.criadoEm, subscription: assinatura }),
@@ -805,8 +812,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
         if (!vivo) return;
         if (r.ok) {
           guardarMotorista(await r.json());
-          const estadoAtual = await fetch("/api/estado", { cache: "no-store" });
-          if (vivo && estadoAtual.ok) setEstado(await estadoAtual.json());
+          // O estado atualiza sozinho no efeito de busca (dispara ao confirmar
+          // o perfil): não espera aqui para a abertura sair rápido.
         } else {
           motoristaRef.current = null;
           setMotorista(null);
@@ -821,13 +828,14 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
           setErroEntrada("Sem conexão. Confira a internet e tente abrir o app novamente.");
         }
       } finally {
+        clearTimeout(prazo);
         if (vivo) {
           setEstado((e) => motoristaRef.current ? e : { ...e, pontos: [], eventos: [] });
           setPerfilPronto(true);
         }
       }
     })();
-    return () => { vivo = false; };
+    return () => { vivo = false; controlador.abort(); clearTimeout(prazo); };
   }, [guardarMotorista]);
 
   // Chat: bolinha com as mensagens novas de outros motoristas.
