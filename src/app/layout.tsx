@@ -11,6 +11,7 @@ import "@fontsource/space-grotesk/700.css";
 import "./globals.css";
 import { headers } from "next/headers";
 import { DESCRICAO_CURTA, IMAGEM_COMPARTILHAR, NOME_APP } from "@/lib/compartilhar";
+import { urlPublicaDoApp } from "@/lib/url-app";
 
 /**
  * Metadados com endereço absoluto (o link de pré-visualização muda): assim a
@@ -18,19 +19,9 @@ import { DESCRICAO_CURTA, IMAGEM_COMPARTILHAR, NOME_APP } from "@/lib/compartilh
  */
 export async function generateMetadata(): Promise<Metadata> {
   const h = await headers();
-  // Detecta o domínio automaticamente (seja o domínio gerado pela Vercel, localhost ou domínio customizado)
-  const host =
-    h.get("x-forwarded-host") ??
-    h.get("host") ??
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || "localhost:3000");
-  const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
-  const protocolo = local ? "http" : "https";
-  const urlFinal =
-    process.env.SITE_URL ||
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : `${protocolo}://${host}`);
-  const base = new URL(urlFinal.startsWith("http") ? urlFinal : `https://${urlFinal}`);
+  // Detecta o domínio automaticamente (domínio fixo, Vercel ou host da
+  // requisição) — a mesma regra usada pela página de divulgação.
+  const base = urlPublicaDoApp(h.get("x-forwarded-host") ?? h.get("host"));
   return {
     ...metadataBase,
     metadataBase: base,

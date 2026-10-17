@@ -16,6 +16,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos pelo Composio; mensagens dos motoristas continuam funcionando |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
+| **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) |
 
 ## Tecnologia
@@ -450,11 +451,46 @@ contatos, sempre com a camada escura por cima para o texto continuar legível.
 ## Estrutura
 
 ```
-src/app        rotas e páginas (/, /tempo, /frete, /contatos, /admin, /api)
-src/components telas (início, tempo, frete, chat, admin)
+src/app        rotas e páginas (/, /tempo, /frete, /contatos, /divulgacao, /admin, /api)
+src/components telas (início, tempo, frete, chat, divulgação, admin)
 src/lib        monitoramento do ponto, push, clima, integrações
-scripts        exportar/importar o banco
+scripts        exportar/importar o banco, gerar logo/fundo/artes
 ```
+
+## Divulgação: a mensagem e a página de instalação
+
+O texto que o motorista manda no WhatsApp (botão **Compartilhar** na tela de
+início) e a página pública **/divulgacao** saem da **mesma lista** — em
+`src/lib/compartilhar.ts`:
+
+- `BENEFICIOS` — os oito recursos do app (monitoramento, alertas, fila em
+  tempo real, tempo, frete, assistente IA, chat e contatos). É a fonte
+  única: a mensagem e os cartões da página nunca divergem.
+- `linhasDaMensagem(link)` — a mensagem linha a linha, com os trechos em
+  negrito. No WhatsApp o negrito sai com `*` (o WhatsApp não entende `**`
+  nem link em markdown `[]( )`), e na página o mesmo trecho vira `<b>`.
+- `mensagemCompartilhar(link)` — o texto pronto (copiar, enviar pelo
+  WhatsApp ou pela folha de compartilhamento do aparelho).
+- `linkWhatsAppMensagem(texto)` — link `wa.me` com a mensagem preenchida.
+
+A página **/divulgacao** (`src/app/divulgacao/page.tsx` +
+`src/components/divulgacao/DivulgacaoApp.tsx`) mostra o que o app faz, o
+passo a passo de instalação **conforme o aparelho** (Chrome e Edge com o
+botão de instalar, iPhone pela Tela de Início, navegador dentro do WhatsApp),
+o QR Code do endereço do app, a prévia da mensagem e as artes para status.
+O endereço do app vem de `src/lib/url-app.ts` (`SITE_URL` → domínio da Vercel
+→ host da requisição), o mesmo usado pelo endereço canônico do layout.
+
+**Artes:** `node scripts/gerar-divulgacao.mjs` (aceita
+`--url=https://copa-links.vercel.app`) gera
+`public/images/divulgacao-status.jpg` (1080×1920, status do WhatsApp) e
+`public/images/divulgacao-card.jpg` (1200×630, prévia do link). Para o texto
+sair com as fontes da marca (Archivo e Space Grotesk), converta os `.woff2` do
+`@fontsource` em `.ttf` e instale no sistema (ex.: em `~/.fonts`); sem isso o
+script usa a fonte padrão e as imagens continuam legíveis.
+
+Teste: `tsx --test tests/divulgacao.test.ts` (a mensagem, a página, as artes e
+a URL do app).
 
 
 ## Push em segundo plano

@@ -7,6 +7,7 @@ const TELAS = [
   "src/components/MonitorApp.tsx",
   "src/components/frete/FreteApp.tsx",
   "src/components/motoristas/BoasVindas.tsx",
+  "src/components/divulgacao/DivulgacaoApp.tsx",
   "src/app/contatos/page.tsx",
 ];
 
