@@ -4,6 +4,8 @@ import sharp from "sharp";
 import { ErroIA } from "../src/lib/ia-provedor";
 import {
   ErroImagem,
+  MODELO_OPENROUTER_CRIAR,
+  MODELO_OPENROUTER_EDITAR,
   analisarImagemDireta,
   gerarImagemDireta,
   imagemDeDataUrl,
@@ -86,45 +88,43 @@ test("recusa formato que não é imagem aceita e arquivo corrompido", async () =
   );
 });
 
-test("gera imagem pela OpenAI (gpt-image-1) e devolve os bytes decodificados", async () => {
+test("cria imagem pelo OpenRouter (POST /api/v1/images) e devolve os bytes decodificados", async () => {
   const bytes = Buffer.from("imagem-gerada-de-teste");
   const { valor, chamadas } = await comFetch(
-    () => Response.json({ data: [{ b64_json: bytes.toString("base64") }] }),
-    () => gerarImagemDireta("um caminhão de carga na neblina", null, "sk-teste-nao-real", "auto"),
+    () => Response.json({ data: [{ b64_json: bytes.toString("base64"), media_type: "image/png" }] }),
+    () => gerarImagemDireta("um caminhão de carga na neblina", null, "sk-or-v1-teste-nao-real", "auto"),
   );
   assert.equal(valor.toString(), "imagem-gerada-de-teste");
-  assert.equal(chamadas[0].url, "https://api.openai.com/v1/images/generations");
+  assert.equal(chamadas[0].url, "https://openrouter.ai/api/v1/images");
+  assert.equal((chamadas[0].init?.method), "POST");
   const corpo = JSON.parse(String(chamadas[0].init?.body));
-  assert.equal(corpo.model, "gpt-image-1");
+  assert.equal(corpo.model, MODELO_OPENROUTER_CRIAR);
   assert.ok(corpo.prompt.includes("um caminhão de carga na neblina"));
   assert.ok(corpo.prompt.includes("sem nudez"), "instrução de segurança vai junto do pedido");
-  assert.equal(new Headers(chamadas[0].init?.headers).get("authorization"), "Bearer sk-teste-nao-real");
+  assert.equal(corpo.input_references, undefined);
+  assert.equal(new Headers(chamadas[0].init?.headers).get("authorization"), "Bearer sk-or-v1-teste-nao-real");
 });
 
-test("com foto de referência a OpenAI usa o endpoint de edição", async () => {
+test("com foto de referência o OpenRouter recebe a foto em input_references", async () => {
   const foto = await fotoDeTeste(300, 300);
   const { chamadas } = await comFetch(
     () => Response.json({ data: [{ b64_json: Buffer.from("x").toString("base64") }] }),
-    () => gerarImagemDireta("transforma em desenho", foto, "sk-teste-nao-real", "openai"),
+    () => gerarImagemDireta("transforma em desenho", foto, "sk-or-v1-teste-nao-real", "openrouter"),
   );
-  assert.equal(chamadas[0].url, "https://api.openai.com/v1/images/edits");
-  assert.ok(chamadas[0].init?.body instanceof FormData);
+  assert.equal(chamadas[0].url, "https://openrouter.ai/api/v1/images");
+  const corpo = JSON.parse(String(chamadas[0].init?.body));
+  assert.equal(corpo.model, MODELO_OPENROUTER_EDITAR);
+  assert.equal(corpo.input_references[0].type, "image_url");
+  assert.ok(corpo.input_references[0].image_url.url.startsWith("data:image/jpeg;base64,"));
 });
 
-test("gera imagem pelo Gemini (gemini-2.5-flash-image) com a chave do Google", async () => {
-  const bytes = Buffer.from("png-gemini");
-  const { valor, chamadas } = await comFetch(
-    () =>
-      Response.json({
-        candidates: [{ content: { parts: [{ text: "ok" }, { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } }] } }],
-      }),
-    () => gerarImagemDireta("um navio no porto", null, "AIza-teste-nao-real", "auto"),
-  );
-  assert.equal(valor.toString(), "png-gemini");
-  assert.ok(chamadas[0].url.includes("gemini-2.5-flash-image:generateContent"));
-  assert.equal(new Headers(chamadas[0].init?.headers).get("x-goog-api-key"), "AIza-teste-nao-real");
-  const corpo = JSON.parse(String(chamadas[0].init?.body));
-  assert.deepEqual(corpo.generationConfig.responseModalities, ["TEXT", "IMAGE"]);
+test("sem OpenRouter, a chave da OpenAI ou do Gemini não gera imagem e a mensagem explica o caminho", async () => {
+  for (const chave of ["sk-teste-nao-real", "AIza-teste-nao-real"]) {
+    await assert.rejects(
+      () => gerarImagemDireta("x", null, chave, "auto"),
+      (e: unknown) => e instanceof ErroIA && e.codigo === "nao_configurada" && e.message.includes("OpenRouter"),
+    );
+  }
 });
 
 test("provedores sem geração de imagem avisam em vez de chamar a API", async () => {
@@ -134,14 +134,25 @@ test("provedores sem geração de imagem avisam em vez de chamar a API", async (
   );
 });
 
-test("erro 401 da chave de imagem vira mensagem de configuração, sem vazar a chave", async () => {
+test("erro 401 da chave do OpenRouter vira mensagem de configuração, sem vazar a chave", async () => {
   await assert.rejects(
     () =>
       comFetch(
         () => new Response("{}", { status: 401 }),
-        () => gerarImagemDireta("x", null, "sk-segredo-nao-real", "openai"),
+        () => gerarImagemDireta("x", null, "sk-or-v1-segredo-nao-real", "openrouter"),
       ),
-    (e: unknown) => e instanceof ErroIA && e.codigo === "nao_configurada" && !e.message.includes("sk-segredo"),
+    (e: unknown) => e instanceof ErroIA && e.codigo === "nao_configurada" && !e.message.includes("sk-or-v1-segredo"),
+  );
+});
+
+test("402 do OpenRouter (sem saldo) explica o problema de forma clara", async () => {
+  await assert.rejects(
+    () =>
+      comFetch(
+        () => new Response("{}", { status: 402 }),
+        () => gerarImagemDireta("x", null, "sk-or-v1-teste-nao-real", "auto"),
+      ),
+    (e: unknown) => e instanceof ErroIA && e.message.includes("sem saldo"),
   );
 });
 

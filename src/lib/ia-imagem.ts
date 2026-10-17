@@ -6,8 +6,8 @@ import { ErroIA, provedorPelaChave, nomeProvedorIA } from "@/lib/ia-provedor";
  *
  * Duas capacidades, de QUALQUER assunto:
  *  1. Gerar imagem (texto → imagem, ou foto + pedido → nova imagem).
- *     Ordem: Composio (Nano Banana, GEMINI_GENERATE_IMAGE) → AI API Key direta
- *     (OpenAI gpt-image-1 ou Google Gemini gemini-2.5-flash-image).
+ *     Ordem: Composio (Nano Banana, GEMINI_GENERATE_IMAGE) → OpenRouter
+ *     (POST /api/v1/images, com a AI API Key do OpenRouter).
  *  2. Receber imagem (o motorista envia uma foto e a IA analisa/responde).
  *     Usa a AI API Key com visão: OpenAI, Anthropic, Google Gemini ou OpenRouter.
  *
@@ -127,61 +127,49 @@ function provedorDaChave(chave: string, escolhido: string): string | null {
   return escolhido === "auto" ? provedorPelaChave(chave) : escolhido;
 }
 
-/* ----------------------------------------------------- geração: API direta */
+/* ------------------------------------------------- geração: OpenRouter (API) */
 
-/** OpenAI gpt-image-1 (criação ou edição a partir de uma foto). */
-async function gerarOpenAI(prompt: string, referencia: Buffer | null, chave: string): Promise<Buffer> {
-  const texto = `${prompt}\n\n${SEGURANCA_IMAGEM}`;
+/** Modelo de criação de imagem (texto → imagem) no OpenRouter. */
+export const MODELO_OPENROUTER_CRIAR = "bytedance-seed/seedream-4.5";
+/** Modelo que aceita foto de referência (edição / variação) no OpenRouter. */
+export const MODELO_OPENROUTER_EDITAR = "openai/gpt-image-1";
+
+/**
+ * OpenRouter: POST /api/v1/images. Com `referencia`, envia a foto em
+ * `input_references` (data URL) para criar uma variação dela.
+ */
+export async function gerarImagemOpenRouter(prompt: string, referencia: Buffer | null, chave: string): Promise<Buffer> {
+  const corpo: Record<string, unknown> = {
+    model: referencia ? MODELO_OPENROUTER_EDITAR : MODELO_OPENROUTER_CRIAR,
+    prompt: `${prompt}\n\n${SEGURANCA_IMAGEM}`,
+  };
+  if (referencia) {
+    corpo.input_references = [
+      { type: "image_url", image_url: { url: `data:image/jpeg;base64,${referencia.toString("base64")}` } },
+    ];
+  }
   let resposta: Response;
   try {
-    if (referencia) {
-      const form = new FormData();
-      form.set("model", "gpt-image-1");
-      form.set("prompt", texto);
-      form.set("size", "1024x1024");
-      form.set("image", new Blob([new Uint8Array(referencia)], { type: "image/jpeg" }), "foto.jpg");
-      resposta = await fetch("https://api.openai.com/v1/images/edits", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${chave}` },
-        body: form,
-        signal: AbortSignal.timeout(90000),
-      });
-    } else {
-      resposta = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${chave}` },
-        body: JSON.stringify({ model: "gpt-image-1", prompt: texto, size: "1024x1024", n: 1 }),
-        signal: AbortSignal.timeout(90000),
-      });
-    }
+    resposta = await fetch("https://openrouter.ai/api/v1/images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${chave}` },
+      body: JSON.stringify(corpo),
+      signal: AbortSignal.timeout(70000),
+    });
   } catch {
-    throw new ErroIA("Falha ao conectar à OpenAI para gerar a imagem. Tente novamente.", "falha");
+    throw new ErroIA("Falha ao conectar ao OpenRouter para gerar a imagem. Tente novamente.", "falha");
   }
-  if (!resposta.ok) throw erroHTTP("OpenAI", resposta.status);
-  const json = (await jsonDe(resposta, "OpenAI")) as { data?: { b64_json?: string }[] };
+  if (resposta.status === 402) {
+    throw new ErroIA("O OpenRouter está sem saldo para gerar imagens. Recarregue a conta e tente de novo.", "falha");
+  }
+  if (!resposta.ok) throw erroHTTP("OpenRouter", resposta.status);
+  const json = (await jsonDe(resposta, "OpenRouter")) as { data?: { b64_json?: string }[] };
   const b64 = json.data?.[0]?.b64_json;
-  if (!b64) throw new ErroIA("A OpenAI não devolveu imagem.", "falha");
+  if (!b64) throw new ErroIA("O OpenRouter não devolveu imagem.", "falha");
   return Buffer.from(b64, "base64");
 }
 
-/** Google Gemini 2.5 Flash Image (Nano Banana) direto pela API Gemini. */
-async function gerarGemini(prompt: string, referencia: Buffer | null, chave: string): Promise<Buffer> {
-  const partes: Record<string, unknown>[] = [{ text: `${prompt}\n\n${SEGURANCA_IMAGEM}` }];
-  if (referencia) partes.push({ inlineData: { mimeType: "image/jpeg", data: referencia.toString("base64") } });
-  const json = (await postJson(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
-    { "x-goog-api-key": chave },
-    { contents: [{ role: "user", parts: partes }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } },
-    "Google Gemini",
-    90000,
-  )) as { candidates?: { content?: { parts?: { inlineData?: { data?: string }; inline_data?: { data?: string } }[] } }[] };
-  const partesResposta = json.candidates?.[0]?.content?.parts ?? [];
-  const b64 = partesResposta.map((p) => p.inlineData?.data ?? p.inline_data?.data).find((d) => typeof d === "string" && d);
-  if (!b64) throw new ErroIA("O Google Gemini não devolveu imagem.", "falha");
-  return Buffer.from(b64, "base64");
-}
-
-/** Geração direta com a AI API Key. Só OpenAI e Gemini criam imagens. */
+/** Geração pela AI API Key: só funciona se a chave for do OpenRouter. */
 export async function gerarImagemDireta(
   prompt: string,
   referencia: Buffer | null,
@@ -189,10 +177,9 @@ export async function gerarImagemDireta(
   escolhido = "auto",
 ): Promise<Buffer> {
   const provedor = provedorDaChave(chave, escolhido);
-  if (provedor === "openai") return gerarOpenAI(prompt, referencia, chave);
-  if (provedor === "gemini") return gerarGemini(prompt, referencia, chave);
+  if (provedor === "openrouter") return gerarImagemOpenRouter(prompt, referencia, chave);
   throw new ErroIA(
-    "Criar imagens precisa de uma AI API Key da OpenAI ou do Google Gemini. Troque a chave no /admin.",
+    "Criar imagens precisa do Composio ou de uma AI API Key do OpenRouter. Troque a chave no /admin.",
     "nao_configurada",
   );
 }
@@ -241,7 +228,7 @@ async function gerarComComposio(prompt: string, referencia: Buffer | null): Prom
     "/tools/execute/GEMINI_GENERATE_IMAGE",
     {
       method: "POST",
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(45_000),
       body: JSON.stringify({ user_id: USUARIO_COMPOSIO, arguments: args }),
     },
   );
@@ -391,7 +378,7 @@ export async function gerarImagemIA(
   }
   if (erroComposio) throw new ErroIA("A geração de imagem não respondeu. Tente de novo em instantes.", "falha");
   throw new ErroIA(
-    "Geração de imagem não configurada: cadastre a COMPOSIO_API_KEY ou a AI API Key (OpenAI ou Gemini) no /admin.",
+    "Geração de imagem não configurada: cadastre a COMPOSIO_API_KEY ou uma AI API Key do OpenRouter no /admin.",
     "nao_configurada",
   );
 }

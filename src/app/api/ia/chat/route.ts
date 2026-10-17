@@ -9,8 +9,8 @@ import { ErroImagem, analisarImagemIA, gerarImagemIA, imagemDeDataUrl, podeGerar
 import { garantirColunaImagem } from "@/lib/ia-imagem-banco";
 
 export const dynamic = "force-dynamic";
-// Criar uma imagem pode levar bem mais que uma resposta de texto.
-export const maxDuration = 60;
+// Criar uma imagem pode levar bem mais que uma resposta de texto (Composio + OpenRouter).
+export const maxDuration = 120;
 
 const PERGUNTA_MAX = 1000;
 const HISTORICO_CTX = 10; // últimas trocas enviadas à IA como contexto
