@@ -1,10 +1,22 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
 import { motion } from "framer-motion";
-import { Bot, LoaderCircle, RotateCcw, Send, X } from "lucide-react";
+import { Bot, ImagePlus, LoaderCircle, RotateCcw, Send, X } from "lucide-react";
 
-type MsgIA = { papel: "user" | "assistant"; texto: string; criadoEm?: string };
+type MsgIA = {
+  id?: number;
+  papel: "user" | "assistant";
+  texto: string;
+  criadoEm?: string;
+  /** A mensagem tem imagem salva no servidor (GET /api/ia/imagem/[id]). */
+  temImagem?: boolean;
+  /** Prévia local da foto enviada agora (data URL), antes de recarregar a conversa. */
+  previa?: string;
+};
+
+/** Lado máximo da foto enviada: o servidor também reduz, mas o celular gasta menos dados. */
+const LADO_FOTO = 1024;
 
 const SUGESTOES = [
   "Quais navios de fertilizante estão chegando?",
@@ -19,7 +31,53 @@ const PODE_FAZER: { emoji: string; titulo: string; texto: string }[] = [
   { emoji: "🚛", titulo: "Caminhão", texto: "Freio, motor, suspensão, elétrica, pneu, Arla… do básico ao mais cabeludo." },
   { emoji: "🌦️", titulo: "Tempo no porto", texto: "Chuva, vento e neblina agora, e o que isso muda na estrada e na fila." },
   { emoji: "📍", titulo: "Seus pontos e o app", texto: "Como anda a sua fila e como usar cada parte do CopaLinks." },
+  { emoji: "🖼️", titulo: "Imagens", texto: "Cria uma imagem de qualquer assunto (é só pedir: \"gera uma imagem de…\") ou analisa a foto que você mandar pelo botão de foto." },
 ];
+
+/** Lê a foto escolhida e devolve JPEG reduzido (data URL), já com a rotação do celular. */
+function lerFoto(arquivo: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(arquivo);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const escala = Math.min(1, LADO_FOTO / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("sem canvas");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      } catch (e) {
+        reject(e);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("imagem inválida"));
+    };
+    img.src = url;
+  });
+}
+
+function urlImagemDaConversa(id: number, motoristaId: number) {
+  return `/api/ia/imagem/${id}?motoristaId=${motoristaId}`;
+}
+
+/** Imagem dentro da bolha; toque abre em tamanho real. */
+function ImagemConversa({ src, alt }: { src: string; alt: string }) {
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="mb-1.5 block overflow-hidden rounded-[12px] bg-black/25">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} loading="lazy" className="max-h-72 w-full object-contain" />
+    </a>
+  );
+}
 
 export default function AssistenteIA({
   aberto,
@@ -35,6 +93,8 @@ export default function AssistenteIA({
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
+  const [foto, setFoto] = useState<string | null>(null);
+  const fotoInput = useRef<HTMLInputElement>(null);
   const listaRef = useRef<HTMLDivElement>(null);
   const seguirFim = useRef(true);
   const motoristaId = motorista?.id;
@@ -82,28 +142,58 @@ export default function AssistenteIA({
 
   async function enviar(pergunta?: string) {
     const t = (pergunta ?? texto).trim();
-    if (!t || enviando || !motorista) return;
+    const imagem = foto;
+    if ((!t && !imagem) || enviando || !motorista) return;
     setEnviando(true);
     setErro("");
     setTexto("");
+    setFoto(null);
     seguirFim.current = true;
-    setMsgs((a) => [...a, { papel: "user", texto: t }]);
+    setMsgs((a) => [...a, { papel: "user", texto: t, previa: imagem ?? undefined }]);
     try {
       const r = await fetch("/api/ia/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ motoristaId: motorista.id, texto: t }),
+        body: JSON.stringify({ motoristaId: motorista.id, texto: t, ...(imagem ? { imagem } : {}) }),
       });
       const d = await r.json();
       if (!r.ok) {
         setErro(d.erro ?? "A IA não respondeu.");
+        if (imagem) setFoto(imagem);
         return;
       }
-      setMsgs((a) => [...a, { papel: "assistant", texto: d.resposta, criadoEm: d.criadoEm }]);
+      setMsgs((a) => [
+        ...a,
+        {
+          papel: "assistant",
+          texto: d.resposta,
+          criadoEm: d.criadoEm,
+          id: d.idResposta ?? undefined,
+          temImagem: Boolean(d.temImagem),
+        },
+      ]);
     } catch {
       setErro("Sem conexão. A pergunta não foi enviada.");
+      if (imagem) setFoto(imagem);
     } finally {
       setEnviando(false);
+    }
+  }
+
+  async function escolherFoto(evento: ChangeEvent<HTMLInputElement>) {
+    const input = evento.currentTarget;
+    const arquivo = input.files?.[0];
+    input.value = "";
+    if (!arquivo) return;
+    if (!arquivo.type.startsWith("image/")) {
+      setErro("Escolha um arquivo de imagem (JPG, PNG ou WebP).");
+      return;
+    }
+    try {
+      setFoto(await lerFoto(arquivo));
+      setErro("");
+    } catch {
+      setErro("Não consegui abrir essa foto. Tente outra.");
     }
   }
 
@@ -215,6 +305,12 @@ export default function AssistenteIA({
             m.papel === "user" ? (
               <div key={i} className="flex justify-end">
                 <div className="max-w-[84%] rounded-[18px] rounded-tr-md bg-[#526cee] px-3.5 py-2.5 text-[15px] leading-snug break-words whitespace-pre-wrap text-white">
+                  {(m.previa || (m.temImagem && m.id)) && (
+                    <ImagemConversa
+                      src={m.previa ?? urlImagemDaConversa(m.id as number, motoristaId ?? 0)}
+                      alt="Foto enviada"
+                    />
+                  )}
                   {m.texto}
                 </div>
               </div>
@@ -224,6 +320,9 @@ export default function AssistenteIA({
                   <div className="mb-1 flex items-center gap-1.5 text-[12px] font-bold text-[#b98cf5]">
                     <Bot size={13} /> Assistente
                   </div>
+                  {m.temImagem && m.id && (
+                    <ImagemConversa src={urlImagemDaConversa(m.id, motoristaId ?? 0)} alt="Imagem criada pelo assistente" />
+                  )}
                   <div className="text-[15px] leading-relaxed break-words whitespace-pre-wrap text-gelo">{m.texto}</div>
                 </div>
               </div>
@@ -245,6 +344,21 @@ export default function AssistenteIA({
       >
         <div className="largura-aparelho">
           {erro && <p className="mb-1.5 text-[13px] text-ambar">{erro}</p>}
+          {foto && (
+            <div className="mb-1.5 flex items-center gap-2 rounded-[16px] border border-[#8b3dff]/45 bg-[#150d33]/80 p-1.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={foto} alt="Foto escolhida" className="h-12 w-12 shrink-0 rounded-[10px] object-cover" />
+              <span className="min-w-0 flex-1 truncate text-[13px] text-gelo/80">Foto pronta. Escreva o que quer saber ou pedir.</span>
+              <button
+                type="button"
+                onClick={() => setFoto(null)}
+                aria-label="Tirar a foto"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -252,6 +366,17 @@ export default function AssistenteIA({
             }}
             className="flex items-end gap-2"
           >
+            <input ref={fotoInput} type="file" accept="image/*" className="hidden" onChange={(e) => void escolherFoto(e)} />
+            <button
+              type="button"
+              onClick={() => fotoInput.current?.click()}
+              disabled={!motorista || enviando}
+              aria-label="Enviar uma foto"
+              title="Enviar uma foto"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-45"
+            >
+              <ImagePlus size={20} />
+            </button>
             <textarea
               value={texto}
               onChange={(e) => setTexto(e.target.value.slice(0, 1000))}
@@ -263,20 +388,20 @@ export default function AssistenteIA({
               }}
               rows={1}
               disabled={!motorista}
-              placeholder={motorista ? "Manda sua pergunta: navio, caminhão, tempo…" : "Cadastre seu nome para conversar…"}
+              placeholder={motorista ? (foto ? "Pergunte sobre a foto (ou deixe em branco)…" : "Manda sua pergunta: navio, caminhão, tempo…") : "Cadastre seu nome para conversar…"}
               aria-label="Pergunta para o assistente"
               className="max-h-[120px] min-h-[48px] flex-1 resize-none rounded-[24px] border-[1.5px] border-[#8b3dff]/60 bg-[#150d33]/80 px-4 py-3 text-[15px] text-white outline-none placeholder:text-gelo/45 focus:border-[#b98cf5] disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!texto.trim() || enviando || !motorista}
+              disabled={(!texto.trim() && !foto) || enviando || !motorista}
               aria-label="Enviar pergunta"
               className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#8b3dff] text-white shadow-[0_0_22px_-6px_rgba(139,61,255,0.9)] disabled:opacity-45"
             >
               <Send size={20} strokeWidth={2.4} />
             </button>
           </form>
-          <p className="mt-1 text-[11.5px] text-gelo/50">Respostas automáticas — em emergência com freio/direção, pare e chame socorro.</p>
+          <p className="mt-1 text-[11.5px] text-gelo/50">Respostas automáticas — em emergência com freio/direção, pare e chame socorro. Imagens criadas ou analisadas por IA.</p>
         </div>
       </div>
     </motion.div>

@@ -321,6 +321,8 @@ export const iaMensagens = pgTable("ia_mensagens", {
   papel: text("papel").notNull(),
   texto: text("texto").notNull(),
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+  // Imagem (JPEG em base64) enviada pelo motorista ou criada pela IA; criada por garantirColunaImagem().
+  imagemDados: text("imagem_dados"),
 });
 
 /* ======================== MONITOR WHATSAPP (opt-in) ======================== */
