@@ -107,9 +107,29 @@ test("a página de divulgação tem prévia de link com a arte certa", () => {
   assert.ok(ler("src/app/layout.tsx").includes("urlPublicaDoApp"));
 });
 
-test("o app tem um caminho para a página de divulgação", () => {
-  const app = ler("src/components/MonitorApp.tsx");
-  assert.ok(app.includes('href="/divulgacao"'), "o app não leva para a página de divulgação");
+test("o material de divulgação do app fica na área do administrador", () => {
+  const cartao = ler("src/components/admin/CartaoDivulgacaoAdmin.tsx");
+  assert.ok(
+    cartao.includes('href="/divulgacao"'),
+    "o painel do admin não leva para a página de divulgação",
+  );
+  assert.ok(cartao.includes("QRCode.toDataURL"), "sem o QR Code do endereço do app");
+  assert.ok(cartao.includes("linhasDaMensagem"), "a prévia da mensagem não usa os blocos em negrito");
+  assert.ok(cartao.includes("IMAGEM_STATUS"), "sem a arte para status");
+  assert.ok(cartao.includes("IMAGEM_DIVULGACAO"), "sem o cartão do link");
+  assert.ok(
+    ler("src/components/admin/AdminApp.tsx").includes("CartaoDivulgacaoAdmin"),
+    "o card de divulgação não está no painel do administrador",
+  );
+  assert.ok(
+    ler("src/app/admin/page.tsx").includes("urlPublicaDoAppTexto"),
+    "o painel do admin não usa a URL única do app",
+  );
+  // o app do motorista não tem mais o card de divulgação
+  assert.ok(
+    !ler("src/components/MonitorApp.tsx").includes('href="/divulgacao"'),
+    "o card de divulgação continua no app do motorista",
+  );
 });
 
 /* ------------------------------------------------------------- artes */

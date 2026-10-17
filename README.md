@@ -17,7 +17,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos pelo Composio; mensagens dos motoristas continuam funcionando |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
-| **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria e o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) |
+| **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria, o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) e o cartão **Divulgação do app** (QR Code, mensagem pronta e artes da campanha) |
 
 ## Tecnologia
 
@@ -480,6 +480,15 @@ botão de instalar, iPhone pela Tela de Início, navegador dentro do WhatsApp),
 o QR Code do endereço do app, a prévia da mensagem e as artes para status.
 O endereço do app vem de `src/lib/url-app.ts` (`SITE_URL` → domínio da Vercel
 → host da requisição), o mesmo usado pelo endereço canônico do layout.
+
+**Onde o material fica:** o card de divulgação do app é do **administrador**
+(`/admin → Divulgação do app`, `src/components/admin/CartaoDivulgacaoAdmin.tsx`).
+Ele junta o endereço público do app, o QR Code (a câmera aponta e abre), a
+mensagem pronta (WhatsApp, copiar ou compartilhar, com a arte anexada) e o
+download das duas artes (status 1080×1920 e cartão do link 1200×630), com
+link para a página pública `/divulgacao`, que fica com o passo a passo de
+instalação. O card saiu da aba "Sobre" do app do motorista: quem divulga é o
+administrador.
 
 **Artes:** `node scripts/gerar-divulgacao.mjs` (aceita
 `--url=https://copa-links.vercel.app`) gera
