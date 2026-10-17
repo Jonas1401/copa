@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import CartaoNotificacoesAdmin from "@/components/admin/CartaoNotificacoesAdmin";
 import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
+import CartaoDivulgacaoAdmin from "@/components/admin/CartaoDivulgacaoAdmin";
 import InternetEsimAdmin from "@/components/admin/InternetEsimAdmin";
 import {
   BellRing,
@@ -630,7 +631,7 @@ function TrocarSenha({
 }
 
 /* ---------------------------------------------------------------- app */
-export default function AdminApp() {
+export default function AdminApp({ url }: { url: string }) {
   const [fase, setFase] = useState<"carregando" | "setup" | "login" | "painel">("carregando");
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [itens, setItens] = useState<Integracao[]>([]);
@@ -832,6 +833,9 @@ export default function AdminApp() {
 
             {/* situação do radar da previsão (monitoramento constante no servidor) */}
             <CartaoRadarPrevisaoAdmin />
+
+            {/* material de divulgação do app (QR Code, mensagem e artes) */}
+            <CartaoDivulgacaoAdmin url={url} />
 
             <div className="mt-4 grid items-start gap-3 md:grid-cols-2">
               {itens.length === 0 && <p className="text-[15px] text-gelo/70">Carregando integrações…</p>}

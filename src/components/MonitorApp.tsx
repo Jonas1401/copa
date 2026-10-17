@@ -14,10 +14,8 @@ import {
   ChevronUp,
   Clock,
   Crown,
-  Download,
   ExternalLink,
   MapPin,
-  Share2,
   Truck,
   Users,
   Pencil,
@@ -1657,33 +1655,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               )}
             </Painel>
 
-            {/* Divulgação: instalar no celular e chamar mais motorista */}
-            <Painel
-              titulo="Divulgar o app"
-              corTitulo="text-ouro"
-              icone={<Share2 size={26} strokeWidth={2.2} className="text-ouro" />}
-            >
-              <p className="text-[15px] leading-relaxed text-gelo/85">
-                Instale o CopaLinks na tela inicial do celular e chame os
-                colegas para o monitor do ponto: a página de divulgação traz o
-                passo a passo, o QR Code e a mensagem pronta para o WhatsApp.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2.5">
-                <Link
-                  href="/divulgacao"
-                  className="ouro flex min-h-[48px] items-center gap-2 rounded-full px-5 font-display text-[15px] font-extrabold uppercase"
-                >
-                  <Download size={17} strokeWidth={2.4} /> Instalar no celular
-                </Link>
-                <button
-                  type="button"
-                  onClick={compartilhar}
-                  className="flex min-h-[48px] items-center gap-2 rounded-full border-[1.5px] border-ciano/55 bg-[#02042b]/70 px-5 font-display text-[15px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
-                >
-                  <Share2 size={17} strokeWidth={2.4} /> Chamar motorista
-                </button>
-              </div>
-            </Painel>
+            {/* O material de divulgação do app (QR Code, mensagem e artes) fica
+                na área do administrador: em /admin → Divulgação do app. */}
 
             {/* Acesso discreto à Área do Administrador */}
             <div className="pt-2 pb-1 text-center">
