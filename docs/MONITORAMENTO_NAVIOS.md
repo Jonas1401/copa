@@ -1,8 +1,8 @@
-# Monitoramento de navios pelo Composio — sem mudança visual
+# Monitoramento de navios por HTTP direto — Composio de reserva
 
 ## Escopo implementado
 
-O Composio é o leitor das páginas públicas; o backend existente do CopaLinks compara as leituras, persiste a memória e envia mensagens pelo chat e pelo Web Push que já existem. Não foi criado painel, cartão, tela, botão ou indicador de navios. Componentes, estilos, imagens, Android e Service Worker não foram modificados.
+O backend tenta ler diretamente por HTTP as mesmas páginas públicas que monitora; quando uma página é renderizada por JavaScript ou o HTML não traz dados completos, o Composio é usado como reserva. O backend existente do CopaLinks compara as leituras, persiste a memória e envia mensagens pelo chat e pelo Web Push que já existem. Não foi criado painel, cartão, tela, botão ou indicador de navios. Componentes, estilos, imagens, Android e Service Worker não foram modificados.
 
 Fontes autorizadas, fixadas em `src/lib/politica-automacao.ts`:
 
@@ -30,9 +30,9 @@ O link curto Google enviado pelo proprietário aponta para a segunda página. A 
 
 A política bloqueia boletins, radar, alertas meteorológicos, dicas de comportamento, regras automáticas após saída para o trabalho e boas-vindas automáticas no chat. Nem `forcar` ou configurações antigas reativam esses agentes.
 
-A tela de tempo e o radar do administrador continuam intactos. Leituras do tempo e perguntas à IA atualizam a memória silenciosamente. As orientações de porto continuam disponíveis quando perguntadas; não substituem o regulamento oficial vigente.
+A tela de tempo e o radar do administrador continuam intactos. Leituras do tempo atualizam a memória; perguntas sobre navios tentam leitura fresca sem alterar a referência de comparação do monitor. As orientações de porto continuam disponíveis quando perguntadas; não substituem o regulamento oficial vigente.
 
-Nas perguntas sobre navios, uma `AI_API_KEY` configurada é usada primeiro para responder usando o contexto obtido das duas fontes públicas já fixadas; o Composio continua como reserva. A chave não navega nas páginas: o backend lê os sites pelo Composio, valida e registra os dados, e só então entrega o contexto ao modelo. Sem chave própria, o chat continua pelo Gemini/OpenAI do Composio. O botão **Testar conexão** em `/admin` faz uma chamada real de geração de texto ao provedor escolhido. Os avisos automáticos permanecem sem IA, com os parsers e as validações determinísticas descritas abaixo.
+Em cada pergunta sobre navios, o servidor tenta buscar novamente as duas fontes por HTTP direto e valida a resposta; se não encontrar dados completos (como em uma página renderizada por JavaScript), usa o Composio como reserva. Essa leitura da IA não altera a memória de comparação do monitor nem cria avisos. A `AI_API_KEY`, quando configurada, responde primeiro usando o contexto recém-lido; sem chave própria, o chat usa Gemini/OpenAI pelo Composio. Se a fonte falhar, uma leitura salva pode ser informada com o horário e marcada como potencialmente desatualizada. Para ações, situação, data, hora e berço de manobras, o assistente prioriza os dados literais de https://berth-bloom-tracker.lovable.app/. O modelo não navega por conta própria. O botão **Testar conexão** em `/admin` faz uma chamada real de geração de texto ao provedor escolhido. Os avisos automáticos permanecem sem IA, com os parsers e as validações determinísticas descritas abaixo.
 
 Memória no PostgreSQL (`configuracao`):
 
@@ -51,7 +51,7 @@ Cron autenticado (a cada minuto)
   ├─ fila pessoal existente (inalterada)
   └─ monitor de navios
        ├─ lease persistente por fonte
-       ├─ Composio abre/lê cada página (a cada 5 minutos)
+       ├─ HTTP direto em cada página; Composio só como reserva (a cada 5 minutos)
        ├─ parser determinístico e validação de leitura completa
        ├─ comparação com a última leitura válida
        ├─ memória + outbox na mesma transação
@@ -74,7 +74,7 @@ Cron autenticado (a cada minuto)
 |---|---|
 | `src/lib/politica-automacao.ts` | Escopo, fontes e limite fixo de 2.000 t |
 | `src/lib/navios-fontes.ts` | Parsers, valores literais e detecção de mudanças |
-| `src/lib/navios-monitor.ts` | Leitura via Composio, leases, transações e outbox |
+| `src/lib/navios-monitor.ts` | HTTP direto com reserva Composio, leases, transações e outbox |
 | `src/lib/navios-migracao.ts` | DDL aditivo e idempotente |
 | `src/lib/ia-memoria-porto.ts` | Memória persistente para perguntas |
 | `src/lib/chat-politica.ts` | Filtro do histórico e contador |
@@ -98,11 +98,11 @@ A função `verificarNaviosFertilizantes` permanece como ponto de entrada compat
    ```
    O patch foi gerado a partir da revisão `7029ccbda96eb589e8abdcdd04292515d979fc4d` da branch `main`. Se o repositório avançou, revise eventuais conflitos antes de aplicar.
 2. Publicar no backend existente (deploy normal do projeto). Recomenda-se Node 22+, compatível com o `firebase-admin` que já era usado neste repositório.
-3. Confirmar `DATABASE_URL` e `COMPOSIO_API_KEY` no servidor. A chave Composio pode continuar no cofre do `/admin`; não há necessidade de novo campo visual. Nunca enviar chaves ao navegador ou colocar segredos no GitHub.
+3. Confirmar `DATABASE_URL` no servidor. O monitor tenta HTTP direto primeiro; mantenha também `COMPOSIO_API_KEY` no cofre do `/admin` para as páginas que exigem renderização JavaScript ou quando a leitura direta falhar. Nunca enviar chaves ao navegador ou colocar segredos no GitHub.
 4. A migração é aplicada idempotentemente na primeira execução do monitor quando a conta do banco tem permissão de DDL. Se não tiver, executar `supabase/migrations/20261008_navios_composio.sql` pelo SQL Editor/admin do banco depois das tabelas-base. RLS permanece habilitada nas novas tabelas.
 5. Confirmar que o job **já existente** `copalinks-monitor-1-min` no Supabase chama `/api/cron` a cada minuto. O job usa `SUPABASE_CRON_SECRET` no backend e o segredo `copalinks_supabase_cron_secret` no Vault. Ver `GITHUB_VERCEL.md`; não criar outro agendador duplicado.
 6. No plano Vercel Hobby, o cron diário de `vercel.json` NÃO é suficiente para monitoramento contínuo com o app fechado. Usar o job Supabase ou outro cron autorizado; Pro/Enterprise pode usar `vercel.pro.json`.
-7. Conferir a resposta autenticada de `/api/cron`, sobretudo `navios.fontes`. HTTP 200 significa resposta do endpoint, não prova de leitura ou de exibição no celular. Verificar que as duas fontes têm leitura válida e sem erro.
+7. Conferir a resposta autenticada de `/api/cron`, sobretudo `navios.fontes`. HTTP 200 significa resposta do endpoint, não prova de leitura ou de exibição no celular. Verificar que as duas fontes têm leitura válida e sem erro; o campo `metodo` identifica `http` direto ou `composio` de reserva.
 8. Conferir um aparelho com notificações permitidas e chat não silenciado. A primeira leitura é silenciosa; um aviso aparece quando houver mudança elegível posterior.
 
 Variáveis opcionais:
@@ -112,14 +112,14 @@ NAVIOS_MONITOR_MIN=5
 NAVIOS_MAX_POR_CICLO=10
 ```
 
-A periodicidade significa comparação entre leituras: mudanças intermediárias ocorridas entre duas consultas não podem ser reconstruídas. Fontes que mudarem seu formato exigem ajuste dos parsers; o comportamento seguro é preservar a memória e não emitir informações incompletas. Sem uma página renderizada válida pelo Composio, não há aviso.
+A periodicidade significa comparação entre leituras: mudanças intermediárias ocorridas entre duas consultas não podem ser reconstruídas. Fontes que mudarem seu formato exigem ajuste dos parsers; o comportamento seguro é preservar a memória e não emitir informações incompletas. Sem dados válidos por HTTP direto ou pela reserva Composio, não há aviso.
 
 ## Validação
 
 - Parsers e regras puras: fixtures no formato visível das fontes, sem rede.
-- Integração: PostgreSQL local descartável, Composio simulado e Push falso. Cobre duas fontes independentes, limite estrito, um navio por mensagem, decimais intactos, previsões com berço, repetição, concorrência e nova tentativa por aparelho.
+- Integração: PostgreSQL local descartável, HTTP/Composio simulados e Push falso. Cobre leitura direta com reserva, duas fontes independentes, limite estrito, um navio por mensagem, decimais intactos, previsões com berço, repetição, concorrência e nova tentativa por aparelho.
 - Regressões: fila pessoal com o app fechado, silêncio do chat, envio HTTPS local cifrado, clima/radar silenciosos e orientações disponíveis para perguntas.
-- Nenhuma chave Composio de produção foi usada; a leitura real desse serviço na conta do proprietário e a entrega a celulares reais precisam ser confirmadas após o deploy.
+- Nenhuma chave Composio de produção foi usada; a leitura real das páginas e o funcionamento da reserva Composio na conta do proprietário, além da entrega a celulares reais, precisam ser confirmados após o deploy.
 
 Para integração local, criar um PostgreSQL **descartável** cujo nome começa com `fila_push_test_` e passar a mesma URL às duas variáveis:
 

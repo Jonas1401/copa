@@ -14,7 +14,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; sem boletins ou alertas automáticos no chat; leituras disponíveis para a IA responder perguntas |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos pelo Composio; mensagens dos motoristas continuam funcionando |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos por HTTP direto com Composio de reserva; mensagens dos motoristas continuam funcionando |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria, o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) e o cartão **Divulgação do app** (QR Code, mensagem pronta e artes da campanha) |
@@ -138,7 +138,7 @@ de boas-vindas no chat. O visual existente não foi alterado; a lista de agentes
 automáticos do chat contém somente o monitor de navios.
 
 **Notificações do chat (Web Push):** mensagens escritas por motoristas ou
-postadas pelo monitor de navios (leitura via Composio no `/api/cron`) disparam Push (`src/lib/chat-push.ts`). Em geral, o
+postadas pelo monitor de navios (leitura HTTP direta, com Composio de reserva, no `/api/cron`) disparam Push (`src/lib/chat-push.ts`). Em geral, o
 título mostra quem enviou e o corpo contém a mensagem; avisos de navios preservam o texto literal da fonte, sem corte de decimais no payload. O envio funciona com o app fechado: o Service Worker
 exibe o aviso e, ao tocar, abre o app direto no chat (`/?chat=1`, ou
 `postMessage` "abrir-chat" quando a aba já está aberta). Quem escreveu não
@@ -271,20 +271,27 @@ inteligente, salvo em `banners_motorista` — cada motorista só vê o próprio
 (`/api/motoristas/banner/imagem`, sessão httpOnly). Limite de 6 trocas por
 hora. Teste: `tests/banner.test.ts`.
 
-## Navios e manobras pelo Composio (somente backend)
+## Navios e manobras (HTTP direto com Composio de reserva)
 
-O `/api/cron` usa o Composio para abrir e ler estas duas fontes:
+O `/api/cron` monitora estas duas fontes no backend, usando o mesmo padrão do
+quadro ativo de caminhões: tenta ler a página por HTTP direto e, se o HTML não
+trouxer dados completos (por exemplo, em páginas renderizadas por JavaScript),
+usa o Composio como reserva:
 
 - **Navios atracados / saldos:** https://berth-bloom-buddy.lovable.app/
 - **Manobras previstas / SINPRAPAR:** https://berth-bloom-tracker.lovable.app/
 
-No assistente do chat, perguntas sobre navios carregam os dados recentes dessas
-fontes no servidor antes de responder. Se `AI_API_KEY` estiver configurada, a
-nova API direta responde primeiro a essas perguntas; se não estiver disponível,
-o assistente usa o Composio como reserva. Em `/admin` → IA → **Testar conexão**,
-o botão faz uma geração mínima real de chat (não apenas uma consulta de modelos).
-A API de IA interpreta os dados fornecidos; ela não navega na web por conta
-própria. O `/api/cron` continua lendo e validando as páginas pelo Composio e os
+Em toda pergunta sobre navios no assistente, o servidor tenta ler novamente as
+fontes antes de chamar a IA. Para horários, ações, situação e berço de manobras,
+a fonte prioritária é o site **COPALINKS — Manobras Previstas** acima. O contexto
+conserva os dados apresentados, indica o horário e o método da leitura e cita o
+link. Se a leitura atual falhar, uma leitura salva pode ser usada, marcada como
+possivelmente desatualizada; sem dados válidos, o assistente não deve inventar
+informações. Se `AI_API_KEY` estiver configurada, a nova API direta responde
+primeiro a perguntas sobre navios; se não estiver disponível, o assistente usa o
+Composio como reserva. Em `/admin` → IA → **Testar conexão**, o botão faz uma
+geração mínima real de chat (não apenas uma consulta de modelos). A API de IA
+interpreta os dados fornecidos; ela não navega na web por conta própria. Os
 avisos automáticos continuam determinísticos, sem texto inventado por IA.
 
 Uma leitura válida inicial de cada fonte cria a referência silenciosa. Depois:

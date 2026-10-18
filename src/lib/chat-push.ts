@@ -6,7 +6,7 @@ import { motoristasComChatSilenciado } from "@/lib/chat-silencio";
  * Web Push das mensagens do chat dos motoristas (SOMENTE servidor).
  *
  * Toda mensagem gravada em `chat_mensagens` — escrita por um motorista ou
- * postada pelo monitor de navios do servidor (leitura via Composio)
+ * postada pelo monitor de navios do servidor (leitura HTTP direta/Composio)
  * — vira uma notificação com o NOME de quem enviou e o TEXTO da mensagem.
  *
  * - Sai para os aparelhos com notificações ativas, menos os de quem escreveu;
