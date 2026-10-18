@@ -92,6 +92,55 @@ test("manobras: data e situação literais; EF não é atracação com berço", 
   for (const b of ["211", "AZ1011 BB", "FOSPAR EXT BB", "PFELIX 2 BB"]) assert.ok(bercoFonteDefinido(b), b);
 });
 
+test("site Manobras Previstas: importa as seis manobras e mantém os dados literais", () => {
+  const texto = `# Manobras Previstas
+SINPRAPAR — Fertilizantes
+Em manobraAguardando manobraAtracado
+AFENTIS XRISTOS ATH
+UREIA
+Desatracar
+19/10 17:00·DS— Desatracação e Saída: PFELIX 2 BB
+PREVISTA
+GLBS MAGIC
+UREIA
+Atracado
+Desatracar
+20/10 12:00·DS— Desatracação e Saída: AZ09 BB
+PREVISTA
+LEO. K
+SULFATO DE AMONIO + UREIA
+Atracar
+20/10 17:00·EF— Entrada e Fundeio
+PREVISTA
+MANDARIN KAOHSIUNG
+FERTILIZ.MINER.QUIM.C/NITROGEN
+Atracado
+Desatracar
+20/10 19:00·DS— Desatracação e Saída: FOSPAR EXT BB
+PREVISTA
+YANGZE 15
+SULFATO DE AMONIO
+Atracado
+Desatracar
+21/10 14:00·DS— Desatracação e Saída: AZ1011 BB
+PREVISTA
+KOSMAN
+CLORETOS DE POTASSIO
+Atracar
+30/10 17:00·EF— Entrada e Fundeio
+PREVISTA`;
+  const manobras = parseManobrasComposio(texto);
+  assert.deepEqual(manobras.map((m) => m.nome), [
+    "AFENTIS XRISTOS ATH", "GLBS MAGIC", "LEO. K", "MANDARIN KAOHSIUNG", "YANGZE 15", "KOSMAN",
+  ]);
+  assert.equal(manobras[0].linha, "19/10 17:00·DS— Desatracação e Saída: PFELIX 2 BB");
+  assert.equal(manobras[0].situacao, "PREVISTA");
+  assert.equal(manobras[1].estado, "Atracado");
+  assert.equal(manobras[2].mercadoria, "SULFATO DE AMONIO + UREIA");
+  assert.equal(manobras[3].berco, "FOSPAR EXT BB");
+  assert.equal(manobras[5].codigo, "EF");
+});
+
 test("manobras: sem data/situação, cartão cortado ou data impossível é rejeitado", () => {
   for (const b of [
     manobrasTexto().replace("11/10 17:00", "31/02 17:00"),
@@ -114,7 +163,7 @@ test("política: somente navios automáticos; motoristas e perguntas à IA prese
  * DATABASE_URL=TEST_DATABASE_URL=.../fila_push_test_<nome> tsx --test ...
  * Nenhum serviço externo recebe chamadas ou mensagens durante os testes.
  */
-test("backend: Composio → comparação persistente → um navio por chat/Push → retentativa", { skip: !local }, async (t) => {
+test("backend: HTTP direto + reserva Composio → comparação persistente → avisos por navio", { skip: !local }, async (t) => {
   const { db } = await import("../src/db");
   const { garantirTabelas } = await import("../src/lib/estado");
   const { garantirTabelasNavios } = await import("../src/lib/navios-migracao");
@@ -127,11 +176,19 @@ test("backend: Composio → comparação persistente → um navio por chat/Push 
   const vapid = webpush.generateVAPIDKeys();
   process.env.VAPID_PUBLIC_KEY = vapid.publicKey; process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
   let atracados = atracadosTexto(), manobras = manobrasTexto(), erroAtracados = false;
+  let forcarComposioManobras = true;
   let falharEndpoint: string | null = null;
-  const leituras: string[] = [], pushes: { endpoint: string; body: string; tag: string }[] = [], prompts: string[] = [], chamadasDiretasIA: string[] = [];
+  const leituras: string[] = [], httpDireto: string[] = [], pushes: { endpoint: string; body: string; tag: string }[] = [], prompts: string[] = [], chamadasDiretasIA: string[] = [];
   globalThis.fetch = async (_input, init) => {
     const url = String(_input);
     const body = JSON.parse(String(init?.body ?? "{}"));
+    if (url === POLITICA_AUTOMACAO.fonteAtracados || url === POLITICA_AUTOMACAO.fonteManobras) {
+      httpDireto.push(url);
+      if (url === POLITICA_AUTOMACAO.fonteAtracados && erroAtracados) return new Response("falha simulada", { status: 503 });
+      if (url === POLITICA_AUTOMACAO.fonteManobras && forcarComposioManobras) return new Response("SPA sem conteúdo server-side", { status: 503 });
+      const texto = url === POLITICA_AUTOMACAO.fonteAtracados ? atracados : manobras;
+      return new Response(texto, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
     if (url === "https://api.openai.com/v1/chat/completions") {
       chamadasDiretasIA.push(JSON.stringify(body));
       return Response.json({ choices: [{ message: { content: "A previsão do AFENTIS XRISTOS ATH continua PREVISTA." } }] });
@@ -167,12 +224,15 @@ test("backend: Composio → comparação persistente → um navio por chat/Push 
     const ciclo = () => verificarNaviosComposio({ forcar: true });
     const mensagens = () => db.select().from(chatMensagens).orderBy(chatMensagens.id);
 
-    await t.test("primeira leitura silenciosa de cada fonte, com memória permanente", async () => {
+    await t.test("HTTP direto é principal, Composio é reserva e a primeira leitura é silenciosa", async () => {
       const r = await ciclo();
       assert.equal(r.eventos, 0); assert.equal(r.avisados.length, 0);
       assert.equal((await mensagens()).length, 0); assert.equal(pushes.length, 0);
       assert.equal((await db.select().from(naviosMonitorFontes)).length, 2);
-      assert.equal(leituras.length, 2);
+      assert.deepEqual(new Set(httpDireto), new Set([POLITICA_AUTOMACAO.fonteAtracados, POLITICA_AUTOMACAO.fonteManobras]));
+      assert.deepEqual(leituras, [POLITICA_AUTOMACAO.fonteManobras], "a página SPA usa o Composio de reserva");
+      assert.deepEqual(r.fontes?.map((f) => f.metodo).sort(), ["composio", "http"]);
+      forcarComposioManobras = false;
       const config = await db.select().from(configuracao);
       assert.ok(config.some((c) => c.chave === "ia_porto_politica_v2" && c.valor.includes("2.000")));
       assert.ok(config.some((c) => c.chave === "ia_porto_orientacoes_v2" && c.valor.includes("REGRA 11")));
@@ -266,21 +326,26 @@ test("backend: Composio → comparação persistente → um navio por chat/Push 
       assert.equal((await lerMemoriaClima())?.atualizadoEm, p.atualizadoEm);
     });
 
-    await t.test("pergunta sobre previsão usa a nova API com o conteúdo dos sites já lidos", async () => {
+    await t.test("pergunta sobre navio lê o Tracker novamente e envia seus dados literais à IA", async () => {
       const chaveAnterior = process.env.AI_API_KEY, provedorAnterior = process.env.AI_PROVIDER;
       process.env.AI_API_KEY = "sk-chave-ficticia-de-teste";
       process.env.AI_PROVIDER = "openai";
+      // Diferente da última leitura persistida do cron: a pergunta deve receber
+      // o conteúdo que está disponível agora na fonte, sem alterar a memória.
+      manobras = manobrasTexto({ berco: "AZ211 BB", dataHora: "22/10 19:35" });
       try {
         const { perguntarIA } = await import("../src/lib/ia");
-        const resposta = await perguntarIA("Qual a previsão de atracação do AFENTIS XRISTOS ATH?", [], ana.id);
+        const resposta = await perguntarIA("Qual a previsão de atracação do AFENTIS?", [], ana.id);
         assert.equal(resposta.via, "direta");
         assert.match(resposta.texto, /PREVISTA/);
         assert.equal(chamadasDiretasIA.length, 1);
         const corpo = JSON.parse(chamadasDiretasIA[0]);
         const contexto = corpo.messages.at(-1).content as string;
         assert.match(contexto, /AFENTIS XRISTOS ATH/);
+        assert.doesNotMatch(contexto, /GLBS MAGIC/);
+        assert.match(contexto, /22\/10 19:35·AT— Atracação: AZ211 BB/);
         assert.match(contexto, /PREVISTA/);
-        assert.match(contexto, /berth-bloom-tracker\.lovable\.app/);
+        assert.match(contexto, /Fonte https:\/\/berth-bloom-tracker\.lovable\.app\/; lida agora.*HTTP direto/);
       } finally {
         if (chaveAnterior === undefined) delete process.env.AI_API_KEY; else process.env.AI_API_KEY = chaveAnterior;
         if (provedorAnterior === undefined) delete process.env.AI_PROVIDER; else process.env.AI_PROVIDER = provedorAnterior;

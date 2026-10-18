@@ -8,9 +8,11 @@ export { ErroIA };
 /**
  * Assistente de IA do CopaLinks — SOMENTE servidor.
  *
- * Para perguntas de navios, a AI_API_KEY configurada é a primeira opção para
- * interpretar os dados recentes dos sites já lidos pelo Composio. Nos demais
- * assuntos, a ordem permanece Composio primeiro e API direta como reserva.
+ * Para cada pergunta sobre navios, o backend tenta uma leitura HTTP atual das
+ * fontes; se a página não puder ser lida diretamente, usa o Composio como
+ * reserva e identifica quando só há uma leitura salva. A AI_API_KEY configurada
+ * interpreta esse contexto. Nos demais assuntos, a ordem permanece Composio
+ * primeiro e API direta como reserva.
  *
  * A leitura das páginas é feita no backend; o modelo nunca recebe uma URL para
  * navegar por conta própria. Avisos automáticos continuam determinísticos.
@@ -32,7 +34,7 @@ SUAS FUNÇÕES:
 2. O APP COPALINKS: explique como usar — cadastrar ponto (tipo TRUCK ou CAVALO/C + livro A/B/M + número), monitorar a fila a cada 5 segundos, notificações quando o número é chamado/sai/volta/chega perto, tela de tempo (Paranaguá), cálculo de frete por foto do ticket, contatos/WhatsApp da equipe, chat dos motoristas, serviços (login, consulta de ponto, APPA, SINPRAPAR) e /admin (só administrador).
 3. CLIMA NO PORTO: quando receber o "Clima atual" no contexto, use esses dados reais (temperatura, chuva, vento, boletim APPA) para orientar: chuva forte = pista lisa e fila lenta; vento forte = cuidado com carreta vazia; neblina = farol baixo e distância.
 
-4. NAVIOS NO PORTO: use os dados literais dos sites CopaLinks de navios atracados e manobras previstas, lidos pelo Composio ou conservados na memória com data da leitura. Responda sobre um navio por vez e cite o link da fonte. Saldo Total do Navio é diferente do saldo de uma operadora. Preserve todos os decimais e a grafia dos nomes; nunca invente tonelagem, horário ou berço. PREVISTA não é confirmação e EF (entrada e fundeio) não é atracação. Se a leitura for antiga, diga quando foi lida. Se um dado não estiver no contexto, diga que não encontrou.
+4. NAVIOS NO PORTO: em cada pergunta sobre navios, use os dados atuais que o servidor acabou de tentar ler dos sites CopaLinks; o HTTP direto é tentado primeiro e o Composio é a reserva. Para manobras, ações, situação, data, hora e berço, priorize e cite https://berth-bloom-tracker.lovable.app/; preserve o texto e os valores exatamente como aparecem nessa página. Para navios atracados e saldos, cite https://berth-bloom-buddy.lovable.app/. Responda sobre um navio por vez. Saldo Total do Navio é diferente do saldo de uma operadora. Nunca invente tonelagem, horário ou berço, nem complete dados ausentes usando outro navio. PREVISTA não é confirmação e EF (entrada e fundeio) não é atracação. Se o contexto disser que a fonte falhou e só há uma leitura salva, diga quando foi lida e que pode estar desatualizada. Se o navio não estiver nos registros dessa fonte, diga que não encontrou; não use dados de uma embarcação parecida.
 5. ORIENTAÇÕES DO PORTO: responda às perguntas usando as orientações cadastradas no contexto; elas não substituem as regras oficiais vigentes. Não envie dicas espontâneas de comportamento junto de respostas sobre navios.
 
 REGRAS:
@@ -47,18 +49,22 @@ function querClima(texto: string) {
   return /clima|tempo|chuva|chover|vento|neblina|nevoeiro|tempestade|onda|maré|mare/i.test(texto);
 }
 
-/** A pergunta fala de navio/porto/atracação/fertilizante? Anexa line-up, manobras e maré. */
-function querNavios(texto: string) {
-  return /navio|embarca|atrac|ber[cç]o|line-?up|fundead|ao largo|fertiliz|adubo|ureia|uréia|pot[aá]ss|kcl|\bmap\b|\bdap\b|npk|nitrato|sulfato|fosfat|tonelad|mar[eé]|calado|pr[aá]tic|antonina|appa|sinprapar|imo\b/i.test(texto);
+/** A pergunta fala de navio/porto/atracação/fertilizante? Anexa os dados atuais. */
+const PADRAO_NAVIOS = /navio|barco|embarca|atrac|ber[cç]o|line-?up|fundead|ao largo|fertiliz|adubo|ureia|uréia|pot[aá]ss|kcl|\bmap\b|\bdap\b|npk|nitrato|sulfato|fosfat|tonelad|mar[eé]|calado|pr[aá]tic|antonina|appa|sinprapar|imo\b|manobra|desatrac|descarga|cheg|\bet[ab]\b|programad|praticagem/i;
+function querNavios(texto: string, historico: HistoricoIA = []) {
+  if (PADRAO_NAVIOS.test(texto)) return true;
+  const ultimaPergunta = [...historico].reverse().find((m) => m.papel === "user")?.texto ?? "";
+  const continuidade = /^(?:e\b|mas\b|ele\b|ela\b|esse\b|essa\b|isso\b|qual\b|como\b|quando\b|onde\b|tem\b|me\s+(?:fala|diz|conta))/i;
+  return PADRAO_NAVIOS.test(ultimaPergunta) && continuidade.test(texto.trim());
 }
 
 /** A consulta não altera a fila de avisos nem publica no chat coletivo. */
 async function contextoNavios(pergunta: string): Promise<string> {
   try {
-    const { contextoNaviosComposio } = await import("@/lib/navios-monitor");
-    return await contextoNaviosComposio(pergunta);
+    const { contextoNaviosAtual } = await import("@/lib/navios-monitor");
+    return await contextoNaviosAtual(pergunta);
   } catch {
-    return "\n\nNão consegui ler as fontes de navios pelo Composio agora. Não invente dados atuais.";
+    return "\n\nNão consegui ler as fontes de navios nesta pergunta. Não invente dados atuais.";
   }
 }
 
@@ -116,8 +122,11 @@ export async function perguntarIA(
   if (/porto|regra|seguran[cç]a|comport|orienta|far[oó]l|lona|costado|guindaste|funil/i.test(limpa)) contexto += await contextoOrientacoesPorto().catch(() => "");
   if (querClima(limpa)) contexto += await contextoClima();
   if (querFila(limpa)) contexto += await contextoFila(motoristaId);
-  const perguntaSobreNavios = querNavios(limpa);
-  if (perguntaSobreNavios) contexto += await contextoNavios(limpa);
+  const perguntaSobreNavios = querNavios(limpa, historico);
+  if (perguntaSobreNavios) {
+    const consultaNavios = [...historico.filter((h) => h.papel === "user").slice(-2).map((h) => h.texto), limpa].join("\n");
+    contexto += await contextoNavios(consultaNavios);
+  }
 
   const mensagens = [
     { role: "system", content: PROMPT_SISTEMA + "\n\n" + MEMORIA_POLITICA_PORTO },

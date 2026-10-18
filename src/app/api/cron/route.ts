@@ -8,7 +8,7 @@ import { limparMotoristasInativos } from "@/lib/motorista-inatividade";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Despertador de backend: fila pessoal + leitura Composio + avisos de navios.
+/** Despertador de backend: fila pessoal + leitura de navios HTTP/Composio + avisos.
  * Chamar a cada minuto (Supabase pg_cron ou Vercel Pro/Enterprise).
  * Cada fonte é relida a cada 5 min; a fila de envios é tratada em todo ciclo.
  * Não publica clima, boletins, boas-vindas ou regras de comportamento.
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   const inativos = await limparMotoristasInativos().catch(() => ({ excluidos: 0, candidatos: 0 }));
 
   // O monitor de navios é independente de pontos cadastrados e de falhas da
-  // fila. A leitura Composio acontece em paralelo para caber no prazo do cron.
+  // fila. As leituras HTTP diretas/Composio acontecem em paralelo no cron.
   const tarefaNavios = verificarNaviosFertilizantes().catch(() => null);
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();

@@ -66,7 +66,7 @@ export function parseEtb(bruto: string | null | undefined, agora: Date = new Dat
  *
  * O evento `etb` carrega o VALOR da previsão de atracação na chave
  * (`E:<programação>:<ETB>`). Este gerador legado não participa dos envios;
- * o monitor Composio compara as leituras literais em `navios-monitor.ts`.
+ * o monitor HTTP direto (com reserva Composio) compara as leituras literais.
  */
 export function eventosFertilizantes(lineup: NavioLineup[], manobras: Manobra[]): EventoNavio[] {
   const vistos = new Set<string>();

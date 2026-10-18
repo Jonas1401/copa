@@ -22,7 +22,7 @@ export function mensagemVisivelNoChat(m: { motoristaId: number; nome: string }):
 }
 
 export const MEMORIA_POLITICA_PORTO = `Configuração permanente do CopaLinks:
-O Composio lê as fontes públicas de navios atracados e de manobras previstas em segundo plano, sem modificar o visual do aplicativo.
+O backend tenta ler por HTTP direto as fontes públicas de navios atracados e de manobras previstas; o Composio é a reserva para páginas renderizadas por JavaScript ou falhas de leitura. O monitor compara as fontes em segundo plano, sem modificar o visual do aplicativo.
 Não publicar automaticamente previsão do tempo, dicas, regras de comportamento ou alertas de segurança do porto no chat ou por notificação. Esses assuntos continuam disponíveis para responder perguntas do motorista.
 Avisos automáticos do chat: somente navios, manobras previstas, atracação e desatracação, um navio por mensagem e por notificação.
 Saldo: usar Saldo Total do Navio, estritamente menor que 2.000 toneladas; avisar mudanças reais dos saldos, inclusive das operadoras quando o total do navio estiver abaixo desse limite.
