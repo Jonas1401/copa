@@ -9,9 +9,11 @@ import "@fontsource/space-grotesk/400.css";
 import "@fontsource/space-grotesk/500.css";
 import "@fontsource/space-grotesk/700.css";
 import "./globals.css";
+import "./theme-truck.css";
 import { headers } from "next/headers";
 import { DESCRICAO_CURTA, IMAGEM_COMPARTILHAR, NOME_APP } from "@/lib/compartilhar";
 import { urlPublicaDoApp } from "@/lib/url-app";
+import ThemeAppearance from "@/components/ThemeAppearance";
 
 /**
  * Metadados com endereço absoluto (o link de pré-visualização muda): assim a
@@ -80,7 +82,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body><ThemeAppearance />{children}</body>
     </html>
   );
 }

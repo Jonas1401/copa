@@ -8,6 +8,7 @@ import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
 import CartaoDivulgacaoAdmin from "@/components/admin/CartaoDivulgacaoAdmin";
 import InternetEsimAdmin from "@/components/admin/InternetEsimAdmin";
+import ThemeSelector from "@/components/admin/ThemeSelector";
 import {
   BellRing,
   Bot,
@@ -791,6 +792,7 @@ export default function AdminApp({ url }: { url: string }) {
 
         {fase === "painel" && (
           <>
+            <ThemeSelector api={api} />
             {/* nome e pontos de todos os motoristas (só o administrador vê) */}
             <CartaoMotoristasAdmin api={api} onSessaoExpirada={sair401} />
             <InternetEsimAdmin api={api} onSessaoExpirada={sair401} />

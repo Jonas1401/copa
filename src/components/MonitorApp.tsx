@@ -34,6 +34,7 @@ import ChatMotoristas, { CHAVE_CHAT_LIDO } from "@/components/chat/ChatMotorista
 import AlertaAdmin from "@/components/alerta/AlertaAdmin";
 import BoasVindas, { type DadosBoasVindas } from "@/components/motoristas/BoasVindas";
 import CarregamentoLogo from "@/components/inicio/CarregamentoLogo";
+import TruckDashboard from "@/components/TruckDashboard";
 import { CHAVE_MOTORISTA, COOKIE_MOTORISTA, primeiroNome, type Motorista } from "@/lib/motoristas";
 import { PRAZO_SESSAO_MS } from "@/lib/carregamento";
 import { IMAGEM_COMPARTILHAR, NOME_APP, linkDoApp, mensagemCompartilhar } from "@/lib/compartilhar";
@@ -684,6 +685,13 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     if (Number.isFinite(servidor)) setDesvioRelogio(servidor - Date.now());
   }, [estado.servidorAgora]);
   const [aba, setAba] = useState<Aba>("inicio");
+  const [truckTheme, setTruckTheme] = useState(false);
+  useEffect(() => {
+    const sync = (event?: Event) => setTruckTheme(event ? (event as CustomEvent<string>).detail === "truck_dashboard" : document.documentElement.classList.contains("theme-truck-dashboard"));
+    sync();
+    window.addEventListener("copalinks-theme", sync);
+    return () => window.removeEventListener("copalinks-theme", sync);
+  }, []);
   const [expandido, setExpandido] = useState(false);
   const [cadastroAberto, setCadastroAberto] = useState(false);
   const [editando, setEditando] = useState(false);
@@ -1322,7 +1330,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
           de folga para não ficar embaixo dele. */}
       <div className="largura-aparelho relative px-3 pt-3 pb-[92px]">
         {/* =============================================== INÍCIO */}
-        {aba === "inicio" && (
+        {aba === "inicio" && truckTheme && <TruckDashboard estado={estado} alvo={alvo} ultimo={ultimoEscalado} atualizacao={decorrido(estado.atualizadoEm, agora + desvioRelogio)} online={estado.online} onSelect={selecionarPonto} onChat={() => setChatAberto(true)} onNotificacoes={() => setPainelNotif("geral")} onAba={setAba} />}
+        {aba === "inicio" && !truckTheme && (
           <>
             {/* topo: foto do caminhão (personalizável); logo e saudação no canto
                 esquerdo da base da foto, controles discretos no topo à direita */}
@@ -1673,13 +1682,13 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
         )}
       </div>
 
-      <NavInferior
+      {!truckTheme && <NavInferior
         aba={aba}
         onTrocar={setAba}
         totalMotoristas={totalMotoristas}
         onChat={() => setChatAberto(true)}
         naoLidas={naoLidas}
-      />
+      />}
 
       <ChatMotoristas
         aberto={chatAberto}
