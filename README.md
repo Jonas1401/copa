@@ -14,7 +14,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; sem boletins ou alertas automáticos no chat; leituras disponíveis para a IA responder perguntas |
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
-| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos por HTTP direto com Composio de reserva; mensagens dos motoristas continuam funcionando |
+| **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **figurinhas com imagem** em categorias (Caminhões, Motoristas, Porto e CopaLinks), grade de 4 por linha, publicadas pelo admin; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos por HTTP direto com Composio de reserva; mensagens dos motoristas continuam funcionando |
 | **Serviços** | links: login do aplicativo, tela de caminhões, APPA, SINPRAPAR |
 | **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria, o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) e o cartão **Divulgação do app** (QR Code, mensagem pronta e artes da campanha) |
@@ -99,10 +99,30 @@ dele), inclusive os avisos de navios postados no chat; os avisos do ponto (NA
 VEZ, SAIU, perto da vez, lista do grupo) continuam chegando. Fica na tabela
 `chat_silenciados`, criada automaticamente pelo app. O botão 😀 ao lado do
 campo abre **Emojis** (inserem no texto) e **Figurinhas** (enviam na hora).
-Figurinha é uma mensagem de texto normal ("☕ Bom dia, motoristas!") que o chat
-desenha grande; mensagens só com 1 a 3 emojis também aparecem grandes. Para
-criar figurinhas, edite `FIGURINHAS` em `src/lib/figurinhas.ts`. Testes:
+Mensagens só com 1 a 3 emojis aparecem grandes. Para criar figurinhas de
+recado (texto com emoji), edite `FIGURINHAS` em `src/lib/figurinhas.ts`. Testes:
 `tests/figurinhas.test.ts` e `tests/chat-silencio.test.ts`.
+
+**Chat — figurinhas com imagem (catálogo central):** dentro da aba
+**Figurinhas**, as categorias **Caminhões, Motoristas, Porto e CopaLinks** —
+mais **Recados** (as figurinhas de texto de sempre) — mostram uma **grade de 4
+figurinhas por linha** (WebP/PNG com fundo transparente, estilo CopaLinks:
+caminhões, motoristas, porto de Paranaguá e o dia a dia da estrada). Um toque
+envia; a figurinha aparece **sem balão**, com fundo transparente, mantendo
+autor e horário (com curtidas, apagar e o rodapé de sempre). O catálogo fica
+no banco (`figurinha_categorias` + `figurinhas_catalogo`, imagens em base64):
+todo motorista — app, PWA ou Android — recebe as mesmas figurinhas, e o
+histórico guarda a própria cópia da imagem enviada (apagar do catálogo não
+apaga as mensagens). No painel **/admin** (cartão **Figurinhas do chat**) o
+administrador publica PNG/WebP/GIF (até 512 KB, validados pelos bytes do
+arquivo) com pré-visualização, nome, categoria e ordem, além de ativar,
+desativar, reordenar, excluir e criar categorias novas (pacotes futuros entram
+sem mexer no código do chat) — tudo auditado. Rotas `/api/figurinhas` (lista),
+`/api/figurinhas/:id/imagem` (imagem) e `/api/admin/figurinhas*` (gestão). O
+pacote inicial de 22 figurinhas é semeado uma única vez no primeiro uso
+(`src/lib/figurinhas-pacote.ts`, gerado por `node scripts/gerar-figurinhas.mjs`
+a partir da arte em `scripts/figurinhas-arte.mjs`). Testes:
+`tests/figurinhas-catalogo.test.ts`.
 
 **Chat — curtidas com emoji:** qualquer mensagem recebida (texto, áudio, foto,
 arquivo, figurinha ou aviso do sistema) pode ser curtida com 1 emoji, como no

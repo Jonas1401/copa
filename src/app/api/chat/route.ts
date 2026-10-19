@@ -6,6 +6,8 @@ import { garantirTabelas } from "@/lib/estado";
 import { notificarMensagemChat } from "@/lib/chat-push";
 import { listarReacoes, type ReacaoChat } from "@/lib/chat-reacoes";
 import { chatVisivel } from "@/lib/chat-politica";
+import { obterFigurinhaComImagem } from "@/lib/figurinhas-admin";
+import { pushFigurinhaEnviada, textoFigurinhaEnviada } from "@/lib/figurinhas-catalogo";
 
 export const dynamic = "force-dynamic";
 // Tempo para gravar a mensagem E aguardar o envio do Web Push aos aparelhos.
@@ -166,7 +168,7 @@ export async function POST(req: Request) {
 
   let motoristaId = 0;
   let texto = "";
-  let tipo: TipoMidia | "texto" = "texto";
+  let tipo: TipoMidia | "texto" | "figurinha" = "texto";
   let mediaNome: string | null = null;
   let mediaTipo: string | null = null;
   let mediaDados: string | null = null;
@@ -210,11 +212,27 @@ export async function POST(req: Request) {
   } else {
     const corpo = await req.json().catch(() => ({}));
     motoristaId = Number(corpo?.motoristaId);
-    texto = String(corpo?.texto ?? "")
-      .replace(/\r/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
-      .slice(0, TAMANHO_MAX);
+    // Figurinha do catálogo central: toque no seletor envia na hora. A imagem é
+    // COPIADA para a mensagem (tipo "figurinha") — o histórico não depende do
+    // catálogo e mensagens antigas continuam exatamente como estão.
+    const figurinhaId = Number(corpo?.figurinhaId);
+    if (Number.isInteger(figurinhaId) && figurinhaId > 0) {
+      const figurinha = await obterFigurinhaComImagem(figurinhaId);
+      if (!figurinha || !figurinha.ativa) {
+        return NextResponse.json({ erro: "Figurinha não encontrada ou desativada." }, { status: 400 });
+      }
+      tipo = "figurinha";
+      texto = textoFigurinhaEnviada(figurinha.nome);
+      mediaNome = figurinha.nome;
+      mediaTipo = figurinha.mime;
+      mediaDados = figurinha.dados;
+    } else {
+      texto = String(corpo?.texto ?? "")
+        .replace(/\r/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+        .slice(0, TAMANHO_MAX);
+    }
   }
 
   if (!texto) return NextResponse.json({ erro: "Escreva a mensagem." }, { status: 400 });
@@ -245,12 +263,15 @@ export async function POST(req: Request) {
     .where(lt(chatMensagens.criadoEm, sql`now() - make_interval(days => ${DIAS_GUARDADOS})`));
 
   // Web Push leva somente um resumo, nunca os bytes do arquivo.
-  const push = await notificarMensagemChat({
-    id: nova.id,
-    motoristaId: nova.motoristaId,
-    nome: nova.nome,
-    texto: nova.texto,
-  }).catch(() => null);
+  const push = await notificarMensagemChat(
+    {
+      id: nova.id,
+      motoristaId: nova.motoristaId,
+      nome: nova.nome,
+      texto: nova.texto,
+    },
+    tipo === "figurinha" ? { notificacao: { corpo: pushFigurinhaEnviada(nova.texto.replace(/^🎨\s*/, "")) } } : {},
+  ).catch(() => null);
 
   return NextResponse.json(
     { mensagem: paraTela(nova), push: push ? { enviadas: push.enviadas, aparelhos: push.assinaturas } : null },

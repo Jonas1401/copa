@@ -1065,6 +1065,36 @@ export async function garantirTabelas() {
   } catch {
     // já existe ou sem permissão: segue
   }
+  // Figurinhas personalizadas do chat: catálogo central + categorias em
+  // pacotes. Tabelas novas, separadas: nada do chat existente muda.
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS figurinha_categorias (
+        chave TEXT PRIMARY KEY,
+        nome TEXT NOT NULL,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        pacote TEXT NOT NULL DEFAULT 'copalinks',
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS figurinhas_catalogo (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        categoria TEXT NOT NULL REFERENCES figurinha_categorias(chave) ON DELETE RESTRICT,
+        mime TEXT NOT NULL,
+        dados TEXT NOT NULL,
+        ativa BOOLEAN NOT NULL DEFAULT TRUE,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        pacote TEXT NOT NULL DEFAULT 'copalinks',
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        atualizado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS figurinhas_catalogo_categoria_idx ON figurinhas_catalogo (categoria, ordem);
+      ALTER TABLE figurinha_categorias ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE figurinhas_catalogo ENABLE ROW LEVEL SECURITY;
+    `);
+  } catch {
+    // já existe ou sem permissão: segue
+  }
   // Último acesso do motorista no app (exclusão automática após 15 dias sem
   // entrar e sem número monitorado). Aditivo: bancos antigos ganham a coluna.
   try {
