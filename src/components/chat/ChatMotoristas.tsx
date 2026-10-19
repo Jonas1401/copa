@@ -62,6 +62,27 @@ export type MensagemChat = {
   reacoes?: ReacaoChat[];
 };
 
+/** Catálogo central de figurinhas com imagem (/api/figurinhas). */
+type CategoriaFigurinhaPainel = { chave: string; nome: string; ordem: number };
+type FigurinhaPainel = {
+  id: number;
+  nome: string;
+  categoria: string;
+  ordem: number;
+  imagemUrl: string;
+  animada: boolean;
+};
+
+/** Ícone da categoria no seletor; categorias novas ganham o ícone padrão. */
+const ICONE_CATEGORIA: Record<string, string> = {
+  recados: "📝",
+  caminhoes: "🚛",
+  motoristas: "👷",
+  porto: "⚓",
+  copalinks: "⭐",
+};
+const iconeCategoria = (chave: string) => ICONE_CATEGORIA[chave] ?? "🖼️";
+
 export const CHAVE_CHAT_LIDO = "copalinks-chat-lido";
 const TAMANHO_MAX = 500;
 const TAMANHO_MAX_MIDIA = 4 * 1024 * 1024;
@@ -176,6 +197,9 @@ export default function ChatMotoristas({
   const [trocandoSilencio, setTrocandoSilencio] = useState(false);
   const [participantes, setParticipantes] = useState<number | null>(null);
   const [painel, setPainel] = useState<TipoPainel>(null);
+  const [figurinhasPainel, setFigurinhasPainel] = useState<{ categorias: CategoriaFigurinhaPainel[]; figurinhas: FigurinhaPainel[] } | null>(null);
+  const [categoriaFigurinha, setCategoriaFigurinha] = useState("caminhoes");
+  const [enviandoFigurinha, setEnviandoFigurinha] = useState<number | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
   const [infoAberta, setInfoAberta] = useState(false);
   const [mensagensNovas, setMensagensNovas] = useState(0);
@@ -329,6 +353,24 @@ export default function ChatMotoristas({
     return () => { vivo = false; };
   }, [aberto, motoristaId]);
 
+  // Biblioteca de figurinhas: recarrega toda vez que a aba abre — figurinhas
+  // publicadas no painel admin aparecem sozinhas para todos os motoristas.
+  useEffect(() => {
+    if (!aberto || painel !== "figurinhas") return;
+    let vivo = true;
+    fetch("/api/figurinhas", { cache: "no-store" })
+      .then((resposta) => (resposta.ok ? resposta.json() : null))
+      .then((dados) => {
+        if (!vivo || !dados) return;
+        setFigurinhasPainel({
+          categorias: (dados.categorias ?? []) as CategoriaFigurinhaPainel[],
+          figurinhas: (dados.figurinhas ?? []) as FigurinhaPainel[],
+        });
+      })
+      .catch(() => { /* indisponibilidade momentânea: mantém a lista anterior */ });
+    return () => { vivo = false; };
+  }, [aberto, painel]);
+
   // Marca como lido e rola somente a lista das mensagens.
   useEffect(() => {
     if (!aberto || iaAberta) return;
@@ -475,10 +517,37 @@ export default function ChatMotoristas({
       colado.current = true;
       setMensagensNovas(0);
       juntar([dados.mensagem as MensagemChat]);
+      } catch {
+        setErro("Sem conexão. A mensagem não foi enviada.");
+      } finally {
+        setEnviando(false);
+      }
+  }
+
+  /** Envia uma figurinha do catálogo com um toque (imagem copiada no servidor). */
+  async function enviarFigurinha(figurinhaId: number) {
+    if (!motorista || enviando || enviandoFigurinha !== null) return;
+    setEnviandoFigurinha(figurinhaId);
+    setErro("");
+    try {
+      const resposta = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ motoristaId: motorista.id, figurinhaId }),
+      });
+      const dados = await resposta.json();
+      if (!resposta.ok) {
+        setErro(dados.erro ?? "Não foi possível enviar a figurinha.");
+        return;
+      }
+      setPainel(null);
+      colado.current = true;
+      setMensagensNovas(0);
+      juntar([dados.mensagem as MensagemChat]);
     } catch {
-      setErro("Sem conexão. A mensagem não foi enviada.");
+      setErro("Sem conexão. A figurinha não foi enviada.");
     } finally {
-      setEnviando(false);
+      setEnviandoFigurinha(null);
     }
   }
 
@@ -764,6 +833,17 @@ export default function ChatMotoristas({
 
   useEffect(() => { ajustarAlturaCampo(); }, [texto]);
 
+  // Seletor de figurinhas: "Recados" (as figurinhas de texto/emoji de sempre) +
+  // categorias do catálogo central. Pacotes publicados no admin entram sozinhos.
+  const categoriasSeletor = [
+    { chave: "recados", nome: "Recados" },
+    ...(figurinhasPainel?.categorias ?? []),
+  ];
+  const categoriaAtual = categoriasSeletor.some((c) => c.chave === categoriaFigurinha)
+    ? categoriaFigurinha
+    : categoriasSeletor[0]?.chave ?? "recados";
+  const figurinhasVisiveis = (figurinhasPainel?.figurinhas ?? []).filter((f) => f.categoria === categoriaAtual);
+
   if (!aberto) return null;
 
   return (
@@ -913,6 +993,9 @@ export default function ChatMotoristas({
               const temAudio = tipo === "audio";
               const temArquivo = tipo === "arquivo" && Boolean(mensagem.mediaUrl);
               const temMidia = temImagem || temArquivo || temAudio;
+              // Figurinha com imagem (catálogo central): desenhada sem balão,
+              // com fundo transparente — mantém autor e horário.
+              const temFigurinha = tipo === "figurinha" && Boolean(mensagem.mediaUrl);
               // Só emojis: a bolha acompanha o tamanho deles — o rodapé desce
               // para a linha de baixo em vez de esticar a bolha na horizontal.
               const soEmoji = !temMidia && tipo === "texto" && soEmojis(mensagem.texto);
@@ -936,7 +1019,45 @@ export default function ChatMotoristas({
                       </span>
                     </div>
                   )}
-                  {sistema ? (
+                  {temFigurinha ? (
+                    <div className={`flex w-full items-end gap-2 ${meu ? "flex-row-reverse" : ""}`}>
+                      <AvatarMotorista nome={mensagem.nome} id={mensagem.motoristaId} />
+                      <div
+                        data-reacao-area
+                        onDoubleClick={() => { if (motorista) void reagir(mensagem, "👍"); }}
+                        title={motorista ? "Toque duas vezes para curtir com 👍" : undefined}
+                        className="relative min-w-0"
+                      >
+                        <div className={`flex flex-col ${meu ? "items-end" : "items-start"}`}>
+                          {mensagem.mediaUrl && (
+                            <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="block">
+                              <NextImage
+                                src={mensagem.mediaUrl}
+                                alt={mensagem.mediaNome || "Figurinha do CopaLinks"}
+                                width={148}
+                                height={148}
+                                unoptimized
+                                className="h-[136px] w-[136px] object-contain drop-shadow-[0_6px_16px_rgba(0,0,0,.45)] sm:h-[152px] sm:w-[152px]"
+                              />
+                            </a>
+                          )}
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <span className={`font-display text-[11px] leading-none font-extrabold ${meu ? "text-[#a9c4ff]" : CORES_NOME[Math.abs(mensagem.motoristaId) % CORES_NOME.length]}`}>
+                              {meu ? "Você" : mensagem.nome}
+                            </span>
+                            <MetaMensagem mensagem={mensagem} meu={meu} onApagar={apagar} onReagir={motorista ? abrirSeletor : undefined} minhaReacao={minhaReacao} />
+                          </div>
+                        </div>
+                        <PilulaReacoes lista={listaReacoes} motoristaId={motorista?.id} lado={meu ? "left-3" : "right-3"} onVerQuem={() => alternarDetalheReacao(mensagem)} />
+                        {seletorReacao === mensagem.id && motorista && (
+                          <SeletorReacao minhaReacao={minhaReacao} lado={meu ? "right-0" : "left-0"} onEscolher={(emoji) => void reagir(mensagem, emoji)} />
+                        )}
+                        {detalheReacao === mensagem.id && (
+                          <DetalheReacoes lista={listaReacoes} motoristaId={motorista?.id} lado={meu ? "right-0" : "left-0"} />
+                        )}
+                      </div>
+                    </div>
+                  ) : sistema ? (
                     <div className={`flex max-w-full items-end gap-2 ${oficial ? "" : "opacity-95"}`}>
                       <AvatarCopa tamanho={35} robo={oficial} classe={oficial ? "border-[#6f92ff]/55" : "border-white/10 opacity-85"} />
                       <div
@@ -1085,13 +1206,50 @@ export default function ChatMotoristas({
                     {EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => inserirEmoji(emoji)} aria-label={`Inserir ${emoji}`} className="grid aspect-square place-items-center rounded-xl text-[23px] transition-colors hover:bg-white/10 active:scale-90">{emoji}</button>)}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {FIGURINHAS.map((figurinha) => (
-                      <button key={figurinha.texto} type="button" disabled={enviando || !motorista} onClick={() => void enviar(textoDaFigurinha(figurinha))} aria-label={`Enviar figurinha: ${figurinha.texto}`} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[.035] px-2.5 py-2 text-left transition-colors hover:bg-white/10 active:scale-[.98] disabled:opacity-45">
-                        <span className="shrink-0 text-[27px] leading-none">{figurinha.emoji}</span>
-                        <span className="text-[11.5px] leading-tight font-bold text-white">{figurinha.texto}</span>
-                      </button>
-                    ))}
+                  <div>
+                    <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5" role="tablist" aria-label="Categorias de figurinhas">
+                      {categoriasSeletor.map((categoria) => (
+                        <button
+                          key={categoria.chave}
+                          type="button"
+                          role="tab"
+                          aria-selected={categoriaAtual === categoria.chave}
+                          onClick={() => setCategoriaFigurinha(categoria.chave)}
+                          className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-extrabold whitespace-nowrap transition-colors ${categoriaAtual === categoria.chave ? "bg-[#526cee] text-white" : "bg-white/[.05] text-gelo/70 hover:bg-white/10"}`}
+                        >
+                          <span aria-hidden>{iconeCategoria(categoria.chave)}</span>
+                          {categoria.nome}
+                        </button>
+                      ))}
+                    </div>
+                    {categoriaAtual === "recados" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {FIGURINHAS.map((figurinha) => (
+                          <button key={figurinha.texto} type="button" disabled={enviando || !motorista} onClick={() => void enviar(textoDaFigurinha(figurinha))} aria-label={`Enviar figurinha: ${figurinha.texto}`} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[.035] px-2.5 py-2 text-left transition-colors hover:bg-white/10 active:scale-[.98] disabled:opacity-45">
+                            <span className="shrink-0 text-[27px] leading-none">{figurinha.emoji}</span>
+                            <span className="text-[11.5px] leading-tight font-bold text-white">{figurinha.texto}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : figurinhasVisiveis.length === 0 ? (
+                      <p className="py-6 text-center text-[11.5px] text-gelo/50">Nenhuma figurinha nesta categoria ainda.</p>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-2">
+                        {figurinhasVisiveis.map((figurinha) => (
+                          <button
+                            key={figurinha.id}
+                            type="button"
+                            disabled={enviando || enviandoFigurinha !== null || !motorista}
+                            onClick={() => void enviarFigurinha(figurinha.id)}
+                            aria-label={`Enviar figurinha: ${figurinha.nome}`}
+                            title={figurinha.nome}
+                            className={`relative grid aspect-square place-items-center overflow-hidden rounded-2xl border bg-white/[.04] transition-colors hover:bg-white/10 active:scale-95 disabled:opacity-45 ${enviandoFigurinha === figurinha.id ? "border-ciano/70 ring-1 ring-ciano/60" : "border-white/10"}`}
+                          >
+                            <NextImage src={figurinha.imagemUrl} alt="" width={120} height={120} unoptimized className="h-full w-full object-contain p-1" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

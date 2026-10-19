@@ -36,6 +36,13 @@ yarn-error.log*
 # backups de banco
 *.dump
 
+# figurinhas: arte gerada (scripts/gerar-figurinhas.mjs); o pacote que o app
+# usa em runtime é src/lib/figurinhas-pacote.ts (gerado junto e versionado)
+/public/figurinhas/
+
+# rascunhos locais de teste
+.tmp-test/
+
 # Android Monitor: configurações locais e arquivos de assinatura
 /android/**/.gradle/
 /android/**/build/

@@ -251,7 +251,7 @@ export const chatMensagens = pgTable("chat_mensagens", {
   motoristaId: integer("motorista_id").notNull(),
   nome: text("nome").notNull(),
   texto: text("texto").notNull(),
-  tipo: text("tipo").default("texto").notNull(), // texto | audio | imagem | arquivo
+  tipo: text("tipo").default("texto").notNull(), // texto | audio | imagem | arquivo | figurinha
   mediaNome: text("media_nome"),
   mediaTipo: text("media_tipo"),
   // Base64 compacto para anexos pequenos do chat; a listagem nunca devolve este campo.
@@ -312,6 +312,35 @@ export const chatReacoes = pgTable("chat_reacoes", {
   unique("chat_reacao_unica").on(t.mensagemId, t.motoristaId),
   index("chat_reacoes_mensagem_idx").on(t.mensagemId),
 ]);
+
+/* ================== FIGURINHAS PERSONALIZADAS (catálogo central) ========= */
+// Catálogo compartilhado por TODOS os motoristas: o que existe, a ordem e se
+// está ativa vem do banco — publicou no admin, aparece para todo mundo. As
+// imagens ficam aqui (base64) para um único ponto de verdade; a mensagem do
+// chat guarda a cópia da figurinha enviada e não muda se o catálogo mudar.
+// Pacotes futuros são só linhas novas aqui (coluna `pacote`), sem alterar o
+// código do chat.
+
+export const figurinhaCategorias = pgTable("figurinha_categorias", {
+  chave: text("chave").primaryKey(), // caminhoes | motoristas | porto | copalinks | ...
+  nome: text("nome").notNull(),
+  ordem: integer("ordem").default(0).notNull(),
+  pacote: text("pacote").default("copalinks").notNull(),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const figurinhasCatalogo = pgTable("figurinhas_catalogo", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  categoria: text("categoria").notNull().references(() => figurinhaCategorias.chave, { onDelete: "restrict" }),
+  mime: text("mime").notNull(), // image/webp | image/png | image/gif
+  dados: text("dados").notNull(), // imagem em base64
+  ativa: boolean("ativa").default(true).notNull(),
+  ordem: integer("ordem").default(0).notNull(),
+  pacote: text("pacote").default("copalinks").notNull(),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("figurinhas_catalogo_categoria_idx").on(t.categoria, t.ordem)]);
 
 // Conversa privada de cada motorista com o assistente de IA (navios, caminhão
 // + ajuda do app). Papel: "user" (pergunta) ou "assistant" (resposta).

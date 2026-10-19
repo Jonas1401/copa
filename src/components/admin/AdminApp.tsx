@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import CartaoNotificacoesAdmin from "@/components/admin/CartaoNotificacoesAdmin";
 import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
+import CartaoFigurinhasAdmin from "@/components/admin/CartaoFigurinhasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
 import CartaoDivulgacaoAdmin from "@/components/admin/CartaoDivulgacaoAdmin";
 import InternetEsimAdmin from "@/components/admin/InternetEsimAdmin";
@@ -793,6 +794,10 @@ export default function AdminApp({ url }: { url: string }) {
           <>
             {/* nome e pontos de todos os motoristas (só o administrador vê) */}
             <CartaoMotoristasAdmin api={api} onSessaoExpirada={sair401} />
+
+            {/* biblioteca de figurinhas do chat (publicadas para todos) */}
+            <CartaoFigurinhasAdmin api={api} onSessaoExpirada={sair401} />
+
             <InternetEsimAdmin api={api} onSessaoExpirada={sair401} />
 
             <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
