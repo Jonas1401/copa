@@ -58,7 +58,7 @@ export const SERVICOS: Servico[] = [
     subtitulo: "Navios e manobras",
     cor: "vermelho",
     icone: "ficha",
-    href: "https://berth-bloom-buddy.lovable.app/",
+    href: "https://berth-buddy-bot.lovable.app/",
   },
   {
     id: "frete",
