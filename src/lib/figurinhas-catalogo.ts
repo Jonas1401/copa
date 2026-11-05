@@ -2,14 +2,16 @@
  * Catálogo de figurinhas COM IMAGEM do chat dos motoristas (CopaLinks).
  *
  * Regras puras de domínio — nada de banco, HTTP ou React aqui:
- *   - Categorias em pacotes (Caminhões, Motoristas, Porto, CopaLinks) que o
- *     servidor devolve prontas; pacotes futuros entram pelo painel admin sem
- *     mexer no código do chat.
+ *   - As 7 categorias da coleção oficial de 2026 (Caminhões, Porto e navios,
+ *     Motoristas, Saudações, Reações, Café e alimentação, Trabalho e descanso)
+ *     que o servidor devolve prontas; pacotes futuros entram pelo painel admin
+ *     sem mexer no código do chat.
  *   - Validação de upload (PNG, WebP e GIF) por bytes reais (assinatura do
  *     arquivo), não só pelo nome/MIME que o navegador informa.
  *
- * As figurinhas antigas de texto/emoji continuam em `./figurinhas.ts` — este
- * módulo é um recurso ADICIONAL e não substitui nada do chat.
+ * As figurinhas antigas de texto/emoji continuam em `./figurinhas.ts` só para
+ * desenhar mensagens JÁ ENVIADAS: o seletor novo mostra apenas os emojis e as
+ * 42 figurinhas recortadas da imagem oficial.
  */
 
 /* ------------------------------------------------------------- categorias */
@@ -21,12 +23,15 @@ export type CategoriaFigurinha = {
   pacote: string;
 };
 
-/** Categorias do pacote inicial CopaLinks (mesma ordem do seletor). */
+/** Categorias da coleção oficial CopaLinks (mesma ordem do seletor). */
 export const CATEGORIAS_PADRAO: CategoriaFigurinha[] = [
   { chave: "caminhoes", nome: "Caminhões", ordem: 0, pacote: "copalinks" },
-  { chave: "motoristas", nome: "Motoristas", ordem: 1, pacote: "copalinks" },
-  { chave: "porto", nome: "Porto", ordem: 2, pacote: "copalinks" },
-  { chave: "copalinks", nome: "CopaLinks", ordem: 3, pacote: "copalinks" },
+  { chave: "porto", nome: "Porto e navios", ordem: 1, pacote: "copalinks" },
+  { chave: "motoristas", nome: "Motoristas", ordem: 2, pacote: "copalinks" },
+  { chave: "saudacoes", nome: "Saudações", ordem: 3, pacote: "copalinks" },
+  { chave: "reacoes", nome: "Reações", ordem: 4, pacote: "copalinks" },
+  { chave: "cafe", nome: "Café e alimentação", ordem: 5, pacote: "copalinks" },
+  { chave: "trabalho", nome: "Trabalho e descanso", ordem: 6, pacote: "copalinks" },
 ];
 
 /** Chave de categoria: minúsculas, números e hífen (ex.: "caminhoes"). */

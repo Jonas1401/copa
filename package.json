@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
+    "figurinhas:recortar": "node scripts/recortar-figurinhas.mjs",
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {

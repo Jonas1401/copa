@@ -35,7 +35,9 @@ import {
   Waves,
   X,
 } from "lucide-react";
-import { EMOJIS, FIGURINHAS, figurinhaDe, soEmojis, textoDaFigurinha } from "@/lib/figurinhas";
+// Só os emojis ficam no seletor. `figurinhaDe` continua aqui para desenhar
+// mensagens antigas de recado (emoji + frase) que já estão no histórico.
+import { EMOJIS, figurinhaDe, soEmojis } from "@/lib/figurinhas";
 import { REACOES_RAPIDAS, type ReacaoChat } from "@/lib/reacoes";
 import {
   aplicarVelocidade,
@@ -73,13 +75,15 @@ type FigurinhaPainel = {
   animada: boolean;
 };
 
-/** Ícone da categoria no seletor; categorias novas ganham o ícone padrão. */
+/** Ícone das 7 categorias oficiais; categorias novas ganham o ícone padrão. */
 const ICONE_CATEGORIA: Record<string, string> = {
-  recados: "📝",
   caminhoes: "🚛",
-  motoristas: "👷",
   porto: "⚓",
-  copalinks: "⭐",
+  motoristas: "👷",
+  saudacoes: "☀️",
+  reacoes: "👍",
+  cafe: "☕",
+  trabalho: "🔧",
 };
 const iconeCategoria = (chave: string) => ICONE_CATEGORIA[chave] ?? "🖼️";
 
@@ -834,15 +838,13 @@ export default function ChatMotoristas({
 
   useEffect(() => { ajustarAlturaCampo(); }, [texto]);
 
-  // Seletor de figurinhas: "Recados" (as figurinhas de texto/emoji de sempre) +
-  // categorias do catálogo central. Pacotes publicados no admin entram sozinhos.
-  const categoriasSeletor = [
-    { chave: "recados", nome: "Recados" },
-    ...(figurinhasPainel?.categorias ?? []),
-  ];
+  // Seletor de figurinhas: somente as categorias do catálogo central (as 7 da
+  // coleção oficial + qualquer pacote publicado no admin). Os emojis ficam na
+  // aba ao lado e os antigos "Recados" saíram do seletor.
+  const categoriasSeletor = figurinhasPainel?.categorias ?? [];
   const categoriaAtual = categoriasSeletor.some((c) => c.chave === categoriaFigurinha)
     ? categoriaFigurinha
-    : categoriasSeletor[0]?.chave ?? "recados";
+    : categoriasSeletor[0]?.chave ?? "caminhoes";
   const figurinhasVisiveis = (figurinhasPainel?.figurinhas ?? []).filter((f) => f.categoria === categoriaAtual);
 
   if (!aberto) return null;
@@ -1192,7 +1194,7 @@ export default function ChatMotoristas({
           )}
 
           {(painel === "emojis" || painel === "figurinhas") && (
-            <div className="mb-2.5 rounded-[20px] border border-[#183341]/60 bg-[#071A28]/[.98] p-2.5 shadow-[0_12px_30px_-20px_rgba(0,0,0,.8)]">
+            <div className="mb-2.5 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/[.98] p-2.5 shadow-[0_12px_30px_-20px_rgba(0,0,0,.8)]">
               <div className="mb-2 flex gap-1.5" role="tablist" aria-label="Emojis e figurinhas">
                 {(["emojis", "figurinhas"] as const).map((aba) => (
                   <button key={aba} type="button" role="tab" aria-selected={painel === aba} onClick={() => setPainel(aba)} className={`flex-1 rounded-full px-3 py-2 text-[12px] font-extrabold transition-colors ${painel === aba ? "bg-[#00B8BC] text-[#000D16]" : "bg-white/[.05] text-gelo/65 hover:bg-white/10"}`}>
@@ -1201,14 +1203,15 @@ export default function ChatMotoristas({
                 ))}
                 <button type="button" onClick={() => setPainel(null)} aria-label="Fechar emojis e figurinhas" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[.05] text-gelo/70 hover:text-white"><X size={16} /></button>
               </div>
-              <div className="max-h-[190px] overflow-y-auto">
+              {/* Painel alto, rolagem suave com inércia no Android e sem cortes. */}
+              <div className="rolagem-figurinhas max-h-[min(330px,42vh)] overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[370px]">
                 {painel === "emojis" ? (
                   <div className="grid grid-cols-8 gap-0.5 sm:grid-cols-10">
                     {EMOJIS.map((emoji) => <button key={emoji} type="button" onClick={() => inserirEmoji(emoji)} aria-label={`Inserir ${emoji}`} className="grid aspect-square place-items-center rounded-xl text-[23px] transition-colors hover:bg-white/10 active:scale-90">{emoji}</button>)}
                   </div>
                 ) : (
                   <div>
-                    <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5" role="tablist" aria-label="Categorias de figurinhas">
+                    <div className="sticky top-0 z-10 mb-2 flex gap-1.5 overflow-x-auto bg-[#071A28] pt-0.5 pb-1.5" role="tablist" aria-label="Categorias de figurinhas">
                       {categoriasSeletor.map((categoria) => (
                         <button
                           key={categoria.chave}
@@ -1216,26 +1219,20 @@ export default function ChatMotoristas({
                           role="tab"
                           aria-selected={categoriaAtual === categoria.chave}
                           onClick={() => setCategoriaFigurinha(categoria.chave)}
-                          className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-extrabold whitespace-nowrap transition-colors ${categoriaAtual === categoria.chave ? "bg-[#00B8BC] text-[#000D16]" : "bg-white/[.05] text-gelo/70 hover:bg-white/10"}`}
+                          className={`flex shrink-0 touch-manipulation items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-extrabold whitespace-nowrap transition-colors ${categoriaAtual === categoria.chave ? "bg-[#00B8BC] text-[#000D16]" : "bg-white/[.05] text-gelo/70 hover:bg-white/10"}`}
                         >
                           <span aria-hidden>{iconeCategoria(categoria.chave)}</span>
                           {categoria.nome}
                         </button>
                       ))}
                     </div>
-                    {categoriaAtual === "recados" ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        {FIGURINHAS.map((figurinha) => (
-                          <button key={figurinha.texto} type="button" disabled={enviando || !motorista} onClick={() => void enviar(textoDaFigurinha(figurinha))} aria-label={`Enviar figurinha: ${figurinha.texto}`} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[.035] px-2.5 py-2 text-left transition-colors hover:bg-white/10 active:scale-[.98] disabled:opacity-45">
-                            <span className="shrink-0 text-[27px] leading-none">{figurinha.emoji}</span>
-                            <span className="text-[11.5px] leading-tight font-bold text-white">{figurinha.texto}</span>
-                          </button>
-                        ))}
-                      </div>
+                    {categoriasSeletor.length === 0 ? (
+                      <p className="py-8 text-center text-[11.5px] text-gelo/50">Carregando a coleção de figurinhas…</p>
                     ) : figurinhasVisiveis.length === 0 ? (
                       <p className="py-6 text-center text-[11.5px] text-gelo/50">Nenhuma figurinha nesta categoria ainda.</p>
                     ) : (
-                      <div className="grid grid-cols-4 gap-2">
+                      /* 4 colunas onde a tela permite; object-contain nunca corta. */
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                         {figurinhasVisiveis.map((figurinha) => (
                           <button
                             key={figurinha.id}
@@ -1244,9 +1241,9 @@ export default function ChatMotoristas({
                             onClick={() => void enviarFigurinha(figurinha.id)}
                             aria-label={`Enviar figurinha: ${figurinha.nome}`}
                             title={figurinha.nome}
-                            className={`relative grid aspect-square place-items-center overflow-hidden rounded-2xl border bg-white/[.04] transition-colors hover:bg-white/10 active:scale-95 disabled:opacity-45 ${enviandoFigurinha === figurinha.id ? "border-ciano/70 ring-1 ring-ciano/60" : "border-white/10"}`}
+                            className={`relative grid aspect-square touch-manipulation place-items-center overflow-hidden rounded-[18px] border bg-[#062330]/70 transition-colors hover:bg-[#183341] active:scale-95 disabled:opacity-45 ${enviandoFigurinha === figurinha.id ? "border-ciano/70 ring-1 ring-ciano/60" : "border-white/10"}`}
                           >
-                            <NextImage src={figurinha.imagemUrl} alt="" width={120} height={120} unoptimized className="h-full w-full object-contain p-1" />
+                            <NextImage src={figurinha.imagemUrl} alt="" width={256} height={256} unoptimized className="h-full w-full object-contain p-1.5" />
                           </button>
                         ))}
                       </div>

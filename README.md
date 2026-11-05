@@ -103,25 +103,32 @@ Mensagens só com 1 a 3 emojis aparecem grandes. Para criar figurinhas de
 recado (texto com emoji), edite `FIGURINHAS` em `src/lib/figurinhas.ts`. Testes:
 `tests/figurinhas.test.ts` e `tests/chat-silencio.test.ts`.
 
-**Chat — figurinhas com imagem (catálogo central):** dentro da aba
-**Figurinhas**, as categorias **Caminhões, Motoristas, Porto e CopaLinks** —
-mais **Recados** (as figurinhas de texto de sempre) — mostram uma **grade de 4
-figurinhas por linha** (WebP/PNG com fundo transparente, estilo CopaLinks:
-caminhões, motoristas, porto de Paranaguá e o dia a dia da estrada). Um toque
-envia; a figurinha aparece **sem balão**, com fundo transparente, mantendo
-autor e horário (com curtidas, apagar e o rodapé de sempre). O catálogo fica
-no banco (`figurinha_categorias` + `figurinhas_catalogo`, imagens em base64):
+**Chat — coleção oficial de figurinhas (catálogo central):** o seletor
+mantém as abas **😀 Emojis** e **🚛 Figurinhas**; os antigos "Recados" de texto
+saíram do seletor (mensagens já enviadas continuam desenhando normalmente). A
+aba de figurinhas traz **42 PNGs transparentes**, recortados um a um da imagem
+oficial, em **7 categorias**: Caminhões, Porto e navios, Motoristas,
+Saudações, Reações, Café e alimentação, Trabalho e descanso. Grade responsiva
+(3 colunas no celular estreito, **4 colunas** nas demais), figurinhas grandes
+e nítidas com `object-contain` (sem cortes), rolagem suave com inércia no
+Android/PWA e fundo escuro que não interfere na transparência. Um toque envia
+na hora; a figurinha aparece **sem balão**, com fundo transparente, mantendo
+autor e horário (curtidas, apagar e rodapé de sempre). O catálogo fica no
+banco (`figurinha_categorias` + `figurinhas_catalogo`, imagens em base64):
 todo motorista — app, PWA ou Android — recebe as mesmas figurinhas, e o
-histórico guarda a própria cópia da imagem enviada (apagar do catálogo não
-apaga as mensagens). No painel **/admin** (cartão **Figurinhas do chat**) o
-administrador publica PNG/WebP/GIF (até 512 KB, validados pelos bytes do
-arquivo) com pré-visualização, nome, categoria e ordem, além de ativar,
-desativar, reordenar, excluir e criar categorias novas (pacotes futuros entram
-sem mexer no código do chat) — tudo auditado. Rotas `/api/figurinhas` (lista),
-`/api/figurinhas/:id/imagem` (imagem) e `/api/admin/figurinhas*` (gestão). O
-pacote inicial de 22 figurinhas é semeado uma única vez no primeiro uso
-(`src/lib/figurinhas-pacote.ts`, gerado por `node scripts/gerar-figurinhas.mjs`
-a partir da arte em `scripts/figurinhas-arte.mjs`). Testes:
+histórico guarda a própria cópia da imagem enviada (trocar o catálogo não
+apaga mensagens). A instalação é automática no primeiro uso: o pacote antigo
+de 22 desenhos é **desativado** (não apagado) e a coleção nova entra uma única
+vez por banco, com trava transacional contra duplicidade. Os arquivos
+individuais ficam em `public/stickers/cop alinks/` (com `catalogo.json`) e o
+base64 que semeia o banco em `src/lib/figurinhas-pacote.ts` — ambos gerados
+por `npm run figurinhas:recortar` a partir de
+`scripts/figurinhas/colecao-original.jpg`. No painel **/admin** (cartão
+**Figurinhas do chat**) o administrador publica PNG/WebP/GIF (até 512 KB,
+validados pelos bytes do arquivo) com pré-visualização, nome, categoria e
+ordem, além de ativar, desativar, reordenar, excluir e criar categorias novas
+— tudo auditado. Rotas `/api/figurinhas` (lista), `/api/figurinhas/:id/imagem`
+(imagem) e `/api/admin/figurinhas*` (gestão). Testes:
 `tests/figurinhas-catalogo.test.ts`.
 
 **Chat — curtidas com emoji:** qualquer mensagem recebida (texto, áudio, foto,

@@ -142,7 +142,8 @@ test("nada foi removido: bolhas, áudio, emojis, anexos, IA e silenciar continua
     "function PlayerAudio",
     "function ConteudoMensagem",
     "EMOJIS.map",
-    "FIGURINHAS.map",
+    // Recados antigos saíram do seletor; o histórico continua renderizando.
+    "figurinhaDe",
     "AcaoAnexo",
     "<AssistenteIA aberto={iaAberta}",
     "alternarSilencio",

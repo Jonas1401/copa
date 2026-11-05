@@ -101,7 +101,9 @@ test("nada foi removido: áudio, emojis, anexos, IA, notificações e apagar con
     "function PlayerAudio",
     "rotuloVelocidade(velocidade)",
     "EMOJIS.map",
-    "FIGURINHAS.map",
+    // Os recados de texto saíram do seletor (só emojis + coleção nova), mas
+    // mensagens antigas continuam sendo desenhadas por `figurinhaDe`.
+    "figurinhaDe",
     "AcaoAnexo",
     "<AssistenteIA aberto={iaAberta}",
     "alternarSilencio",

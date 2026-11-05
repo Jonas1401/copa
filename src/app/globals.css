@@ -384,6 +384,20 @@ input:focus-visible {
   display: none;
 }
 
+/* ---------------------------------------------------- seletor de figurinhas
+   Rolagem suave com inércia no Android/PWA, barra discreta e o fundo escuro
+   no cartão (as imagens continuam com alpha real, sem moldura clara). */
+.rolagem-figurinhas {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 184, 188, 0.45) transparent;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.rolagem-figurinhas::-webkit-scrollbar { width: 5px; }
+.rolagem-figurinhas::-webkit-scrollbar-thumb { background: rgba(0, 184, 188, 0.4); border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { .rolagem-figurinhas { scroll-behavior: auto; } }
+
 /* ---------------------------------------------- tela de carregamento
    CarregamentoLogo: logo com brilho, ondas de radar e caminhão na estrada. */
 .carga-tela { animation: carga-trava 0.5s ease 12s forwards; }

@@ -2,16 +2,17 @@
  * Catálogo central de figurinhas do chat (SOMENTE servidor).
  *
  * Leitura/escrita das tabelas `figurinha_categorias` e `figurinhas_catalogo`
- * mais a semente do pacote inicial CopaLinks (uma única vez por banco: se o
- * administrador apagar tudo, o pacote não volta sozinho).
+ * mais a instalação da coleção oficial CopaLinks (uma única vez por banco: se
+ * o administrador apagar tudo, o pacote não volta sozinho).
  *
  * A imagem de cada figurinha vive no banco (base64): todos os motoristas
  * recebem exatamente as mesmas figurinhas, inclusive no Android/PWA. Ao ser
  * enviada no chat, a figurinha é COPIADA para a mensagem — o histórico não
- * muda nem some quando o catálogo é editado depois.
+ * muda nem some quando o catálogo é editado depois (por isso a troca da
+ * coleção antiga por esta não apaga nenhuma conversa).
  */
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { configuracao, figurinhaCategorias, figurinhasCatalogo } from "@/db/schema";
 import {
@@ -24,8 +25,24 @@ import {
 } from "@/lib/figurinhas-catalogo";
 import { PACOTE_FIGURINHAS } from "@/lib/figurinhas-pacote";
 
-/** Marca na tabela `configuracao`: o pacote inicial já foi semeado. */
-const CHAVE_SEMENTE = "figurinhas_pacote_copalinks";
+/** Marca na tabela `configuracao`: a coleção oficial 2026 já foi instalada. */
+const CHAVE_SEMENTE = "figurinhas_colecao_copalinks_2026_v1";
+/** Marca do pacote substituído (22 desenhos SVG/WebP antigos). */
+const PACOTE_ANTIGO = "copalinks";
+/** Marca desta coleção (42 PNGs recortados da imagem oficial). */
+const PACOTE_ATUAL = "copalinks-2026";
+/** Trava transacional para não semear duas vezes em instâncias simultâneas. */
+const TRAVA_SEMENTE = 918273645;
+
+/** Nomes do pacote antigo: só estes são desativados na substituição. */
+const NOMES_PACOTE_ANTIGO = [
+  "Caminhão feliz", "Carregado!", "Saindo pra estrada", "Chuva na estrada",
+  "Luz verde, pode ir!", "Cafézinho!", "Bom dia, motorista!", "Show de bola!",
+  "Motorista top", "Tamo junto!", "Valeu, falou!", "Hora do descanso",
+  "Navio no porto", "Guindaste do porto", "Fila do porto", "Na balança",
+  "Containers", "Porto à noite", "Estrela CopaLinks", "Coração na estrada",
+  "Aêêê!", "Valeu!",
+];
 
 export type FigurinhaCatalogo = {
   id: number;
@@ -51,39 +68,59 @@ const semDados = {
   atualizadoEm: figurinhasCatalogo.atualizadoEm,
 } as const;
 
-/** Semeia categorias + figurinhas oficiais na primeira chamada do servidor. */
+/**
+ * Instala a coleção oficial uma única vez por banco.
+ *
+ * Bancos já em produção guardam o pacote antigo (22 SVG/WebP) e a marca
+ * `figurinhas_pacote_copalinks`: aqui eles são DESATIVADOS (não apagados) e as
+ * 42 figurinhas novas entram com as 7 categorias pedidas. Mensagens antigas
+ * continuam intactas porque cada uma guarda sua própria cópia da imagem.
+ */
 export async function garantirFigurinhasPadrao() {
   try {
-    const semeada = await db
-      .select({ chave: configuracao.chave })
-      .from(configuracao)
-      .where(eq(configuracao.chave, CHAVE_SEMENTE))
-      .limit(1);
-    if (semeada.length) return;
-    for (const categoria of CATEGORIAS_PADRAO) {
-      await db
-        .insert(figurinhaCategorias)
-        .values(categoria)
-        .onConflictDoNothing({ target: figurinhaCategorias.chave });
-    }
-    for (const [indice, f] of PACOTE_FIGURINHAS.entries()) {
-      await db
-        .insert(figurinhasCatalogo)
-        .values({
-          nome: f.nome,
-          categoria: f.categoria,
-          mime: f.mime,
-          dados: f.base64,
-          ativa: true,
-          ordem: indice,
-          pacote: "copalinks",
-        })
-        .onConflictDoNothing();
-    }
-    await db
-      .insert(configuracao)
-      .values({ chave: CHAVE_SEMENTE, valor: String(PACOTE_FIGURINHAS.length) })
-      .onConflictDoNothing({ target: configuracao.chave });
+    await db.transaction(async (tx) => {
+      // Trava por transação: duas funções serverless abrindo o chat ao mesmo
+      // tempo não duplicam a coleção.
+      await tx.execute(sql`select pg_advisory_xact_lock(${TRAVA_SEMENTE})`);
+      const semeada = await tx
+        .select({ chave: configuracao.chave })
+        .from(configuracao)
+        .where(eq(configuracao.chave, CHAVE_SEMENTE))
+        .limit(1);
+      if (semeada.length) return;
+
+      await tx
+        .update(figurinhasCatalogo)
+        .set({ ativa: false, atualizadoEm: new Date() })
+        .where(and(eq(figurinhasCatalogo.pacote, PACOTE_ANTIGO), inArray(figurinhasCatalogo.nome, NOMES_PACOTE_ANTIGO)));
+
+      for (const categoria of CATEGORIAS_PADRAO) {
+        await tx
+          .insert(figurinhaCategorias)
+          .values(categoria)
+          .onConflictDoUpdate({
+            target: figurinhaCategorias.chave,
+            set: { nome: categoria.nome, ordem: categoria.ordem },
+          });
+      }
+      for (const [indice, f] of PACOTE_FIGURINHAS.entries()) {
+        await tx
+          .insert(figurinhasCatalogo)
+          .values({
+            nome: f.nome,
+            categoria: f.categoria,
+            mime: f.mime,
+            dados: f.base64,
+            ativa: true,
+            ordem: indice,
+            pacote: PACOTE_ATUAL,
+          });
+      }
+      await tx
+        .insert(configuracao)
+        .values({ chave: CHAVE_SEMENTE, valor: String(PACOTE_FIGURINHAS.length) })
+        .onConflictDoNothing({ target: configuracao.chave });
+    });
   } catch {
     // banco ainda não pronto: a próxima chamada tenta de novo
   }

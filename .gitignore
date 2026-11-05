@@ -36,12 +36,14 @@ yarn-error.log*
 # backups de banco
 *.dump
 
-# figurinhas: arte gerada (scripts/gerar-figurinhas.mjs); o pacote que o app
-# usa em runtime é src/lib/figurinhas-pacote.ts (gerado junto e versionado)
+# Arte antiga de figurinhas (substituída pela coleção 2026). Os PNGs da coleção
+# nova ficam versionados em public/stickers/ e o base64 correspondente em
+# src/lib/figurinhas-pacote.ts — ambos gerados por scripts/recortar-figurinhas.mjs.
 /public/figurinhas/
 
 # rascunhos locais de teste
 .tmp-test/
+.tmp-figurinhas/
 
 # Android Monitor: configurações locais e arquivos de assinatura
 /android/**/.gradle/

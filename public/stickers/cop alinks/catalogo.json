@@ -1,0 +1,267 @@
+{
+  "colecao": "CopaLinks 2026",
+  "total": 42,
+  "categorias": [
+    "caminhoes",
+    "porto",
+    "motoristas",
+    "saudacoes",
+    "reacoes",
+    "cafe",
+    "trabalho"
+  ],
+  "figurinhas": [
+    {
+      "numero": 1,
+      "arquivo": "/stickers/cop%20alinks/guindaste-porto.png",
+      "nome": "Guindaste do porto",
+      "categoria": "porto"
+    },
+    {
+      "numero": 2,
+      "arquivo": "/stickers/cop%20alinks/scania-113-azul.png",
+      "nome": "Scania 113 azul",
+      "categoria": "caminhoes"
+    },
+    {
+      "numero": 3,
+      "arquivo": "/stickers/cop%20alinks/motorista-positivo.png",
+      "nome": "Motorista positivo",
+      "categoria": "motoristas"
+    },
+    {
+      "numero": 4,
+      "arquivo": "/stickers/cop%20alinks/scania-113-branca.png",
+      "nome": "Scania 113 branca",
+      "categoria": "caminhoes"
+    },
+    {
+      "numero": 5,
+      "arquivo": "/stickers/cop%20alinks/empilhadeira.png",
+      "nome": "Empilhadeira",
+      "categoria": "porto"
+    },
+    {
+      "numero": 6,
+      "arquivo": "/stickers/cop%20alinks/navio-carga.png",
+      "nome": "Navio de carga",
+      "categoria": "porto"
+    },
+    {
+      "numero": 7,
+      "arquivo": "/stickers/cop%20alinks/scania-113-azul-lateral.png",
+      "nome": "Scania 113 azul de lado",
+      "categoria": "caminhoes"
+    },
+    {
+      "numero": 8,
+      "arquivo": "/stickers/cop%20alinks/navio-conteineres.png",
+      "nome": "Navio de contêineres",
+      "categoria": "porto"
+    },
+    {
+      "numero": 9,
+      "arquivo": "/stickers/cop%20alinks/motorista-confiante.png",
+      "nome": "Motorista confiante",
+      "categoria": "motoristas"
+    },
+    {
+      "numero": 10,
+      "arquivo": "/stickers/cop%20alinks/motorista-cafe.png",
+      "nome": "Motorista com café",
+      "categoria": "motoristas"
+    },
+    {
+      "numero": 11,
+      "arquivo": "/stickers/cop%20alinks/motorista-pensativo.png",
+      "nome": "Motorista pensativo",
+      "categoria": "motoristas"
+    },
+    {
+      "numero": 12,
+      "arquivo": "/stickers/cop%20alinks/obrigado.png",
+      "nome": "Obrigado!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 13,
+      "arquivo": "/stickers/cop%20alinks/motorista-comemorando.png",
+      "nome": "Motorista comemorando",
+      "categoria": "motoristas"
+    },
+    {
+      "numero": 14,
+      "arquivo": "/stickers/cop%20alinks/motorista-feliz.png",
+      "nome": "Motorista feliz",
+      "categoria": "motoristas"
+    },
+    {
+      "numero": 15,
+      "arquivo": "/stickers/cop%20alinks/motorista-apontando.png",
+      "nome": "Motorista apontando",
+      "categoria": "motoristas"
+    },
+    {
+      "numero": 16,
+      "arquivo": "/stickers/cop%20alinks/bom-dia.png",
+      "nome": "Bom dia!",
+      "categoria": "saudacoes"
+    },
+    {
+      "numero": 17,
+      "arquivo": "/stickers/cop%20alinks/boa-tarde.png",
+      "nome": "Boa tarde!",
+      "categoria": "saudacoes"
+    },
+    {
+      "numero": 18,
+      "arquivo": "/stickers/cop%20alinks/boa-noite.png",
+      "nome": "Boa noite!",
+      "categoria": "saudacoes"
+    },
+    {
+      "numero": 19,
+      "arquivo": "/stickers/cop%20alinks/show.png",
+      "nome": "Show!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 20,
+      "arquivo": "/stickers/cop%20alinks/valeu.png",
+      "nome": "Valeu!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 21,
+      "arquivo": "/stickers/cop%20alinks/beleza.png",
+      "nome": "Beleza!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 22,
+      "arquivo": "/stickers/cop%20alinks/gostei.png",
+      "nome": "Gostei!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 23,
+      "arquivo": "/stickers/cop%20alinks/amem.png",
+      "nome": "Amém!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 24,
+      "arquivo": "/stickers/cop%20alinks/top.png",
+      "nome": "Top!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 25,
+      "arquivo": "/stickers/cop%20alinks/deus-abencoe.png",
+      "nome": "Deus abençoe!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 26,
+      "arquivo": "/stickers/cop%20alinks/kkk.png",
+      "nome": "KKK!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 27,
+      "arquivo": "/stickers/cop%20alinks/parabens.png",
+      "nome": "Parabéns!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 28,
+      "arquivo": "/stickers/cop%20alinks/nao-gostei.png",
+      "nome": "Não gostei!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 29,
+      "arquivo": "/stickers/cop%20alinks/pode-deixar.png",
+      "nome": "Pode deixar!",
+      "categoria": "reacoes"
+    },
+    {
+      "numero": 30,
+      "arquivo": "/stickers/cop%20alinks/estou-chegando.png",
+      "nome": "Estou chegando!",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 31,
+      "arquivo": "/stickers/cop%20alinks/ja-estou-indo.png",
+      "nome": "Já estou indo!",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 32,
+      "arquivo": "/stickers/cop%20alinks/ate-mais.png",
+      "nome": "Até mais!",
+      "categoria": "saudacoes"
+    },
+    {
+      "numero": 33,
+      "arquivo": "/stickers/cop%20alinks/abastecendo.png",
+      "nome": "Hora de abastecer",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 34,
+      "arquivo": "/stickers/cop%20alinks/engrenagem.png",
+      "nome": "Engrenagem",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 35,
+      "arquivo": "/stickers/cop%20alinks/ferramentas.png",
+      "nome": "Ferramentas",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 36,
+      "arquivo": "/stickers/cop%20alinks/cafe.png",
+      "nome": "Café quentinho",
+      "categoria": "cafe"
+    },
+    {
+      "numero": 37,
+      "arquivo": "/stickers/cop%20alinks/boa-noite-pessoal.png",
+      "nome": "Boa noite, pessoal!",
+      "categoria": "saudacoes"
+    },
+    {
+      "numero": 38,
+      "arquivo": "/stickers/cop%20alinks/partiu-trabalho.png",
+      "nome": "Partiu trabalho!",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 39,
+      "arquivo": "/stickers/cop%20alinks/hora-descansar.png",
+      "nome": "Hora de descansar",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 40,
+      "arquivo": "/stickers/cop%20alinks/almoco.png",
+      "nome": "Hora do almoço",
+      "categoria": "cafe"
+    },
+    {
+      "numero": 41,
+      "arquivo": "/stickers/cop%20alinks/bora-rodar.png",
+      "nome": "Bora rodar!",
+      "categoria": "trabalho"
+    },
+    {
+      "numero": 42,
+      "arquivo": "/stickers/cop%20alinks/cafe-e-frutas.png",
+      "nome": "Café com frutas",
+      "categoria": "cafe"
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import sharp from "sharp";
 import {
   CATEGORIAS_PADRAO,
   chaveCategoria,
@@ -58,12 +60,18 @@ test("limite de 512 KB e nomes/categorias seguros", () => {
   assert.equal(ordemFigurinha("abc"), 0);
 });
 
-test("categorias padrão: as 4 do CopaLinks, em ordem e sem repetição", () => {
-  assert.deepEqual(CATEGORIAS_PADRAO.map((c) => c.chave), ["caminhoes", "motoristas", "porto", "copalinks"]);
-  assert.deepEqual(CATEGORIAS_PADRAO.map((c) => c.nome), ["Caminhões", "Motoristas", "Porto", "CopaLinks"]);
-  assert.equal(new Set(CATEGORIAS_PADRAO.map((c) => c.chave)).size, 4);
+test("categorias oficiais: as 7 pedidas, em ordem e sem repetição", () => {
+  assert.deepEqual(CATEGORIAS_PADRAO.map((c) => c.chave), [
+    "caminhoes", "porto", "motoristas", "saudacoes", "reacoes", "cafe", "trabalho",
+  ]);
+  assert.deepEqual(CATEGORIAS_PADRAO.map((c) => c.nome), [
+    "Caminhões", "Porto e navios", "Motoristas", "Saudações", "Reações",
+    "Café e alimentação", "Trabalho e descanso",
+  ]);
+  assert.equal(new Set(CATEGORIAS_PADRAO.map((c) => c.chave)).size, 7);
   assert.ok(CATEGORIAS_PADRAO.every((c) => c.pacote === "copalinks"));
-  for (const c of CATEGORIAS_PADRAO) assert.equal(chaveCategoria(c.nome) !== null || chaveCategoria(c.chave) !== null, true);
+  assert.deepEqual(CATEGORIAS_PADRAO.map((c) => c.ordem), [0, 1, 2, 3, 4, 5, 6]);
+  for (const c of CATEGORIAS_PADRAO) assert.ok(chaveCategoria(c.nome) || chaveCategoria(c.chave));
 });
 
 test("mensagem e push da figurinha têm formato próprio (não confunde com texto)", () => {
@@ -72,42 +80,74 @@ test("mensagem e push da figurinha têm formato próprio (não confunde com text
   assert.ok(textoFigurinhaEnviada("x".repeat(600)).length <= 500);
 });
 
-/* ------------------------------------------ pacote oficial semeado no banco */
+/* ------------------------------------ coleção recortada (arquivos + pacote) */
 
-test("pacote inicial: figurinhas válidas, WebP com assinatura correta e dentro do limite", () => {
-  assert.ok(PACOTE_FIGURINHAS.length >= 16, "o pacote inicial precisa ter a biblioteca completa");
-  for (const f of PACOTE_FIGURINHAS) {
-    assert.ok(nomeFigurinha(f.nome), `nome inválido: ${f.nome}`);
-    assert.ok(CATEGORIAS_PADRAO.some((c) => c.chave === f.categoria), `categoria desconhecida: ${f.categoria}`);
-    assert.equal(f.mime, "image/webp");
-    const bytes = Buffer.from(f.base64, "base64");
-    assert.ok(bytes.length > 0 && bytes.length <= TAMANHO_MAX_FIGURINHA, `${f.slug} fora do tamanho`);
-    assert.deepEqual(formatoFigurinha(new Uint8Array(bytes)), { mime: "image/webp", extensao: "webp" }, f.slug);
-  }
+const PASTA = path.join(process.cwd(), "public", "stickers", "cop alinks");
+
+test("coleção oficial: 42 PNGs transparentes, sem duplicatas e em 7 categorias", async () => {
+  assert.equal(PACOTE_FIGURINHAS.length, 42, "a imagem oficial tem 42 figurinhas");
   const nomes = PACOTE_FIGURINHAS.map((f) => f.nome);
-  assert.equal(new Set(nomes).size, nomes.length, "nomes repetidos no pacote");
   const slugs = PACOTE_FIGURINHAS.map((f) => f.slug);
-  assert.equal(new Set(slugs).size, slugs.length, "slugs repetidos no pacote");
-  // As 4 categorias têm figurinhas.
+  assert.equal(new Set(nomes).size, 42, "nomes repetidos no pacote");
+  assert.equal(new Set(slugs).size, 42, "slugs repetidos no pacote");
   for (const c of CATEGORIAS_PADRAO) {
     assert.ok(PACOTE_FIGURINHAS.some((f) => f.categoria === c.chave), `sem figurinhas em ${c.chave}`);
   }
+
+  const arquivos = readdirSync(PASTA).filter((n) => n.endsWith(".png"));
+  assert.equal(arquivos.length, 42, "a pasta pública precisa ter os 42 PNGs");
+  assert.equal(new Set(arquivos).size, 42, "arquivo duplicado na pasta");
+
+  for (const f of PACOTE_FIGURINHAS) {
+    assert.ok(nomeFigurinha(f.nome), `nome inválido: ${f.nome}`);
+    assert.ok(CATEGORIAS_PADRAO.some((c) => c.chave === f.categoria), `categoria desconhecida: ${f.categoria}`);
+    assert.equal(f.mime, "image/png");
+    assert.equal(f.arquivo, `${f.slug}.png`);
+    const bytes = readFileSync(path.join(PASTA, f.arquivo));
+    const embutido = Buffer.from(f.base64, "base64");
+    assert.ok(bytes.equals(embutido), `${f.arquivo} diferente do base64 semeado no banco`);
+    assert.ok(bytes.length > 0 && bytes.length <= TAMANHO_MAX_FIGURINHA, `${f.slug} fora do tamanho`);
+    assert.deepEqual(formatoFigurinha(new Uint8Array(bytes)), { mime: "image/png", extensao: "png" }, f.slug);
+    assert.equal(MIME_FIGURINHA[f.mime], "png");
+
+    // Alpha real: canto 100% transparente e miolo com pixels opacos (não é
+    // um retângulo opaco nem uma figurinha "vazia").
+    const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const alpha = (x: number, y: number) => data[(y * info.width + x) * info.channels + 3];
+    for (const [x, y] of [[0, 0], [info.width - 1, 0], [0, info.height - 1], [info.width - 1, info.height - 1]]) {
+      assert.equal(alpha(x, y), 0, `${f.slug}: canto sem transparência`);
+    }
+    assert.ok(info.width >= 256 && info.height >= 128, `${f.slug}: resolução baixa`);
+    assert.ok(info.width <= 512 && info.height <= 512, `${f.slug}: PNG grande demais`);
+  }
+});
+
+test("catalogo.json acompanha os arquivos gerados", () => {
+  const catalogo = JSON.parse(readFileSync(path.join(PASTA, "catalogo.json"), "utf8"));
+  assert.equal(catalogo.total, 42);
+  assert.deepEqual(catalogo.categorias, CATEGORIAS_PADRAO.map((c) => c.chave));
+  assert.equal(new Set(catalogo.figurinhas.map((f: { arquivo: string }) => f.arquivo)).size, 42);
+  assert.deepEqual(catalogo.figurinhas.map((f: { nome: string }) => f.nome), PACOTE_FIGURINHAS.map((f) => f.nome));
 });
 
 /* ---------------------------------------------- o chat continua inteiro */
 
 const ler = (caminho: string) => readFileSync(caminho, "utf8");
 
-test("seletor do chat: abas Emojis e Figurinhas, categorias e grade de 4 por linha", () => {
+test("seletor do chat: só emojis + coleção nova, 4 colunas e categorias", () => {
   const s = ler("src/components/chat/ChatMotoristas.tsx");
-  // Abas de sempre preservadas.
+  // Abas de sempre preservadas; recados de texto saíram do seletor.
   assert.ok(s.includes('"emojis" ? "😀 Emojis" : "🚛 Figurinhas"'), "as abas Emojis/Figurinhas mudaram");
   assert.ok(s.includes("EMOJIS.map"), "o seletor de emojis sumiu");
-  assert.ok(s.includes("FIGURINHAS.map"), "as figurinhas de recado (emoji+frase) foram removidas");
-  // Recurso novo: categorias do catálogo e grade com 4 figurinhas por linha.
+  assert.ok(!s.includes("FIGURINHAS.map"), "os recados antigos ainda aparecem no seletor");
+  assert.ok(!s.includes('chave: "recados"'), "a categoria Recados não foi removida");
+  assert.ok(s.includes("figurinhaDe"), "mensagens antigas de recado pararam de renderizar");
+  // Grade organizada, 4 colunas em telas que permitem, sem cortes.
   assert.ok(s.includes('aria-label="Categorias de figurinhas"'), "faltou o seletor de categorias");
   assert.ok(s.includes("iconeCategoria"), "as categorias não ganham ícone");
-  assert.ok(s.includes("grid grid-cols-4 gap-2"), "as figurinhas não saem em grade de 4 por linha");
+  assert.ok(s.includes("grid grid-cols-3 gap-2 sm:grid-cols-4"), "a grade responsiva de 4 colunas sumiu");
+  assert.ok(s.includes("object-contain p-1.5"), "a figurinha pode ser cortada na célula");
+  assert.ok(s.includes("rolagem-figurinhas"), "a rolagem suave não foi aplicada");
   assert.ok(s.includes("enviarFigurinha(figurinha.id)"), "toque na figurinha não envia");
   assert.ok(s.includes('fetch("/api/figurinhas", { cache: "no-store" })'), "o catálogo não atualiza ao abrir a aba");
   // Nada do chat existente foi removido.
@@ -121,6 +161,19 @@ test("seletor do chat: abas Emojis e Figurinhas, categorias e grade de 4 por lin
   ]) {
     assert.ok(s.includes(recurso), `o chat perdeu: ${recurso}`);
   }
+});
+
+test("instalação no banco substitui o pacote antigo sem apagar mensagens", () => {
+  const s = ler("src/lib/figurinhas-admin.ts");
+  assert.ok(s.includes("figurinhas_colecao_copalinks_2026_v1"), "faltou a versão nova da semente");
+  assert.ok(s.includes("copalinks-2026"), "as figurinhas novas não têm pacote próprio");
+  assert.ok(s.includes("NOMES_PACOTE_ANTIGO"), "o pacote antigo não é desativado");
+  assert.ok(s.includes("set({ ativa: false"), "o pacote antigo foi apagado em vez de desativado");
+  assert.ok(s.includes("onConflictDoUpdate"), "as categorias existentes não são renomeadas");
+  assert.ok(s.includes("pg_advisory_xact_lock"), "sem proteção contra semente duplicada");
+  assert.ok(s.includes("PACOTE_FIGURINHAS"), "a coleção nova não é semeada");
+  const api = ler("src/app/api/figurinhas/route.ts");
+  assert.ok(api.includes("emUso.has(c.chave)"), "categorias vazias do pacote antigo aparecem no seletor");
 });
 
 test("figurinha enviada aparece SEM balão, com fundo transparente, autor e horário", () => {
