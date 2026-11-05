@@ -256,8 +256,8 @@ A tela inicial mostra uma foto de caminhão no topo
 arquivo original (1536×1024)** — nada de deformar a imagem nem sobrar azul. A
 foto é mostrada **nítida, sem véu azul** (era assim antes e sujava o céu): a
 máscara `.imagem-nitida` (`src/app/globals.css`) deixa 0–95% exatamente como o
-arquivo original e só os últimos **5% da base** se dissolvem no cobalto
-`#021285` do app, para não ficar linha dura.
+arquivo original e só os últimos **5% da base** se dissolvem no fundo
+Dark Navy `#000D16` do app, para não ficar linha dura.
 
 O **cartão do número começa exatamente nos 5% finais da foto**: 5% da altura =
 3,3333% da largura (altura = largura ÷ 1,5), e o cartão sobe com
@@ -427,29 +427,48 @@ varrer a fila também com o app fechado sem fazer upgrade, usamos
 **Supabase pg_cron + pg_net**, que chama `/api/cron` com a chave guardada no
 Supabase Vault. Consulte [GITHUB_VERCEL.md](./GITHUB_VERCEL.md).
 
-## Fundo e paleta (azul-cobalto)
+## Fundo e paleta (Dark Navy — identidade FertNavios)
 
-O fundo de todas as telas é um degradê reproduzido pixel a pixel da arte de
-referência: brilho `#0319ba` em 50% × 42%, platô `#010e5a` nas bordas e base
-`#010a38`, com um véu escurecendo os últimos 42% da tela. Tudo mora em
-`src/app/globals.css`:
+O tema visual é o **Dark Navy** das referências do FertNavios: fundo sólido
+quase preto azul-marinho, cartões azul-marinho com borda fina azul-acinzentada,
+ciano só em botões selecionados/filtros ativos/destaques de navegação, verde
+para status positivo e progresso, amarelo para status confirmado/atenção e azul
+para espera/informação. **Nenhuma cor fora da paleta entra na interface** (sem
+degradês chamativos, sem fundos claros, sem violeta/laranja/verde-WhatsApp).
 
-```css
-:root {
-  --fundo-brilho: #0319ba;  /* centro do brilho */
-  --fundo-meio:   #021285;  /* para onde as fotos de topo se dissolvem */
-  --fundo-borda:  #010e5a;  /* platô — também é o theme_color do app */
-  --fundo-base:   #010a38;  /* base da tela e cor de fallback */
-  --fundo-gradiente: ...;   /* o degradê completo, usado por html/body e .fundo-app */
-}
-```
+| Papel | Cor |
+|---|---|
+| Fundo principal | `#000D16` |
+| Fundo dos cartões | `#071A28` |
+| Fundo dos painéis secundários | `#002F3B` |
+| Bordas dos cartões | `#183341` |
+| Ciano principal | `#00B8BC` |
+| Verde de sucesso | `#00C853` |
+| Fundo verde escuro | `#003D35` |
+| Amarelo de atenção | `#FFB82E` |
+| Azul informativo | `#129DFF` |
+| Texto principal | `#EAF4F7` |
+| Texto secundário | `#8FA8AC` |
+| Ícones e elementos discretos | `#506A75` |
+| Fundo das barras de progresso | `#062330` |
 
-Trocar o fundo = mexer nessas quatro cores (e em `@theme`, que tem os tokens de
-tinta `abismo`/`noite`/`marinho`, os acentos `ciano`/`azulclaro` e os textos
-`gelo`/`aco`). As telas usam `bg-fundo` como fallback sólido e as classes
-`.fundo-app`, `.cartao-monitor`, `.painel`, `.vidro` herdam o mesmo cobalto —
-nenhuma tela repete o azul antigo à mão. Os PNGs de ícone (PWA) continuam com
-o fundo gerado por `scripts/gerar-logo.mjs`, que também passou a usar o cobalto.
+Tudo mora em `src/app/globals.css` (fonte única de verdade): os tokens
+semânticos `--fundo-principal`, `--fundo-cartao`, `--ciano-principal` etc. em
+`:root` e os tokens do Tailwind em `@theme` (`fundo`, `cartao`, `painel`,
+`borda`, `ciano`, `verde`, `verdeescuro`, `ambar`, `azulclaro`/`info`, `gelo`,
+`aco`, `discreto`, `progresso`). Os nomes antigos (`abismo`, `noite`,
+`marinho`, `violeta`, `ouro`, `laranja`) continuam existindo como alias dos
+novos valores, e as famílias padrão do Tailwind (`red-*`, `emerald-*`,
+`amber-*`, `cyan-*`, `blue-*`, `white`, `black`) foram remapeadas para a
+paleta — por isso nenhuma tela repete cor à mão fora dela. Os nomes
+`--fundo-brilho/meio/borda/base` também viraram alias do fundo sólido
+`#000D16` (as fotos de topo continuam se dissolvendo nele nos últimos 5%).
+`.fundo-app`, `.cartao-monitor`, `.painel`, `.vidro`, `.campo`, `.pill` e as
+barras `.progresso-trilho`/`.progresso-verde`/`.progresso-ciano` herdam o
+mesmo tema. O `themeColor` do `layout.tsx`, o `manifest.webmanifest` e os
+scripts de arte (`gerar-logo.mjs`, `gerar-fundo.mjs`, `gerar-divulgacao.mjs`)
+acompanham o fundo `#000D16`. Regressão: `tests/tema-dark-navy.test.ts`
+varre todas as telas e falha se qualquer cor fora da paleta voltar.
 
 ## Trocar a logo
 

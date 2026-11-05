@@ -27,7 +27,7 @@ Preserve fielmente o caminhão original, incluindo modelo, cabine, carroceria, c
 Melhore iluminação, nitidez, contraste, detalhes e qualidade fotográfica.
 Crie uma composição cinematográfica profissional, com estrada ou pátio portuário de asfalto molhado com reflexos realistas e iluminação dramática de fim de tarde.
 Posicione o caminhão do lado DIREITO da composição, em vista três-quartos frontal, deixando o lado esquerdo e a parte de cima visualmente limpos (céu e estrada) para os elementos da interface do aplicativo.
-Na parte inferior da imagem, aplique uma transição suave em degradê para azul-cobalto profundo (#021285 a #010a38), fundindo o reflexo do asfalto com o fundo azul do aplicativo.
+Na parte inferior da imagem, aplique uma transição suave em degradê para o fundo Dark Navy do aplicativo (#000D16), fundindo o reflexo do asfalto com o fundo do aplicativo.
 Formato paisagem 3:2.
 Aparência de fotografia profissional de publicidade automotiva/logística: alta definição, iluminação cinematográfica, reflexos realistas, profundidade de campo, acabamento premium, detalhes extremamente nítidos e aparência fotográfica realista.
 NÃO altere a identidade do caminhão.
@@ -66,16 +66,16 @@ export async function prepararFoto(bytes: Buffer, tipo: string): Promise<Buffer>
 const DEGRADE_AZUL_BASE = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${LARGURA}" height="${ALTURA}">
   <defs>
     <linearGradient id="degradeBase" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#010a38" stop-opacity="0"/>
-      <stop offset="0.58" stop-color="#021285" stop-opacity="0"/>
-      <stop offset="0.82" stop-color="#0216a5" stop-opacity="0.52"/>
-      <stop offset="1" stop-color="#021285" stop-opacity="0.95"/>
+      <stop offset="0" stop-color="#000D16" stop-opacity="0"/>
+      <stop offset="0.58" stop-color="#000D16" stop-opacity="0"/>
+      <stop offset="0.82" stop-color="#000D16" stop-opacity="0.52"/>
+      <stop offset="1" stop-color="#000D16" stop-opacity="0.95"/>
     </linearGradient>
   </defs>
   <rect width="100%" height="100%" fill="url(#degradeBase)"/>
 </svg>`);
 
-/** Recorte inteligente para o formato do banner, sem deformar, com degradê azul na base. */
+/** Recorte inteligente para o formato do banner, sem deformar, com degradê Dark Navy na base. */
 export async function paraBanner(img: Buffer): Promise<Buffer> {
   const base = await sharp(img).rotate()
     .resize({ width: LARGURA, height: ALTURA, fit: "cover", position: sharp.strategy.attention })
@@ -86,7 +86,7 @@ export async function paraBanner(img: Buffer): Promise<Buffer> {
     .toBuffer();
 }
 
-/** Reserva sem IA: cores vivas, contraste, nitidez, luz de cinema e degradê azul na base. */
+/** Reserva sem IA: cores vivas, contraste, nitidez, luz de cinema e degradê Dark Navy na base. */
 export async function tratamentoLocal(foto: Buffer): Promise<Buffer> {
   const base = await sharp(foto).rotate()
     .resize({ width: LARGURA, height: ALTURA, fit: "cover", position: sharp.strategy.attention })
@@ -97,18 +97,18 @@ export async function tratamentoLocal(foto: Buffer): Promise<Buffer> {
   const luz = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${LARGURA}" height="${ALTURA}">
     <defs>
       <linearGradient id="ceu" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#010a38" stop-opacity="0.5"/>
-        <stop offset="0.45" stop-color="#021285" stop-opacity="0"/>
-        <stop offset="0.72" stop-color="#0216a5" stop-opacity="0.45"/>
-        <stop offset="1" stop-color="#021285" stop-opacity="0.95"/>
+        <stop offset="0" stop-color="#000D16" stop-opacity="0.5"/>
+        <stop offset="0.45" stop-color="#000D16" stop-opacity="0"/>
+        <stop offset="0.72" stop-color="#000D16" stop-opacity="0.45"/>
+        <stop offset="1" stop-color="#000D16" stop-opacity="0.95"/>
       </linearGradient>
       <linearGradient id="lado" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="#010620" stop-opacity="0.45"/>
-        <stop offset="0.5" stop-color="#010620" stop-opacity="0"/>
+        <stop offset="0" stop-color="#000D16" stop-opacity="0.45"/>
+        <stop offset="0.5" stop-color="#000D16" stop-opacity="0"/>
       </linearGradient>
       <radialGradient id="sol" cx="0.78" cy="0.55" r="0.55">
-        <stop offset="0" stop-color="#ffb347" stop-opacity="0.22"/>
-        <stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
+        <stop offset="0" stop-color="#FFB82E" stop-opacity="0.22"/>
+        <stop offset="1" stop-color="#FFB82E" stop-opacity="0"/>
       </radialGradient>
     </defs>
     <rect width="100%" height="100%" fill="url(#ceu)"/>

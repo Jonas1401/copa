@@ -179,7 +179,7 @@ function LinhaPonto({
       className={`rounded-[16px] border px-4 py-3 transition-colors ${
         selecionado
           ? "border-ciano/45 bg-ciano/[0.06]"
-          : "border-[#222fb3]/45 bg-[#02042b]/55"
+          : "border-[#183341]/45 bg-[#071A28]/55"
       }`}
     >
       <button
@@ -430,7 +430,7 @@ function FolhaCadastro({
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: [0.2, 0.7, 0.3, 1] }}
-        className="largura-aparelho rounded-t-[30px] border border-violeta/40 bg-[linear-gradient(180deg,#1c1240_0%,#120c2c_100%)] p-5 pb-8 shadow-[0_-20px_80px_-20px_rgba(185,140,245,0.45)] sm:rounded-[30px] sm:pb-6"
+        className="largura-aparelho rounded-t-[30px] border border-violeta/40 bg-[#071A28] p-5 pb-8 shadow-[0_-20px_80px_-20px_rgba(0, 184, 188, 0.45)] sm:rounded-[30px] sm:pb-6"
       >
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gelo/20 sm:hidden" />
         <div className="flex items-center justify-between gap-3">
@@ -548,7 +548,7 @@ function FaixaInfo({
   divisor?: boolean;
 }) {
   return (
-    <div className="flex min-h-[67px] w-full items-center gap-3 rounded-[24px] border border-[#3342d0]/70 bg-[#030c48]/85 py-2.5 pr-2.5 pl-3 text-left">
+    <div className="flex min-h-[67px] w-full items-center gap-3 rounded-[24px] border border-[#183341]/70 bg-[#071A28]/85 py-2.5 pr-2.5 pl-3 text-left">
       <span
         className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full border-[1.5px] ${anel}`}
       >
@@ -599,11 +599,11 @@ function CadastroInline({
   onConfirmar: () => void;
 }) {
   const campo =
-    "w-full appearance-none rounded-full border-[1.5px] border-violeta/55 bg-[#0c0a24]/80 py-2.5 pr-8 pl-4 font-display text-[clamp(13px,3.9vw,16px)] font-extrabold tracking-[0.04em] text-white outline-none transition-colors focus:border-violeta";
+    "w-full appearance-none rounded-full border-[1.5px] border-violeta/55 bg-[#071A28]/80 py-2.5 pr-8 pl-4 font-display text-[clamp(13px,3.9vw,16px)] font-extrabold tracking-[0.04em] text-white outline-none transition-colors focus:border-violeta";
   return (
-    <section className="rounded-[24px] border-[1.5px] border-violeta/50 bg-[linear-gradient(180deg,rgba(40,22,86,0.9),rgba(22,14,56,0.92))] px-4 pt-3.5 pb-4 shadow-[0_0_50px_-18px_rgba(185,140,245,0.6)]">
+    <section className="rounded-[24px] border-[1.5px] border-violeta/50 bg-[#071A28] px-4 pt-3.5 pb-4 shadow-[0_0_50px_-18px_rgba(0, 184, 188, 0.6)]">
       <h2 className="flex items-center gap-3 font-display text-[clamp(18px,5.2vw,23px)] font-extrabold tracking-[0.05em] text-violeta uppercase">
-        <MapPin size={26} className="fill-violeta text-[#1c1240]" strokeWidth={2} />
+        <MapPin size={26} className="fill-violeta text-[#071A28]" strokeWidth={2} />
         Cadastrar ponto
       </h2>
 
@@ -1403,7 +1403,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     }`}
                   >
                     <span
-                      className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(88, 130, 255, 0.45)] ${
+                      className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(0, 184, 188, 0.45)] ${
                         alvo && alvo.codigo.length > 3
                           ? "text-[clamp(50px,15.5vw,66px)]"
                           : "text-[clamp(64px,21.5vw,92px)]"
@@ -1413,7 +1413,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     </span>
                     {alvo && (
                       <span
-                        className={`flex translate-y-[5px] items-center gap-3.5 rounded-full border border-[#222fb3]/80 bg-[#02042b]/90 ${
+                        className={`flex translate-y-[5px] items-center gap-3.5 rounded-full border border-[#183341]/80 bg-[#071A28]/90 ${
                           alvo.status === "AGUARDANDO" ? "px-3 py-[7px]" : "px-4 py-3.5"
                         }`}
                       >
@@ -1444,8 +1444,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 {/* informações da fila */}
                 <div className="mt-[18px] space-y-3">
                   <FaixaInfo
-                    icone={<Clock size={24} strokeWidth={2.1} className="text-[#6172f9]" />}
-                    anel="border-[#6172f9]/70 bg-[#6172f9]/10 shadow-[0_0_20px_-6px_rgba(97, 114, 249, 0.9)]"
+                    icone={<Clock size={24} strokeWidth={2.1} className="text-[#00B8BC]" />}
+                    anel="border-[#183341]/70 bg-[#00B8BC]/10 shadow-[0_0_20px_-6px_rgba(0, 184, 188, 0.9)]"
                     rotulo="Último escalado"
                     valor={ultimoEscalado}
                     corValor="text-white"
@@ -1453,21 +1453,21 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     divisor
                   />
                   <FaixaInfo
-                    icone={<Truck size={24} strokeWidth={2} className="text-[#f5a524]" />}
-                    anel="border-[#f5a524]/70 bg-[#f5a524]/10 shadow-[0_0_20px_-6px_rgba(245,165,36,0.9)]"
+                    icone={<Truck size={24} strokeWidth={2} className="text-[#FFB82E]" />}
+                    anel="border-[#FFB82E]/70 bg-[#FFB82E]/10 shadow-[0_0_20px_-6px_rgba(255, 184, 46, 0.9)]"
                     rotulo="Pontos no quadro"
-                    destaque={{ texto: "TRUCK", cor: "text-[#ff9f2e]" }}
+                    destaque={{ texto: "TRUCK", cor: "text-[#FFB82E]" }}
                     valor={String(quadroTruck)}
-                    corValor="text-[#ff9f2e]"
+                    corValor="text-[#FFB82E]"
                     sub="ponto ativo"
                   />
                   <FaixaInfo
-                    icone={<Truck size={24} strokeWidth={2} className="text-[#22c55e]" />}
-                    anel="border-[#22c55e]/70 bg-[#22c55e]/10 shadow-[0_0_20px_-6px_rgba(34,197,94,0.9)]"
+                    icone={<Truck size={24} strokeWidth={2} className="text-[#00C853]" />}
+                    anel="border-[#00C853]/70 bg-[#00C853]/10 shadow-[0_0_20px_-6px_rgba(0, 200, 83, 0.9)]"
                     rotulo="Pontos no quadro"
-                    destaque={{ texto: "CAVALO/C", cor: "text-[#3ee48a]" }}
+                    destaque={{ texto: "CAVALO/C", cor: "text-[#00C853]" }}
                     valor={String(quadroCavalo)}
-                    corValor="text-[#3ee48a]"
+                    corValor="text-[#00C853]"
                     sub="ponto ativo"
                   />
                 </div>
@@ -1475,7 +1475,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 {/* rodapé do cartão */}
                 <div className="mt-[22px] flex items-center justify-between gap-3 pl-1.5">
                   <span className="flex items-center gap-2 text-[15px] leading-6 text-gelo/90">
-                    <Clock size={24} strokeWidth={2} className="shrink-0 text-[#6172f9]" />
+                    <Clock size={24} strokeWidth={2} className="shrink-0 text-[#00B8BC]" />
                     <span className="tabular" title={estado.temLeitura ? `Última leitura real do quadro: ${hora(estado.atualizadoEm)}` : undefined}>
                       {estado.temLeitura === false
                         ? "Aguardando 1ª leitura"
@@ -1561,7 +1561,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
             {/* motoristas: contagem + o próprio nome (com troca) */}
             <section className="painel p-4">
               <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#5376f4] text-white shadow-[0_0_22px_-4px_rgba(83, 118, 244, 0.8)]">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#00B8BC] text-[#000D16] shadow-[0_0_22px_-4px_rgba(0, 184, 188, 0.8)]">
                   <Users size={23} strokeWidth={2.2} />
                 </span>
                 <div className="min-w-0">
@@ -1575,7 +1575,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               </div>
 
               {motorista && (
-                <div className="mt-3 flex min-h-[48px] items-center gap-2 rounded-[14px] border border-[#3342d0]/55 bg-[#02042b]/70 px-3 py-2">
+                <div className="mt-3 flex min-h-[48px] items-center gap-2 rounded-[14px] border border-[#183341]/55 bg-[#071A28]/70 px-3 py-2">
                   {editandoNome ? (
                     <>
                       <input
@@ -1587,7 +1587,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                         maxLength={60}
                         autoFocus
                         aria-label="Seu nome"
-                        className="min-w-0 flex-1 rounded-full border-[1.5px] border-ouro/60 bg-[#02042b] px-3.5 py-2 font-display text-[15px] font-bold text-white outline-none"
+                        className="min-w-0 flex-1 rounded-full border-[1.5px] border-ouro/60 bg-[#071A28] px-3.5 py-2 font-display text-[15px] font-bold text-white outline-none"
                       />
                       <button
                         type="button"
@@ -1595,7 +1595,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                           if (await renomear(novoNome)) setEditandoNome(false);
                         }}
                         aria-label="Salvar nome"
-                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ouro text-[#2a1a00]"
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ouro text-[#000D16]"
                       >
                         <CheckCircle2 size={19} strokeWidth={2.6} />
                       </button>
@@ -1610,7 +1610,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     </>
                   ) : (
                     <>
-                      <span className="shrink-0 rounded-full bg-ouro px-2 py-0.5 font-display text-[11px] font-extrabold tracking-[0.06em] text-[#2a1a00] uppercase">
+                      <span className="shrink-0 rounded-full bg-ouro px-2 py-0.5 font-display text-[11px] font-extrabold tracking-[0.06em] text-[#000D16] uppercase">
                         Você
                       </span>
                       <span className="min-w-0 flex-1 font-display text-[16px] leading-tight font-bold text-white [overflow-wrap:anywhere]">

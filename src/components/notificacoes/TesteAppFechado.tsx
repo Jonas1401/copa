@@ -181,7 +181,7 @@ export default function TesteAppFechado({
     );
   } else if (teste && atrasado) {
     aviso = (
-      <p className="flex gap-2 text-[#ffd84d]">
+      <p className="flex gap-2 text-[#FFB82E]">
         <TriangleAlert size={16} className="mt-0.5 shrink-0" />
         Passou do horário e o servidor ainda não fez o ciclo de leitura. O vigia automático pode estar
         parado — avise o administrador.
@@ -190,7 +190,7 @@ export default function TesteAppFechado({
   } else if (teste?.resultado === "enviado" && teste.processadoEm) {
     aviso = (
       <div>
-        <p className="flex gap-2 font-bold text-[#7dffb0]">
+        <p className="flex gap-2 font-bold text-[#00C853]">
           <CircleCheck size={16} className="mt-0.5 shrink-0" />
           O servidor enviou às {hora(teste.processadoEm)}, no ciclo de leitura, sem o app aberto.
         </p>
@@ -203,14 +203,14 @@ export default function TesteAppFechado({
     );
   } else if (teste?.resultado === "sem_inscricao") {
     aviso = (
-      <p className="flex gap-2 text-[#ff9c9c]">
+      <p className="flex gap-2 text-[#FFB82E]">
         <TriangleAlert size={16} className="mt-0.5 shrink-0" />
         Este aparelho não está mais inscrito para receber avisos. Toque em Ativar notificações e teste de novo.
       </p>
     );
   } else if (teste?.resultado === "falhou") {
     aviso = (
-      <p className="flex gap-2 text-[#ff9c9c]">
+      <p className="flex gap-2 text-[#FFB82E]">
         <TriangleAlert size={16} className="mt-0.5 shrink-0" />
         O servidor tentou enviar{teste.processadoEm ? ` às ${hora(teste.processadoEm)}` : ""}, mas o serviço de
         notificações recusou. Tente de novo.
@@ -218,7 +218,7 @@ export default function TesteAppFechado({
     );
   } else if (teste?.resultado === "expirado") {
     aviso = (
-      <p className="flex gap-2 text-[#ffd84d]">
+      <p className="flex gap-2 text-[#FFB82E]">
         <TriangleAlert size={16} className="mt-0.5 shrink-0" />
         O teste não foi enviado a tempo: o ciclo de leitura do servidor não rodou. Tente de novo mais tarde.
       </p>
@@ -246,7 +246,7 @@ export default function TesteAppFechado({
       {(erro || aviso) && (
         <div className="mt-3 rounded-2xl border border-gelo/12 bg-black/30 px-4 py-3 text-[14px] leading-relaxed">
           {erro ? (
-            <p className="flex gap-2 text-[#ff9c9c]">
+            <p className="flex gap-2 text-[#FFB82E]">
               <TriangleAlert size={16} className="mt-0.5 shrink-0" /> {erro}
             </p>
           ) : (

@@ -75,7 +75,7 @@ export default function CarregamentoLogo({ pronto, onTerminar }: { pronto: boole
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(127, 152, 240, 1) 1px, transparent 1px), linear-gradient(90deg, rgba(127, 152, 240, 1) 1px, transparent 1px)",
+            "linear-gradient(rgba(0, 184, 188, 1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 184, 188, 1) 1px, transparent 1px)",
           backgroundSize: "44px 44px",
           maskImage: "radial-gradient(60% 50% at 50% 45%, black, transparent)",
           WebkitMaskImage: "radial-gradient(60% 50% at 50% 45%, black, transparent)",
@@ -120,10 +120,10 @@ export default function CarregamentoLogo({ pronto, onTerminar }: { pronto: boole
 
       {/* estrada com o caminhãozinho */}
       <div className="relative mt-10 w-[min(280px,72vw)]" aria-hidden>
-        <div className="relative h-[6px] overflow-hidden rounded-full bg-white/[0.08]">
+        <div className="progresso-trilho relative h-[6px] overflow-hidden rounded-full">
           <div className="carga-faixa absolute inset-y-[2.5px] left-0 right-0" />
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-ouro via-[#ffd95a] to-ciano shadow-[0_0_14px_rgba(140, 231, 237, 0.7)] transition-[width] duration-300 ease-out"
+            className="progresso-ciano absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ease-out"
             style={{ width: `${Math.round(progresso * 100)}%` }}
           />
         </div>
@@ -131,7 +131,7 @@ export default function CarregamentoLogo({ pronto, onTerminar }: { pronto: boole
           className="absolute -top-[26px] transition-[left] duration-300 ease-out"
           style={{ left: `calc(${progresso * 100}% - 13px)` }}
         >
-          <Truck size={26} strokeWidth={2.2} className="carga-caminhao text-ouro drop-shadow-[0_0_8px_rgba(245,197,24,0.75)]" />
+          <Truck size={26} strokeWidth={2.2} className="carga-caminhao text-ouro drop-shadow-[0_0_8px_rgba(255, 184, 46, 0.75)]" />
         </div>
       </div>
 

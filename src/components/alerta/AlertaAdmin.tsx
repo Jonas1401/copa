@@ -110,7 +110,7 @@ export default function AlertaAdmin({ motoristaId, onAtivada }: { motoristaId: n
       className="fixed inset-0 z-[90] flex items-center justify-center bg-abismo/90 p-4 backdrop-blur-md"
     >
       <div className="vidro largura-aparelho rounded-[30px] border border-ambar/50 p-6 text-center">
-        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-ambar/15 text-ambar shadow-[0_0_30px_-6px_rgba(255,190,60,0.7)]">
+        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-ambar/15 text-ambar shadow-[0_0_30px_-6px_rgba(255, 184, 46, 0.7)]">
           <Megaphone size={30} />
         </span>
         <h2 id="alerta-admin-titulo" className="mt-4 font-display text-[21px] font-extrabold text-white">

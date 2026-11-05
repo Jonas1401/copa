@@ -1,45 +1,105 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   PALETA — fundo azul-cobalto (referência: gradiente enviado pelo Jonas)
-   As cores e as medidas abaixo foram ajustadas pixel a pixel contra a imagem:
-   o brilho central fica em 50% × 42% da tela e vale #0319ba, o platô das
-   bordas é #010e5a e a base escurece até #010a38. O gradiente em `80% 85%`
-   reproduz a referência com erro médio de 1,7/255 por canal.
-   Tudo que é azul do app (cartões, bordas, brilhos, textos claros) foi
-   reacendido na mesma matiz (~232°) para continuar combinando com o fundo.
+   TEMA DARK NAVY — identidade visual FertNavios (fonte única de verdade)
+
+   Paleta fechada: nenhuma cor fora desta lista entra na interface.
+   Regras: fundo sólido quase preto azul-marinho (sem degradê chamativo),
+   cartões azul-marinho com borda fina azul-acinzentada, ciano só em
+   botões selecionados / filtros ativos / destaques de navegação, verde
+   para status positivo e progresso, amarelo para status confirmado /
+   atenção e azul para espera / informação.
    ========================================================================== */
 :root {
-  --fundo-brilho: #0319ba;
-  --fundo-meio: #021285;
-  --fundo-borda: #010e5a;
-  --fundo-base: #010a38;
-  --fundo-gradiente:
-    radial-gradient(80% 85% at 50% 42%,
-      var(--fundo-brilho) 0%, #0216a5 20%, var(--fundo-meio) 38%, #021074 50%,
-      var(--fundo-borda) 68%, #010c48 84%, var(--fundo-base) 100%),
-    linear-gradient(180deg, rgba(1, 6, 30, 0) 58%, rgba(1, 6, 30, 0.35) 100%);
+  /* superfícies */
+  --fundo-principal: #000D16;
+  --fundo-cartao: #071A28;
+  --fundo-painel: #002F3B;
+  --borda-cartao: #183341;
+  /* acentos e status */
+  --ciano-principal: #00B8BC;
+  --verde-sucesso: #00C853;
+  --fundo-verde-escuro: #003D35;
+  --amarelo-atencao: #FFB82E;
+  --azul-informativo: #129DFF;
+  /* texto e ícones */
+  --texto-principal: #EAF4F7;
+  --texto-secundario: #8FA8AC;
+  --icone-discreto: #506A75;
+  /* barras de progresso (trilho) */
+  --fundo-progresso: #062330;
+
+  /* Nomes antigos mantidos como alias: telas e a tela de carregamento usam
+     var(--fundo-*) para fundir a foto do topo no fundo do app. Agora todos
+     apontam para o fundo sólido Dark Navy — sem degradê. */
+  --fundo-brilho: #000D16;
+  --fundo-meio: #000D16;
+  --fundo-borda: #000D16;
+  --fundo-base: #000D16;
+  --fundo-gradiente: none;
 }
 
 @theme {
-  /* tinta e superfície: cobalto do mais escuro ao mais vivo */
-  --color-abismo: #00061f;
-  --color-noite: #020b39;
-  --color-marinho: #061a6b;
-  /* fundo sólido (fallback do degradê, barra do navegador, overscroll) */
-  --color-fundo: #010e5a;
-  /* acentos frios */
-  --color-ciano: #8ce7ed;
-  --color-azulclaro: #9fbcff;
-  /* acentos quentes e de status: continuam complemento do azul */
-  --color-verde: #35e08a;
-  --color-ambar: #f5b21e;
-  --color-laranja: #e8853a;
-  --color-violeta: #b98cf5;
-  --color-ouro: #f5c518;
+  /* superfícies Dark Navy */
+  --color-fundo: #000D16;
+  --color-abismo: #000D16;
+  --color-cartao: #071A28;
+  --color-noite: #071A28;
+  --color-painel: #002F3B;
+  --color-marinho: #002F3B;
+  --color-borda: #183341;
+  --color-progresso: #062330;
+  /* acentos: ciano só em seleção / filtro ativo / navegação */
+  --color-ciano: #00B8BC;
+  /* status */
+  --color-verde: #00C853;
+  --color-sucesso: #00C853;
+  --color-verdeescuro: #003D35;
+  --color-ambar: #FFB82E;
+  --color-atencao: #FFB82E;
+  --color-ouro: #FFB82E;
+  --color-laranja: #FFB82E;
+  --color-azulclaro: #129DFF;
+  --color-info: #129DFF;
+  /* assistente / destaques antigos entram no ciano do tema (sem violeta) */
+  --color-violeta: #00B8BC;
   /* texto */
-  --color-gelo: #e6edff;
-  --color-aco: #a9b6d9;
+  --color-gelo: #EAF4F7;
+  --color-aco: #8FA8AC;
+  --color-discreto: #506A75;
+  /* branco/preto do Tailwind viram as pontas da paleta: nada de #fff/#000
+     soltos — texto claro é sempre o branco azulado e sombra é o fundo */
+  --color-white: #EAF4F7;
+  --color-black: #000D16;
+  /* Famílias padrão do Tailwind remapeadas para a paleta (uso legado):
+     erro/alerta usa o amarelo de atenção, positivo usa o verde de sucesso
+     e informação usa o azul informativo — nenhuma cor extra é introduzida. */
+  --color-red-100: #FFB82E;
+  --color-red-200: #FFB82E;
+  --color-red-300: #FFB82E;
+  --color-red-400: #FFB82E;
+  --color-red-500: #FFB82E;
+  --color-red-600: #FFB82E;
+  --color-red-700: #FFB82E;
+  --color-red-950: #002F3B;
+  --color-rose-100: #FFB82E;
+  --color-rose-300: #FFB82E;
+  --color-rose-400: #FFB82E;
+  --color-amber-100: #FFB82E;
+  --color-amber-200: #FFB82E;
+  --color-amber-300: #FFB82E;
+  --color-amber-400: #FFB82E;
+  --color-amber-500: #FFB82E;
+  --color-amber-950: #002F3B;
+  --color-emerald-100: #00C853;
+  --color-emerald-200: #00C853;
+  --color-emerald-300: #00C853;
+  --color-emerald-400: #00C853;
+  --color-emerald-500: #00C853;
+  --color-cyan-300: #00B8BC;
+  --color-cyan-950: #000D16;
+  --color-blue-500: #129DFF;
+  --color-slate-600: #506A75;
 
   --font-display: "Archivo", system-ui, sans-serif;
   --font-sans: "Space Grotesk", system-ui, sans-serif;
@@ -55,7 +115,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* --- fundo de todas as telas (cobalto com brilho central, igual à referência) --- */
+/* --- fundo de todas as telas (Dark Navy sólido #000D16, sem degradê) --- */
 .fundo-app {
   background-color: var(--fundo-base);
   background-image: var(--fundo-gradiente);
@@ -122,16 +182,12 @@ body {
   );
 }
 
-/* cartão principal: vidro cobalto um degrau acima do fundo, com o brilho do
-   centro vazando pelas bordas (halo #0319ba) em vez do preto antigo */
+/* cartão principal: cartão Dark Navy sólido sobre o fundo, borda fina
+   azul-acinzentada (#183341) e sombra discreta — sem vidro nem halo */
 .cartao-monitor {
-  background: linear-gradient(180deg, rgba(8, 24, 132, 0.8) 0%, rgba(5, 16, 104, 0.76) 55%, rgba(3, 11, 84, 0.84) 100%);
-  backdrop-filter: blur(12px) saturate(135%);
-  border: 1.5px solid rgba(126, 150, 255, 0.62);
-  box-shadow:
-    0 24px 60px -30px rgba(0, 2, 22, 0.8),
-    0 0 60px -28px rgba(3, 25, 186, 0.9),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  background: #071A28;
+  border: 1px solid #183341;
+  box-shadow: 0 16px 40px -24px rgba(0, 13, 22, 0.9);
 }
 
 ::selection {
@@ -139,13 +195,9 @@ body {
   color: var(--color-abismo);
 }
 
-/* --- número gigante do cartão: gradiente azul → ciano (como na referência) */
+/* --- número gigante do cartão: ciano sólido (sem degradê no texto) --- */
 .numero-gradiente {
-  background-image: linear-gradient(118deg, #5882ff 0%, #6fa9ff 45%, #8ee1ff 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  color: var(--color-ciano);
 }
 
 /* --- micro rótulos em versalete travado ------------------------------ */
@@ -195,28 +247,17 @@ body {
   }
 }
 
-/* --- superfície de vidro fumê sobre o porto ---------------------------- */
+/* --- superfície sólida sobre fotos (topo das telas): cartão Dark Navy --- */
 .vidro {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(4, 14, 67, 0.9) 0%,
-      rgba(2, 9, 43, 0.93) 45%,
-      rgba(1, 5, 28, 0.96) 100%
-    );
-  backdrop-filter: blur(18px) saturate(120%);
-  border: 1px solid rgba(127, 152, 240, 0.18);
-  box-shadow:
-    0 40px 120px -40px rgba(0, 0, 0, 0.95),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: #071A28;
+  border: 1px solid #183341;
+  box-shadow: 0 24px 60px -32px rgba(0, 13, 22, 0.95);
 }
 
 .painel {
-  background: linear-gradient(180deg, rgba(4, 9, 84, 0.76), rgba(2, 6, 63, 0.82));
-  backdrop-filter: blur(12px);
-  border: 1.5px solid rgba(114, 132, 236, 0.55);
+  background: #002F3B;
+  border: 1px solid #183341;
   border-radius: 24px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* varredura de atualização: uma linha fina atravessa o vidro a cada leitura */
@@ -236,7 +277,7 @@ body {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(140, 231, 237, 0.09),
+    rgba(0, 184, 188, 0.09),
     transparent
   );
   animation: varrer 2.6s linear infinite;
@@ -252,15 +293,26 @@ body {
 
 .pill {
   border-radius: 999px;
-  border: 1px solid rgba(127, 152, 240, 0.22);
-  background: rgba(1, 6, 31, 0.6);
+  border: 1px solid #183341;
+  background: #071A28;
+}
+
+/* --- barras de progresso: trilho escuro, preenchimento por status ------ */
+.progresso-trilho {
+  background-color: #062330;
+}
+.progresso-verde {
+  background-color: #00C853;
+}
+.progresso-ciano {
+  background-color: #00B8BC;
 }
 
 .campo {
   appearance: none;
   border-radius: 999px;
-  border: 1px solid rgba(185, 140, 245, 0.45);
-  background: rgba(6, 4, 16, 0.5);
+  border: 1px solid #183341;
+  background: #071A28;
   color: var(--color-gelo);
   font-family: var(--font-display);
   font-weight: 700;
@@ -273,21 +325,19 @@ body {
     box-shadow 0.18s ease;
 }
 .campo::placeholder {
-  color: rgba(169, 177, 206, 0.65);
+  color: rgba(143, 168, 172, 0.65);
   font-family: var(--font-display);
   font-weight: 700;
 }
 .campo:focus {
-  border-color: var(--color-violeta);
-  box-shadow: 0 0 0 3px rgba(185, 140, 245, 0.2);
+  border-color: var(--color-ciano);
+  box-shadow: 0 0 0 3px rgba(0, 184, 188, 0.2);
 }
 
 .ouro {
-  background: linear-gradient(180deg, #ffdc63 0%, #edb311 60%, #d99a00 100%);
-  color: #2a1a00;
-  box-shadow:
-    0 10px 30px -12px rgba(245, 197, 24, 0.8),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  background: #FFB82E;
+  color: #000D16;
+  box-shadow: 0 10px 30px -12px rgba(255, 184, 46, 0.55);
   transition: transform 0.15s ease, filter 0.15s ease;
 }
 .ouro:hover {
@@ -310,7 +360,7 @@ input:focus-visible {
   width: 6px;
 }
 .barra-rolagem::-webkit-scrollbar-thumb {
-  background: rgba(127, 152, 240, 0.25);
+  background: #183341;
   border-radius: 999px;
 }
 
@@ -346,14 +396,14 @@ input:focus-visible {
 .carga-brilho::after {
   content: "";
   position: absolute; top: -10%; bottom: -10%; left: -45%; width: 38%;
-  background: linear-gradient(100deg, transparent, rgba(255, 244, 200, 0.9), rgba(150, 167, 255, 0.55), transparent);
+  background: linear-gradient(100deg, transparent, rgba(234, 244, 247, 0.85), rgba(0, 184, 188, 0.5), transparent);
   transform: skewX(-18deg);
   animation: carga-varre 2.2s ease-in-out 0.5s infinite;
 }
 @keyframes carga-varre { 0% { left: -45%; } 55%, 100% { left: 130%; } }
 
 .carga-halo {
-  background: radial-gradient(closest-side, rgba(104, 124, 255, 0.35), rgba(140, 231, 237, 0.12) 55%, transparent);
+  background: radial-gradient(closest-side, rgba(0, 184, 188, 0.28), rgba(0, 47, 59, 0.35) 55%, transparent);
   animation: carga-pulsa 2.4s ease-in-out infinite;
 }
 @keyframes carga-pulsa { 0%, 100% { opacity: 0.55; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1.04); } }
@@ -363,7 +413,7 @@ input:focus-visible {
 @keyframes carga-onda { 0% { transform: scale(0.7); opacity: 0.7; } 100% { transform: scale(1.9); opacity: 0; } }
 
 .carga-faixa {
-  background: repeating-linear-gradient(90deg, rgba(220, 226, 245, 0.35) 0 10px, transparent 10px 22px);
+  background: repeating-linear-gradient(90deg, rgba(143, 168, 172, 0.35) 0 10px, transparent 10px 22px);
   animation: carga-anda 0.7s linear infinite;
 }
 @keyframes carga-anda { from { background-position: 0 0; } to { background-position: -22px 0; } }
