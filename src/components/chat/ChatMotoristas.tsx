@@ -923,12 +923,12 @@ export default function ChatMotoristas({
         </div>
       </header>
 
-      {/* Atalho permanente para a conversa real do Assistente IA do CopaLinks. */}
+      {/* Atalho permanente para o Assistente Mecânico CopaLinks. */}
       <div className="largura-aparelho relative z-10 w-full shrink-0 px-3 pt-2.5 pb-2 sm:px-5">
         <button
           type="button"
           onClick={() => setIaAberta(true)}
-          aria-label="Abrir conversa com a Assistente IA"
+          aria-label="Abrir o Assistente Mecânico CopaLinks"
           className="group relative flex min-h-[78px] w-full items-center gap-3 overflow-hidden rounded-[22px] border border-[#183341]/40 bg-[#071A28] px-3.5 py-3 text-left shadow-[0_10px_32px_-22px_rgba(0, 184, 188, .85),inset_0_1px_0_rgba(255,255,255,.09)] transition duration-200 hover:border-[#00B8BC]/70 hover:shadow-[0_12px_34px_-18px_rgba(0, 184, 188, .75)] active:scale-[.99] sm:px-4"
         >
           <span aria-hidden className="pointer-events-none absolute -right-8 -top-16 h-36 w-36 rounded-full bg-[#00B8BC]/15 blur-2xl" />
@@ -936,8 +936,8 @@ export default function ChatMotoristas({
             <Bot size={24} strokeWidth={2.1} />
           </span>
           <span className="relative min-w-0 flex-1">
-            <span className="block font-display text-[15.5px] leading-tight font-extrabold text-white">Assistente IA</span>
-            <span className="mt-1 block truncate text-[12px] leading-tight text-[#8FA8AC]/75 sm:text-[12.5px]">Tire suas dúvidas e receba informações rápidas!</span>
+            <span className="block font-display text-[15.5px] leading-tight font-extrabold text-white">Assistente Mecânico</span>
+            <span className="mt-1 block truncate text-[12px] leading-tight text-[#8FA8AC]/75 sm:text-[12.5px]">Identifique peças e investigue problemas do seu veículo.</span>
           </span>
           <ChevronRight size={21} className="relative shrink-0 text-[#8FA8AC] transition-transform group-hover:translate-x-0.5" />
         </button>

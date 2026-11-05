@@ -5,18 +5,15 @@ import { iaMensagens } from "@/db/schema";
 import { garantirTabelas } from "@/lib/estado";
 import { motoristaDaSessao } from "@/lib/motorista-sessao";
 import { ErroIA, perguntarIA } from "@/lib/ia";
-import { ErroImagem, analisarImagemIA, gerarImagemIA, imagemDeDataUrl, podeGerarImagem, querGerarImagem } from "@/lib/ia-imagem";
+import { ErroImagem, analisarImagemIA, imagemDeDataUrl } from "@/lib/ia-imagem";
 import { garantirColunaImagem } from "@/lib/ia-imagem-banco";
 
 export const dynamic = "force-dynamic";
-// Criar uma imagem pode levar bem mais que uma resposta de texto (Composio + OpenRouter).
 export const maxDuration = 120;
 
 const PERGUNTA_MAX = 1000;
 const HISTORICO_CTX = 10; // últimas trocas enviadas à IA como contexto
 const HISTORICO_TELA = 40; // mensagens devolvidas para a tela
-const RESPOSTA_IMAGEM_CRIADA = "Pronto! Aqui está a imagem. 🖼️";
-const RESPOSTA_IMAGEM_EDITADA = "Pronto! Fiz a imagem a partir da sua foto. 🖼️";
 
 // Freio: até 10 perguntas por minuto e 60 por hora por motorista.
 const janelas = new Map<number, number[]>();
@@ -71,8 +68,8 @@ export async function GET(req: Request) {
 /**
  * POST /api/ia/chat { motoristaId, texto, imagem? } → pergunta e recebe a resposta.
  * - `imagem` (data URL de foto) + pergunta → a IA analisa a foto (visão).
- * - pedido de imagem ("gera uma imagem de…") → cria a imagem (Composio ou API direta).
- * - sem foto e sem pedido de imagem → conversa de sempre, sem mudança.
+ * - toda conversa segue as instruções automotivas do Assistente Mecânico CopaLinks.
+ * - a foto enviada continua sendo encaminhada à análise visual.
  */
 export async function POST(req: Request) {
   await garantirTabelas();
@@ -97,12 +94,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ erro }, { status, headers: semCache });
     }
   }
-  const criarImagem = querGerarImagem(texto);
   if (!podePerguntar(m.id)) {
     return NextResponse.json({ erro: "Muitas perguntas seguidas. Aguarde um pouco." }, { status: 429, headers: semCache });
-  }
-  if (criarImagem && !podeGerarImagem(m.id)) {
-    return NextResponse.json({ erro: "Você já pediu muitas imagens nesta hora. Aguarde um pouco." }, { status: 429, headers: semCache });
   }
 
   const anteriores = await db
@@ -124,13 +117,7 @@ export async function POST(req: Request) {
   try {
     let textoResposta: string;
     let via: "composio" | "direta";
-    let imagemResposta: Buffer | null = null;
-    if (criarImagem) {
-      const r = await gerarImagemIA(texto, foto);
-      imagemResposta = r.imagem;
-      textoResposta = foto ? RESPOSTA_IMAGEM_EDITADA : RESPOSTA_IMAGEM_CRIADA;
-      via = r.via;
-    } else if (foto) {
+    if (foto) {
       textoResposta = await analisarImagemIA(texto, foto, historico);
       via = "direta";
     } else {
@@ -144,7 +131,7 @@ export async function POST(req: Request) {
         motoristaId: m.id,
         papel: "assistant",
         texto: textoResposta,
-        imagemDados: imagemResposta ? imagemResposta.toString("base64") : null,
+        imagemDados: null,
       })
       .returning();
     // Guarda só as últimas 100 por motorista.
@@ -156,7 +143,7 @@ export async function POST(req: Request) {
         resposta: textoResposta,
         via,
         criadoEm: (salva?.criadoEm ?? new Date()).toISOString(),
-        temImagem: Boolean(imagemResposta),
+        temImagem: false,
         idUsuario: enviada?.id ?? null,
         idResposta: salva?.id ?? null,
       },

@@ -318,7 +318,9 @@ test("backend: HTTP direto + reserva Composio → comparação persistente → a
       assert.equal((await publicarBoasVindasMotorista({ id: ana.id, nome: "Ana" })).via, "desativada");
       const { perguntarIA } = await import("../src/lib/ia");
       await perguntarIA("Quais as regras de comportamento dentro do porto?", [], ana.id);
-      assert.ok(prompts.some((p) => /REGRA 01|faróis/.test(p) && /Não publicar automaticamente/.test(p)));
+      assert.ok(prompts.some((p) => /especializado exclusivamente em mecânica automotiva/i.test(p)));
+      assert.ok(prompts.some((p) => /não responda sobre navios, porto, APPA/i.test(p)));
+      assert.ok(!prompts.some((p) => /REGRA 01|faróis/.test(p)), "o assistente não recebe contexto nem memória do porto");
       assert.equal((await mensagens()).length, antes); assert.equal(pushes.length, pushAntes);
       const { memorizarClima, lerMemoriaClima } = await import("../src/lib/ia-memoria-porto");
       const p = { atualizadoEm: "2026-10-08T18:00:00.000Z", agora: {}, alerta: {}, dias: [], fontes: { simport: false, estacao: true, openMeteo: false, composio: false } } as unknown as Previsao;
@@ -326,29 +328,28 @@ test("backend: HTTP direto + reserva Composio → comparação persistente → a
       assert.equal((await lerMemoriaClima())?.atualizadoEm, p.atualizadoEm);
     });
 
-    await t.test("pergunta sobre navio lê o Tracker novamente e envia seus dados literais à IA", async () => {
+    await t.test("pergunta sobre navio não carrega dados do porto e é limitada à mecânica", async () => {
       const chaveAnterior = process.env.AI_API_KEY, provedorAnterior = process.env.AI_PROVIDER;
+      const composioAnterior = process.env.COMPOSIO_API_KEY;
       process.env.AI_API_KEY = "sk-chave-ficticia-de-teste";
       process.env.AI_PROVIDER = "openai";
-      // Diferente da última leitura persistida do cron: a pergunta deve receber
-      // o conteúdo que está disponível agora na fonte, sem alterar a memória.
-      manobras = manobrasTexto({ berco: "AZ211 BB", dataHora: "22/10 19:35" });
+      delete process.env.COMPOSIO_API_KEY;
       try {
         const { perguntarIA } = await import("../src/lib/ia");
         const resposta = await perguntarIA("Qual a previsão de atracação do AFENTIS?", [], ana.id);
         assert.equal(resposta.via, "direta");
-        assert.match(resposta.texto, /PREVISTA/);
         assert.equal(chamadasDiretasIA.length, 1);
         const corpo = JSON.parse(chamadasDiretasIA[0]);
-        const contexto = corpo.messages.at(-1).content as string;
-        assert.match(contexto, /AFENTIS XRISTOS ATH/);
-        assert.doesNotMatch(contexto, /GLBS MAGIC/);
-        assert.match(contexto, /22\/10 19:35·AT— Atracação: AZ211 BB/);
-        assert.match(contexto, /PREVISTA/);
-        assert.match(contexto, /Fonte https:\/\/berth-bloom-tracker\.lovable\.app\/; lida agora.*HTTP direto/);
+        const sistema = corpo.messages[0].content as string;
+        const pergunta = corpo.messages.at(-1).content as string;
+        assert.match(sistema, /especializado exclusivamente em mecânica automotiva/i);
+        assert.match(sistema, /não responda sobre navios, porto, APPA/i);
+        assert.equal(pergunta, "Qual a previsão de atracação do AFENTIS?");
+        assert.doesNotMatch(pergunta, /AFENTIS XRISTOS ATH|22\/10 19:35|Tracker|Fonte https:/);
       } finally {
         if (chaveAnterior === undefined) delete process.env.AI_API_KEY; else process.env.AI_API_KEY = chaveAnterior;
         if (provedorAnterior === undefined) delete process.env.AI_PROVIDER; else process.env.AI_PROVIDER = provedorAnterior;
+        if (composioAnterior === undefined) delete process.env.COMPOSIO_API_KEY; else process.env.COMPOSIO_API_KEY = composioAnterior;
       }
     });
 

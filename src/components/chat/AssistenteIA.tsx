@@ -19,19 +19,22 @@ type MsgIA = {
 const LADO_FOTO = 1024;
 
 const SUGESTOES = [
-  "Quais navios de fertilizante estão chegando?",
-  "Como está o tempo no porto?",
-  "O freio tá falhando, e agora?",
-  "Como cadastro meu ponto?",
+  "🔧 Que peça é essa? Vou enviar uma foto.",
+  "🚛 Meu caminhão perdeu força. O que pode ser?",
+  "⚙️ Como funciona o sistema de embreagem?",
+  "🔥 Meu motor está esquentando. O que verificar?",
+  "⚡ Minha bateria não está carregando.",
+  "🛞 Meu caminhão está com barulho na suspensão.",
 ];
 
-/** O que o assistente sabe fazer (mostrado ao abrir, antes da 1ª pergunta). */
-const PODE_FAZER: { emoji: string; titulo: string; texto: string }[] = [
-  { emoji: "🚢", titulo: "Navios no porto", texto: "Quem está atracado, esperando ou chegando em Paranaguá e Antonina, com foco em fertilizante, toneladas e maré." },
-  { emoji: "🚛", titulo: "Caminhão", texto: "Freio, motor, suspensão, elétrica, pneu, Arla… do básico ao mais cabeludo." },
-  { emoji: "🌦️", titulo: "Tempo no porto", texto: "Chuva, vento e neblina agora, e o que isso muda na estrada e na fila." },
-  { emoji: "📍", titulo: "Seus pontos e o app", texto: "Como anda a sua fila e como usar cada parte do CopaLinks." },
-  { emoji: "🖼️", titulo: "Imagens", texto: "Cria uma imagem de qualquer assunto (é só pedir: \"gera uma imagem de…\") ou analisa a foto que você mandar pelo botão de foto." },
+/** Recursos exclusivamente automotivos apresentados na tela inicial. */
+const PODE_FAZER: { emoji: string; titulo: string; texto: string; pergunta: string }[] = [
+  { emoji: "🔧", titulo: "Identificar uma peça", texto: "Envie uma foto e descubra o nome, a função e a aplicação da peça.", pergunta: "Quero identificar uma peça do meu veículo. Vou enviar uma foto." },
+  { emoji: "🚛", titulo: "Problemas no caminhão", texto: "Descreva o defeito e receba possíveis causas e orientações seguras.", pergunta: "Estou com um problema no caminhão. Ajude a investigar as possíveis causas." },
+  { emoji: "🚗", titulo: "Problemas no carro", texto: "Hipóteses de diagnóstico e orientações para veículos de passeio.", pergunta: "Estou com um problema no carro. Ajude a investigar as possíveis causas." },
+  { emoji: "⚡", titulo: "Elétrica automotiva", texto: "Bateria, alternador, sensores, módulos e falhas elétricas.", pergunta: "Quero ajuda com um problema elétrico automotivo." },
+  { emoji: "🛠️", titulo: "Manutenção e reparos", texto: "Entenda como funcionam os componentes e os cuidados necessários.", pergunta: "Quero aprender sobre manutenção e reparos automotivos." },
+  { emoji: "🔍", titulo: "Luzes e códigos de falha", texto: "Entenda alertas do painel e códigos OBD, ABS e EBS.", pergunta: "Quero entender uma luz de advertência ou um código de falha do veículo." },
 ];
 
 /** Lê a foto escolhida e devolve JPEG reduzido (data URL), já com a rotação do celular. */
@@ -215,7 +218,7 @@ export default function AssistenteIA({
     <motion.div
       role="dialog"
       aria-modal="true"
-      aria-label="Assistente de IA"
+      aria-label="Assistente Mecânico CopaLinks"
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22 }}
@@ -228,8 +231,8 @@ export default function AssistenteIA({
           <Bot size={22} strokeWidth={2.2} />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-[18px] leading-tight font-extrabold text-white">Assistente do CopaLinks</h2>
-          <p className="truncate text-[12.5px] text-gelo/70">De motorista para motorista · navios, caminhão, tempo e app</p>
+          <h2 className="font-display text-[18px] leading-tight font-extrabold text-white">Assistente Mecânico CopaLinks</h2>
+          <p className="truncate text-[12.5px] text-gelo/70">Seu mecânico inteligente para veículos de todas as categorias</p>
         </div>
         <button
           type="button"
@@ -270,22 +273,29 @@ export default function AssistenteIA({
           {motorista && carregado && msgs.length === 0 && (
             <div className="rounded-[20px] border border-[#183341]/45 bg-[#071A28]/80 p-4">
               <p className="font-display text-[16px] font-bold text-white">
-                E aí, {motorista.nome.trim().split(/\s+/)[0]}! Beleza? 👋
+                Assistente Mecânico CopaLinks 🔧
               </p>
               <p className="mt-1.5 text-[14px] leading-relaxed text-gelo/80">
-                Sou o assistente do CopaLinks. Pode perguntar à vontade, que eu te ajudo com:
+                Seu mecânico inteligente! Identifique peças, descubra possíveis defeitos, entenda problemas mecânicos e receba orientações de manutenção para seu veículo.
               </p>
               <ul className="mt-3 space-y-2">
                 {PODE_FAZER.map((p) => (
-                  <li key={p.titulo} className="flex gap-2.5 rounded-[14px] bg-white/[0.04] px-3 py-2">
-                    <span className="shrink-0 text-[20px] leading-6" aria-hidden>{p.emoji}</span>
-                    <span className="text-[13.5px] leading-snug text-gelo/85">
-                      <b className="text-white">{p.titulo}:</b> {p.texto}
-                    </span>
+                  <li key={p.titulo}>
+                    <button
+                      type="button"
+                      onClick={() => void enviar(p.pergunta)}
+                      disabled={enviando}
+                      className="flex w-full gap-2.5 rounded-[14px] bg-white/[0.04] px-3 py-2 text-left transition hover:bg-[#00B8BC]/10 disabled:opacity-50"
+                    >
+                      <span className="shrink-0 text-[20px] leading-6" aria-hidden>{p.emoji}</span>
+                      <span className="text-[13.5px] leading-snug text-gelo/85">
+                        <b className="text-white">{p.titulo}</b><span className="block">{p.texto}</span>
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-[13px] text-gelo/65">Toca numa pergunta abaixo ou manda a sua. 🚛</p>
+              <p className="mt-3 text-[13px] text-gelo/65">Escolha um assunto ou descreva o que acontece com seu veículo.</p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {SUGESTOES.map((s) => (
                   <button
@@ -388,7 +398,7 @@ export default function AssistenteIA({
               }}
               rows={1}
               disabled={!motorista}
-              placeholder={motorista ? (foto ? "Pergunte sobre a foto (ou deixe em branco)…" : "Manda sua pergunta: navio, caminhão, tempo…") : "Cadastre seu nome para conversar…"}
+              placeholder={motorista ? (foto ? "Pergunte sobre a peça ou o defeito na foto…" : "Descreva o problema ou faça uma pergunta de mecânica…") : "Cadastre seu nome para conversar…"}
               aria-label="Pergunta para o assistente"
               className="max-h-[120px] min-h-[48px] flex-1 resize-none rounded-[24px] border-[1.5px] border-[#183341]/60 bg-[#071A28]/80 px-4 py-3 text-[15px] text-white outline-none placeholder:text-gelo/45 focus:border-[#00B8BC] disabled:opacity-50"
             />
@@ -401,7 +411,7 @@ export default function AssistenteIA({
               <Send size={20} strokeWidth={2.4} />
             </button>
           </form>
-          <p className="mt-1 text-[11.5px] text-gelo/50">Respostas automáticas — em emergência com freio/direção, pare e chame socorro. Imagens criadas ou analisadas por IA.</p>
+          <p className="mt-1 text-[11.5px] text-gelo/50">Orientações de IA: diagnósticos são hipóteses. Em falha de freio, direção ou superaquecimento grave, pare em local seguro e procure assistência.</p>
         </div>
       </div>
     </motion.div>
