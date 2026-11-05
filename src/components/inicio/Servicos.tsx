@@ -32,38 +32,38 @@ const ICONES: Record<IconeServico, typeof Lock> = {
 const CORES: Record<CorServico, { cartao: string; icone: string }> = {
   laranja: {
     cartao:
-      "border-[#d9822b] bg-[linear-gradient(135deg,#5b3414_0%,#3a2519_55%,#231c24_100%)]",
-    icone: "bg-[#e8892d] shadow-[0_0_22px_-4px_rgba(232,137,45,0.8)]",
+      "border-[#183341] bg-[#071A28]",
+    icone: "bg-[#FFB82E] shadow-[0_0_22px_-4px_rgba(255, 184, 46, 0.8)]",
   },
   roxo: {
     cartao:
-      "border-[#9b4dff] bg-[linear-gradient(135deg,#40207a_0%,#2d1a5c_55%,#1f1846_100%)]",
-    icone: "bg-[#8b3dff] shadow-[0_0_22px_-4px_rgba(139,61,255,0.8)]",
+      "border-[#183341] bg-[#071A28]",
+    icone: "bg-[#00B8BC] shadow-[0_0_22px_-4px_rgba(0, 184, 188, 0.8)]",
   },
   verde: {
     cartao:
-      "border-[#1fbf6a] bg-[linear-gradient(135deg,#084f3c_0%,#083b38_55%,#061a30_100%)]",
-    icone: "bg-[#22c06d] shadow-[0_0_22px_-4px_rgba(34,192,109,0.8)]",
+      "border-[#183341] bg-[#071A28]",
+    icone: "bg-[#00C853] shadow-[0_0_22px_-4px_rgba(0, 200, 83, 0.8)]",
   },
   azul: {
     cartao:
-      "border-[#516de7] bg-[linear-gradient(135deg,#081887_0%,#061070_55%,#040958_100%)]",
-    icone: "bg-[#5376f4] shadow-[0_0_22px_-4px_rgba(83, 118, 244, 0.8)]",
+      "border-[#183341] bg-[#071A28]",
+    icone: "bg-[#00B8BC] shadow-[0_0_22px_-4px_rgba(0, 184, 188, 0.8)]",
   },
   vermelho: {
     cartao:
-      "border-[#e0334d] bg-[linear-gradient(135deg,#5a1a2d_0%,#421830_55%,#2a1528_100%)]",
-    icone: "bg-[#e63950] shadow-[0_0_22px_-4px_rgba(230,57,80,0.8)]",
+      "border-[#183341] bg-[#071A28]",
+    icone: "bg-[#FFB82E] shadow-[0_0_22px_-4px_rgba(255, 184, 46, 0.8)]",
   },
   turquesa: {
     cartao:
-      "border-[#1eaadd] bg-[linear-gradient(135deg,#05456b_0%,#04275b_55%,#041949_100%)]",
-    icone: "bg-[#1daede] shadow-[0_0_22px_-4px_rgba(29, 174, 222, 0.8)]",
+      "border-[#183341] bg-[#071A28]",
+    icone: "bg-[#00B8BC] shadow-[0_0_22px_-4px_rgba(0, 184, 188, 0.8)]",
   },
   indigo: {
     cartao:
-      "border-[#7f87f5] bg-[linear-gradient(135deg,#2b329b_0%,#121764_55%,#0d114b_100%)]",
-    icone: "bg-[#7f87f5] shadow-[0_0_22px_-4px_rgba(127, 135, 245, 0.8)]",
+      "border-[#183341] bg-[#071A28]",
+    icone: "bg-[#00B8BC] shadow-[0_0_22px_-4px_rgba(0, 184, 188, 0.8)]",
   },
 };
 
@@ -126,7 +126,7 @@ export default function Servicos({
   const visiveis = mostrarTodos ? SERVICOS : SERVICOS.slice(0, 2);
   const temMais = SERVICOS.length > 2;
   return (
-    <section className="rounded-[26px] border border-[#222fb3]/60 bg-[#030845]/70 p-4">
+    <section className="rounded-[26px] border border-[#183341]/60 bg-[#071A28]/70 p-4">
       <header className="mb-4 flex items-center justify-between gap-3 px-1">
         <h2 className="flex items-center gap-3 font-display text-[22px] font-extrabold tracking-[0.02em] text-white uppercase">
           <LayoutGrid size={26} strokeWidth={2.2} className="text-gelo" />

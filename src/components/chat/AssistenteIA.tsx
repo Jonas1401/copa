@@ -221,10 +221,10 @@ export default function AssistenteIA({
       transition={{ duration: 0.22 }}
       className="fundo-app fixed inset-0 z-[70] flex flex-col bg-fundo"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_50%_at_50%_0%,rgba(139,61,255,0.22),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_50%_at_50%_0%,rgba(0, 184, 188, 0.22),transparent_60%)]" />
 
-      <header className="largura-aparelho relative flex items-center gap-3 border-b border-[#222fb3]/60 px-3 py-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#8b3dff] text-white shadow-[0_0_22px_-6px_rgba(139,61,255,0.9)]">
+      <header className="largura-aparelho relative flex items-center gap-3 border-b border-[#183341]/60 px-3 py-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#00B8BC] text-[#000D16] shadow-[0_0_22px_-6px_rgba(0, 184, 188, 0.9)]">
           <Bot size={22} strokeWidth={2.2} />
         </span>
         <div className="min-w-0 flex-1">
@@ -268,7 +268,7 @@ export default function AssistenteIA({
             <p className="py-8 text-center text-[14px] text-gelo/60">Carregando…</p>
           )}
           {motorista && carregado && msgs.length === 0 && (
-            <div className="rounded-[20px] border border-[#8b3dff]/45 bg-[#1a1040]/80 p-4">
+            <div className="rounded-[20px] border border-[#183341]/45 bg-[#071A28]/80 p-4">
               <p className="font-display text-[16px] font-bold text-white">
                 E aí, {motorista.nome.trim().split(/\s+/)[0]}! Beleza? 👋
               </p>
@@ -293,7 +293,7 @@ export default function AssistenteIA({
                     type="button"
                     onClick={() => void enviar(s)}
                     disabled={enviando}
-                    className="rounded-full border border-[#8b3dff]/60 bg-[#8b3dff]/15 px-3 py-2 text-left text-[13px] font-semibold text-gelo hover:bg-[#8b3dff]/25 disabled:opacity-50"
+                    className="rounded-full border border-[#183341]/60 bg-[#00B8BC]/15 px-3 py-2 text-left text-[13px] font-semibold text-gelo hover:bg-[#00B8BC]/25 disabled:opacity-50"
                   >
                     {s}
                   </button>
@@ -304,7 +304,7 @@ export default function AssistenteIA({
           {msgs.map((m, i) =>
             m.papel === "user" ? (
               <div key={i} className="flex justify-end">
-                <div className="max-w-[84%] rounded-[18px] rounded-tr-md bg-[#526cee] px-3.5 py-2.5 text-[15px] leading-snug break-words whitespace-pre-wrap text-white">
+                <div className="max-w-[84%] rounded-[18px] rounded-tr-md border border-[#183341] bg-[#002F3B] px-3.5 py-2.5 text-[15px] leading-snug break-words whitespace-pre-wrap text-gelo">
                   {(m.previa || (m.temImagem && m.id)) && (
                     <ImagemConversa
                       src={m.previa ?? urlImagemDaConversa(m.id as number, motoristaId ?? 0)}
@@ -316,8 +316,8 @@ export default function AssistenteIA({
               </div>
             ) : (
               <div key={i} className="flex justify-start">
-                <div className="max-w-[88%] rounded-[18px] rounded-tl-md border border-[#8b3dff]/45 bg-[#150d33]/95 px-3.5 py-2.5">
-                  <div className="mb-1 flex items-center gap-1.5 text-[12px] font-bold text-[#b98cf5]">
+                <div className="max-w-[88%] rounded-[18px] rounded-tl-md border border-[#183341]/45 bg-[#071A28]/95 px-3.5 py-2.5">
+                  <div className="mb-1 flex items-center gap-1.5 text-[12px] font-bold text-[#8FA8AC]">
                     <Bot size={13} /> Assistente
                   </div>
                   {m.temImagem && m.id && (
@@ -330,7 +330,7 @@ export default function AssistenteIA({
           )}
           {enviando && (
             <div className="flex justify-start">
-              <div className="flex items-center gap-2 rounded-[18px] rounded-tl-md border border-[#8b3dff]/45 bg-[#150d33]/95 px-3.5 py-3 text-[14px] text-gelo/70">
+              <div className="flex items-center gap-2 rounded-[18px] rounded-tl-md border border-[#183341]/45 bg-[#071A28]/95 px-3.5 py-3 text-[14px] text-gelo/70">
                 <LoaderCircle size={16} className="animate-spin" /> Já te respondo…
               </div>
             </div>
@@ -339,13 +339,13 @@ export default function AssistenteIA({
       </div>
 
       <div
-        className="relative border-t border-[#222fb3]/60 bg-[#02042b]/95 px-3 pt-2"
+        className="relative border-t border-[#183341]/60 bg-[#071A28]/95 px-3 pt-2"
         style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}
       >
         <div className="largura-aparelho">
           {erro && <p className="mb-1.5 text-[13px] text-ambar">{erro}</p>}
           {foto && (
-            <div className="mb-1.5 flex items-center gap-2 rounded-[16px] border border-[#8b3dff]/45 bg-[#150d33]/80 p-1.5">
+            <div className="mb-1.5 flex items-center gap-2 rounded-[16px] border border-[#183341]/45 bg-[#071A28]/80 p-1.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={foto} alt="Foto escolhida" className="h-12 w-12 shrink-0 rounded-[10px] object-cover" />
               <span className="min-w-0 flex-1 truncate text-[13px] text-gelo/80">Foto pronta. Escreva o que quer saber ou pedir.</span>
@@ -390,13 +390,13 @@ export default function AssistenteIA({
               disabled={!motorista}
               placeholder={motorista ? (foto ? "Pergunte sobre a foto (ou deixe em branco)…" : "Manda sua pergunta: navio, caminhão, tempo…") : "Cadastre seu nome para conversar…"}
               aria-label="Pergunta para o assistente"
-              className="max-h-[120px] min-h-[48px] flex-1 resize-none rounded-[24px] border-[1.5px] border-[#8b3dff]/60 bg-[#150d33]/80 px-4 py-3 text-[15px] text-white outline-none placeholder:text-gelo/45 focus:border-[#b98cf5] disabled:opacity-50"
+              className="max-h-[120px] min-h-[48px] flex-1 resize-none rounded-[24px] border-[1.5px] border-[#183341]/60 bg-[#071A28]/80 px-4 py-3 text-[15px] text-white outline-none placeholder:text-gelo/45 focus:border-[#00B8BC] disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={(!texto.trim() && !foto) || enviando || !motorista}
               aria-label="Enviar pergunta"
-              className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#8b3dff] text-white shadow-[0_0_22px_-6px_rgba(139,61,255,0.9)] disabled:opacity-45"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#00B8BC] text-[#000D16] shadow-[0_0_22px_-6px_rgba(0, 184, 188, 0.9)] disabled:opacity-45"
             >
               <Send size={20} strokeWidth={2.4} />
             </button>

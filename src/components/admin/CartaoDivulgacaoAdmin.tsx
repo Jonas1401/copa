@@ -51,7 +51,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
       errorCorrectionLevel: "M",
       margin: 1,
       width: 320,
-      color: { dark: "#0b1a5e", light: "#ffffff" },
+      color: { dark: "#000D16", light: "#ffffff" },
     })
       .then((d) => vivo && setQr(d))
       .catch(() => {});
@@ -109,7 +109,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
   }, [mensagem, url, copiar]);
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
+    <section className="mt-4 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/90 p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -117,7 +117,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
         className="flex w-full items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
+          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#00B8BC] uppercase">
             <Share2 size={22} strokeWidth={2.2} /> Divulgação do app
           </h2>
           <p className="mt-0.5 text-[12.5px] text-gelo/60">
@@ -131,7 +131,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
       </button>
 
       {aberto && (
-        <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
+        <div className="mt-3 border-t border-[#183341]/35 pt-3">
           <p className="text-[13.5px] leading-snug text-gelo/80">
             Material pronto da campanha: o endereço do app, o QR Code para
             apontar a câmera, a mensagem com o texto oficial e as artes para o
@@ -140,7 +140,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
           </p>
 
           {/* ------------------------------------- endereço + QR Code */}
-          <div className="mt-3 flex flex-col items-center gap-3 rounded-[16px] border border-[#3342d0]/50 bg-[#02042b]/60 p-3.5 sm:flex-row sm:items-center sm:gap-4">
+          <div className="mt-3 flex flex-col items-center gap-3 rounded-[16px] border border-[#183341]/50 bg-[#071A28]/60 p-3.5 sm:flex-row sm:items-center sm:gap-4">
             <div className="shrink-0 rounded-[12px] bg-white p-2">
               {qr ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -152,7 +152,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
                   className="h-[124px] w-[124px]"
                 />
               ) : (
-                <div className="grid h-[124px] w-[124px] place-items-center text-[#0b1a5e]">
+                <div className="grid h-[124px] w-[124px] place-items-center text-[#00B8BC]">
                   <QrCode size={36} />
                 </div>
               )}
@@ -165,7 +165,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
                 Aponte a câmera e o app abre na hora — vale para quem está do
                 lado de fora da cabine.
               </p>
-              <p className="tabular mt-2 break-all rounded-full border border-ciano/30 bg-[#02042b] px-3 py-1.5 text-[12.5px] font-semibold text-ciano">
+              <p className="tabular mt-2 break-all rounded-full border border-ciano/30 bg-[#071A28] px-3 py-1.5 text-[12.5px] font-semibold text-ciano">
                 {url}
               </p>
               <div className="mt-2.5 flex flex-wrap justify-center gap-2 sm:justify-start">
@@ -173,14 +173,14 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 rounded-full border border-ciano/55 bg-[#02042b]/70 px-3.5 py-2 font-display text-[13px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
+                  className="flex items-center gap-1.5 rounded-full border border-ciano/55 bg-[#071A28]/70 px-3.5 py-2 font-display text-[13px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
                 >
                   <Smartphone size={15} strokeWidth={2.2} /> Abrir o app
                 </a>
                 <Link
                   href="/divulgacao"
                   target="_blank"
-                  className="flex items-center gap-1.5 rounded-full border border-ciano/55 bg-[#02042b]/70 px-3.5 py-2 font-display text-[13px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
+                  className="flex items-center gap-1.5 rounded-full border border-ciano/55 bg-[#071A28]/70 px-3.5 py-2 font-display text-[13px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
                 >
                   Página de divulgação <ExternalLink size={14} />
                 </Link>
@@ -189,7 +189,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
           </div>
 
           {/* --------------------------------------------- a mensagem */}
-          <div className="mt-3 rounded-[16px] border border-[#3342d0]/50 bg-[#02042b]/60 p-3.5">
+          <div className="mt-3 rounded-[16px] border border-[#183341]/50 bg-[#071A28]/60 p-3.5">
             <p className="font-display text-[15px] font-extrabold text-white">
               Mensagem para o grupo
             </p>
@@ -199,10 +199,10 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
             </p>
 
             {/* prévia da mensagem (como aparece no WhatsApp) */}
-            <div className="mt-3 rounded-[14px] border border-[#3342d0]/50 bg-[#02042b]/60 p-3">
-              <div className="max-w-[92%] rounded-[16px] rounded-bl-[6px] bg-[#075E54] px-3.5 py-2.5">
+            <div className="mt-3 rounded-[14px] border border-[#183341]/50 bg-[#071A28]/60 p-3">
+              <div className="max-w-[92%] rounded-[16px] rounded-bl-[6px] bg-[#002F3B] px-3.5 py-2.5">
                 {linhas.map((linha, i) => (
-                  <p key={i} className="text-[13.5px] leading-relaxed text-[#e9edef]">
+                  <p key={i} className="text-[13.5px] leading-relaxed text-[#EAF4F7]">
                     {linha.map((t, j) =>
                       t.negrito ? <b key={j}>{t.texto}</b> : <span key={j}>{t.texto}</span>,
                     )}
@@ -215,21 +215,21 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
               <button
                 type="button"
                 onClick={compartilharWhatsApp}
-                className="flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-[#25d366]/55 bg-[#062b14]/60 px-3 font-display text-[13.5px] font-extrabold text-[#4ce07a] uppercase transition-colors hover:border-[#25d366]"
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-[#00C853]/55 bg-[#003D35]/60 px-3 font-display text-[13.5px] font-extrabold text-[#00C853] uppercase transition-colors hover:border-[#00C853]"
               >
                 <MessageCircle size={16} strokeWidth={2.2} /> WhatsApp
               </button>
               <button
                 type="button"
                 onClick={() => void copiar()}
-                className="flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#02042b]/70 px-3 font-display text-[13.5px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#071A28]/70 px-3 font-display text-[13.5px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
               >
                 <Copy size={16} strokeWidth={2.2} /> Copiar
               </button>
               <button
                 type="button"
                 onClick={() => void compartilhar()}
-                className="flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#02042b]/70 px-3 font-display text-[13.5px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
+                className="flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#071A28]/70 px-3 font-display text-[13.5px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
               >
                 <Share2 size={16} strokeWidth={2.2} /> Compartilhar
               </button>
@@ -238,7 +238,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
 
           {/* ------------------------------------------------- artes */}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col items-center gap-2.5 rounded-[16px] border border-[#3342d0]/50 bg-[#02042b]/60 p-3.5 text-center">
+            <div className="flex flex-col items-center gap-2.5 rounded-[16px] border border-[#183341]/50 bg-[#071A28]/60 p-3.5 text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={IMAGEM_STATUS}
@@ -257,13 +257,13 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
               <a
                 href={IMAGEM_STATUS}
                 download="copalinks-divulgacao.jpg"
-                className="flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-ouro/60 bg-[#02042b] px-4 font-display text-[13px] font-extrabold text-ouro uppercase transition-colors hover:border-ouro"
+                className="flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-ouro/60 bg-[#071A28] px-4 font-display text-[13px] font-extrabold text-ouro uppercase transition-colors hover:border-ouro"
               >
                 <Download size={15} strokeWidth={2.4} /> Baixar arte
               </a>
             </div>
 
-            <div className="flex flex-col items-center gap-2.5 rounded-[16px] border border-[#3342d0]/50 bg-[#02042b]/60 p-3.5 text-center">
+            <div className="flex flex-col items-center gap-2.5 rounded-[16px] border border-[#183341]/50 bg-[#071A28]/60 p-3.5 text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={IMAGEM_DIVULGACAO}
@@ -282,7 +282,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
               <a
                 href={IMAGEM_DIVULGACAO}
                 download="copalinks-card.jpg"
-                className="flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-ouro/60 bg-[#02042b] px-4 font-display text-[13px] font-extrabold text-ouro uppercase transition-colors hover:border-ouro"
+                className="flex min-h-[42px] items-center justify-center gap-2 rounded-full border border-ouro/60 bg-[#071A28] px-4 font-display text-[13px] font-extrabold text-ouro uppercase transition-colors hover:border-ouro"
               >
                 <Download size={15} strokeWidth={2.4} /> Baixar cartão
               </a>
@@ -291,7 +291,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
 
           {/* recado temporário (copiou, instalou...) */}
           {recado && (
-            <p className="mt-3 rounded-[12px] border border-ciano/50 bg-[#02042b]/95 px-3 py-2 text-center text-[13px] font-semibold text-ciano">
+            <p className="mt-3 rounded-[12px] border border-ciano/50 bg-[#071A28]/95 px-3 py-2 text-center text-[13px] font-semibold text-ciano">
               {recado}
             </p>
           )}

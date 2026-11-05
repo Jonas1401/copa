@@ -198,7 +198,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
       errorCorrectionLevel: "M",
       margin: 1,
       width: 320,
-      color: { dark: "#0b1a5e", light: "#ffffff" },
+      color: { dark: "#000D16", light: "#ffffff" },
     })
       .then((d) => vivo && setQr(d))
       .catch(() => {});
@@ -268,7 +268,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
             href="/"
             aria-label="Voltar ao app"
             title="Voltar ao app"
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#3342d0]/70 bg-[#030856]/80 text-white transition-colors hover:border-ciano/70 hover:text-ciano"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#183341]/70 bg-[#071A28]/80 text-white transition-colors hover:border-ciano/70 hover:text-ciano"
           >
             <ChevronLeft size={26} strokeWidth={2.2} />
           </Link>
@@ -307,14 +307,14 @@ export default function DivulgacaoApp({ url }: { url: string }) {
             </Link>
             <a
               href="#instalar"
-              className="flex min-h-[50px] w-full max-w-[420px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/55 bg-[#02042b]/70 px-6 font-display text-[15px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano hover:bg-[#02042b]"
+              className="flex min-h-[50px] w-full max-w-[420px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/55 bg-[#071A28]/70 px-6 font-display text-[15px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano hover:bg-[#071A28]"
             >
               <Smartphone size={18} strokeWidth={2.2} /> Instalar no celular
             </a>
             <button
               type="button"
               onClick={compartilharWhatsApp}
-              className="flex min-h-[50px] w-full max-w-[420px] items-center justify-center gap-2 rounded-full border-[1.5px] border-[#25d366]/55 bg-[#062b14]/60 px-6 font-display text-[15px] font-extrabold text-[#4ce07a] uppercase transition-colors hover:border-[#25d366] hover:bg-[#062b14]"
+              className="flex min-h-[50px] w-full max-w-[420px] items-center justify-center gap-2 rounded-full border-[1.5px] border-[#00C853]/55 bg-[#003D35]/60 px-6 font-display text-[15px] font-extrabold text-[#00C853] uppercase transition-colors hover:border-[#00C853] hover:bg-[#003D35]"
             >
               <MessageCircle size={18} strokeWidth={2.2} /> Chamar no WhatsApp
             </button>
@@ -332,9 +332,9 @@ export default function DivulgacaoApp({ url }: { url: string }) {
               return (
                 <li
                   key={b.titulo}
-                  className="flex items-start gap-3 rounded-[18px] border border-[#3342d0]/50 bg-[#02042b]/60 px-3.5 py-3"
+                  className="flex items-start gap-3 rounded-[18px] border border-[#183341]/50 bg-[#071A28]/60 px-3.5 py-3"
                 >
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0b1a5e] text-ciano">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#071A28] text-ciano">
                     <Icone size={19} strokeWidth={2.2} />
                   </span>
                   <span className="min-w-0">
@@ -362,7 +362,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
             igual a qualquer aplicativo.
           </p>
 
-          <div className="mt-4 rounded-[18px] border border-ciano/35 bg-[#02042b]/70 p-3.5">
+          <div className="mt-4 rounded-[18px] border border-ciano/35 bg-[#071A28]/70 p-3.5">
             <p className="font-display text-[15px] font-extrabold text-ciano">
               {passos.titulo}
             </p>
@@ -400,7 +400,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
           </div>
 
           {/* QR Code: aponta a câmera e abre o app */}
-          <div className="mt-4 flex flex-col items-center gap-3 rounded-[18px] border border-[#3342d0]/50 bg-[#02042b]/60 p-4 sm:flex-row sm:items-center sm:gap-5">
+          <div className="mt-4 flex flex-col items-center gap-3 rounded-[18px] border border-[#183341]/50 bg-[#071A28]/60 p-4 sm:flex-row sm:items-center sm:gap-5">
             <div className="shrink-0 rounded-[14px] bg-white p-2">
               {qr ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -412,7 +412,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
                   className="h-[132px] w-[132px]"
                 />
               ) : (
-                <div className="grid h-[132px] w-[132px] place-items-center text-[#0b1a5e]">
+                <div className="grid h-[132px] w-[132px] place-items-center text-[#00B8BC]">
                   <QrCode size={40} />
                 </div>
               )}
@@ -425,7 +425,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
                 O QR Code abre o CopaLinks na hora — vale para quem está do lado
                 de fora da cabine.
               </p>
-              <p className="tabular mt-2 break-all rounded-full border border-ciano/30 bg-[#02042b] px-3 py-1.5 text-[13px] font-semibold text-ciano">
+              <p className="tabular mt-2 break-all rounded-full border border-ciano/30 bg-[#071A28] px-3 py-1.5 text-[13px] font-semibold text-ciano">
                 {url}
               </p>
             </div>
@@ -440,7 +440,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
           <ol className="mt-4 space-y-3">
             {PASSOS.map((p) => (
               <li key={p.numero} className="flex items-start gap-3">
-                <span className="tabular grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[linear-gradient(180deg,#5376f4,#2c46c8)] font-display text-[15px] font-extrabold text-white shadow-[0_0_18px_-6px_rgba(83,118,244,0.9)]">
+                <span className="tabular grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#00B8BC] font-display text-[15px] font-extrabold text-[#000D16] shadow-[0_0_18px_-6px_rgba(0, 184, 188, 0.9)]">
                   {p.numero}
                 </span>
                 <span className="min-w-0">
@@ -467,10 +467,10 @@ export default function DivulgacaoApp({ url }: { url: string }) {
           </p>
 
           {/* prévia da mensagem (como aparece no WhatsApp) */}
-          <div className="mt-4 rounded-[18px] border border-[#3342d0]/50 bg-[#02042b]/60 p-3">
-            <div className="max-w-[92%] rounded-[16px] rounded-bl-[6px] bg-[#075E54] px-3.5 py-2.5">
+          <div className="mt-4 rounded-[18px] border border-[#183341]/50 bg-[#071A28]/60 p-3">
+            <div className="max-w-[92%] rounded-[16px] rounded-bl-[6px] bg-[#002F3B] px-3.5 py-2.5">
               {linhas.map((linha, i) => (
-                <p key={i} className="text-[14px] leading-relaxed text-[#e9edef]">
+                <p key={i} className="text-[14px] leading-relaxed text-[#EAF4F7]">
                   {linha.map((t, j) =>
                     t.negrito ? <b key={j}>{t.texto}</b> : <span key={j}>{t.texto}</span>,
                   )}
@@ -483,28 +483,28 @@ export default function DivulgacaoApp({ url }: { url: string }) {
             <button
               type="button"
               onClick={compartilharWhatsApp}
-              className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border-[1.5px] border-[#25d366]/55 bg-[#062b14]/60 px-4 font-display text-[14px] font-extrabold text-[#4ce07a] uppercase transition-colors hover:border-[#25d366]"
+              className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border-[1.5px] border-[#00C853]/55 bg-[#003D35]/60 px-4 font-display text-[14px] font-extrabold text-[#00C853] uppercase transition-colors hover:border-[#00C853]"
             >
               <MessageCircle size={17} strokeWidth={2.2} /> WhatsApp
             </button>
             <button
               type="button"
               onClick={copiar}
-              className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#02042b]/70 px-4 font-display text-[14px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
+              className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#071A28]/70 px-4 font-display text-[14px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
             >
               <Copy size={17} strokeWidth={2.2} /> Copiar
             </button>
             <button
               type="button"
               onClick={compartilharNativo}
-              className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#02042b]/70 px-4 font-display text-[14px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
+              className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ciano/50 bg-[#071A28]/70 px-4 font-display text-[14px] font-extrabold text-ciano uppercase transition-colors hover:border-ciano"
             >
               <Share2 size={17} strokeWidth={2.2} /> Compartilhar
             </button>
           </div>
 
           {/* imagem de status para o WhatsApp/Instagram */}
-          <div className="mt-5 flex flex-col items-center gap-3 rounded-[18px] border border-[#3342d0]/50 bg-[#02042b]/60 p-4 sm:flex-row sm:gap-5">
+          <div className="mt-5 flex flex-col items-center gap-3 rounded-[18px] border border-[#183341]/50 bg-[#071A28]/60 p-4 sm:flex-row sm:gap-5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={IMAGEM_STATUS}
@@ -524,7 +524,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
               <a
                 href={IMAGEM_STATUS}
                 download="copalinks-divulgacao.jpg"
-                className="mt-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ouro/60 bg-[#02042b] px-4 font-display text-[13.5px] font-extrabold text-ouro uppercase transition-colors hover:border-ouro"
+                className="mt-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border-[1.5px] border-ouro/60 bg-[#071A28] px-4 font-display text-[13.5px] font-extrabold text-ouro uppercase transition-colors hover:border-ouro"
               >
                 <Download size={16} strokeWidth={2.4} /> Baixar imagem
               </a>
@@ -536,9 +536,9 @@ export default function DivulgacaoApp({ url }: { url: string }) {
         <section className="mt-4 grid gap-2.5 sm:grid-cols-3">
           <Link
             href="/tempo"
-            className="flex items-center gap-3 rounded-[18px] border border-[#3342d0]/50 bg-[linear-gradient(180deg,rgba(4,9,84,0.76),rgba(2,6,63,0.82))] px-3.5 py-3 transition-colors hover:border-ciano/60"
+            className="flex items-center gap-3 rounded-[18px] border border-[#183341]/50 bg-[#071A28] px-3.5 py-3 transition-colors hover:border-ciano/60"
           >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#0b1a5e] text-ciano">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#071A28] text-ciano">
               <CloudSun size={20} strokeWidth={2.2} />
             </span>
             <span className="min-w-0">
@@ -551,9 +551,9 @@ export default function DivulgacaoApp({ url }: { url: string }) {
           </Link>
           <Link
             href="/frete"
-            className="flex items-center gap-3 rounded-[18px] border border-[#3342d0]/50 bg-[linear-gradient(180deg,rgba(4,9,84,0.76),rgba(2,6,63,0.82))] px-3.5 py-3 transition-colors hover:border-ciano/60"
+            className="flex items-center gap-3 rounded-[18px] border border-[#183341]/50 bg-[#071A28] px-3.5 py-3 transition-colors hover:border-ciano/60"
           >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#0b1a5e] text-ciano">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#071A28] text-ciano">
               <Calculator size={20} strokeWidth={2.2} />
             </span>
             <span className="min-w-0">
@@ -566,9 +566,9 @@ export default function DivulgacaoApp({ url }: { url: string }) {
           </Link>
           <Link
             href="/contatos"
-            className="flex items-center gap-3 rounded-[18px] border border-[#3342d0]/50 bg-[linear-gradient(180deg,rgba(4,9,84,0.76),rgba(2,6,63,0.82))] px-3.5 py-3 transition-colors hover:border-ciano/60"
+            className="flex items-center gap-3 rounded-[18px] border border-[#183341]/50 bg-[#071A28] px-3.5 py-3 transition-colors hover:border-ciano/60"
           >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#0b1a5e] text-ciano">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#071A28] text-ciano">
               <Phone size={20} strokeWidth={2.2} />
             </span>
             <span className="min-w-0">
@@ -607,7 +607,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
       {/* recado temporário (copiou, instalou...) */}
       {recado && (
         <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
-          <p className="rounded-full border border-ciano/50 bg-[#02042b]/95 px-4 py-3 text-center text-[13.5px] font-semibold text-ciano shadow-[0_12px_40px_-16px_rgba(0,0,0,0.9)]">
+          <p className="rounded-full border border-ciano/50 bg-[#071A28]/95 px-4 py-3 text-center text-[13.5px] font-semibold text-ciano shadow-[0_12px_40px_-16px_rgba(0,0,0,0.9)]">
             {recado}
           </p>
         </div>

@@ -121,7 +121,7 @@ function Numero({
   sub?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-[16px] border border-[#222fb3]/70 bg-[#02042b]/70 px-2.5 py-2.5 text-center">
+    <div className="min-w-0 rounded-[16px] border border-[#183341]/70 bg-[#071A28]/70 px-2.5 py-2.5 text-center">
       <div className="text-[12px] font-medium text-gelo/80">{rotulo}</div>
       <div
         className={`tabular mt-1 truncate font-display text-[clamp(16px,4.8vw,21px)] leading-tight font-extrabold ${cor}`}
@@ -155,10 +155,10 @@ function Resumo({ c }: { c: Calculo }) {
       <h3 className="mt-4 mb-2 font-display text-[15px] font-extrabold tracking-[0.04em] text-white uppercase">
         Detalhamento por carga ({c.cargas.length})
       </h3>
-      <div className="overflow-hidden rounded-[16px] border border-[#222fb3]/70">
+      <div className="overflow-hidden rounded-[16px] border border-[#183341]/70">
         <table className="w-full border-collapse text-[13.5px]">
           <thead>
-            <tr className="bg-[#030856] text-left text-[11px] tracking-[0.08em] text-gelo/75 uppercase">
+            <tr className="bg-[#071A28] text-left text-[11px] tracking-[0.08em] text-gelo/75 uppercase">
               <th className="py-2 pl-3 font-semibold">Carga</th>
               <th className="py-2 font-semibold">Ponto</th>
               <th className="py-2 text-right font-semibold">Quant</th>
@@ -180,7 +180,7 @@ function Resumo({ c }: { c: Calculo }) {
             ))}
           </tbody>
           <tfoot className="tabular">
-            <tr className="border-t border-[#222fb3]/70 bg-[#030856] font-bold">
+            <tr className="border-t border-[#183341]/70 bg-[#071A28] font-bold">
               <td className="py-2.5 pl-3 text-gelo/80" colSpan={2}>
                 Total
               </td>
@@ -411,11 +411,11 @@ export default function FreteApp() {
           <Link
             href="/"
             aria-label="Voltar ao início"
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#3342d0]/70 bg-[#030856]/80 text-white transition-colors hover:border-ciano/70 hover:text-ciano"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#183341]/70 bg-[#071A28]/80 text-white transition-colors hover:border-ciano/70 hover:text-ciano"
           >
             <ChevronLeft size={26} strokeWidth={2.2} />
           </Link>
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#5376f4] text-white shadow-[0_0_22px_-4px_rgba(83, 118, 244, 0.8)]">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#00B8BC] text-[#000D16] shadow-[0_0_22px_-4px_rgba(0, 184, 188, 0.8)]">
             <Calculator size={22} strokeWidth={2.2} />
           </span>
           <div className="min-w-0">
@@ -427,7 +427,7 @@ export default function FreteApp() {
         </header>
 
         {/* abas */}
-        <div className="mt-4 grid grid-cols-2 gap-1.5 rounded-full border border-[#222fb3]/70 bg-[#02042b]/80 p-1.5">
+        <div className="mt-4 grid grid-cols-2 gap-1.5 rounded-full border border-[#183341]/70 bg-[#071A28]/80 p-1.5">
           {(
             [
               ["calcular", "Calcular", Calculator],
@@ -443,7 +443,7 @@ export default function FreteApp() {
               }}
               aria-pressed={aba === id}
               className={`flex items-center justify-center gap-2 rounded-full py-2.5 font-display text-[15px] font-bold transition-colors ${
-                aba === id ? "bg-[#5376f4] text-white" : "text-gelo/75 hover:text-white"
+                aba === id ? "bg-[#00B8BC] text-[#000D16]" : "text-gelo/75 hover:text-white"
               }`}
             >
               <Icone size={17} /> {rotulo}
@@ -464,7 +464,7 @@ export default function FreteApp() {
               <div className="flex items-center gap-2 text-[14px] font-semibold text-gelo/85">
                 <Wallet size={18} className="text-ouro" /> Você vai receber
               </div>
-              <div className="tabular mt-1 font-display text-[clamp(38px,12vw,54px)] leading-none font-black text-ouro drop-shadow-[0_0_24px_rgba(245,197,24,0.3)]">
+              <div className="tabular mt-1 font-display text-[clamp(38px,12vw,54px)] leading-none font-black text-ouro drop-shadow-[0_0_24px_rgba(255, 184, 46, 0.3)]">
                 {brl(resultado?.ganho ?? 0)}
               </div>
               <p className="mt-2 text-[13.5px] leading-snug text-gelo/80">
@@ -489,11 +489,11 @@ export default function FreteApp() {
                   return (
                     <li
                       key={i}
-                      className="flex flex-col items-center gap-1.5 rounded-[14px] border border-[#222fb3]/60 bg-[#02042b]/60 px-1.5 py-2.5 text-center"
+                      className="flex flex-col items-center gap-1.5 rounded-[14px] border border-[#183341]/60 bg-[#071A28]/60 px-1.5 py-2.5 text-center"
                     >
-                      <span className="relative grid h-9 w-9 place-items-center rounded-full bg-[#5376f4]/20 text-azulclaro">
+                      <span className="relative grid h-9 w-9 place-items-center rounded-full bg-[#00B8BC]/20 text-azulclaro">
                         <I size={18} />
-                        <span className="absolute -top-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-ouro text-[10px] font-black text-[#2a1a00]">
+                        <span className="absolute -top-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-ouro text-[10px] font-black text-[#000D16]">
                           {i + 1}
                         </span>
                       </span>
@@ -515,7 +515,7 @@ export default function FreteApp() {
                 id="foto-ticket"
               />
               {previa ? (
-                <div className="relative overflow-hidden rounded-[16px] border border-[#222fb3]/70 bg-white">
+                <div className="relative overflow-hidden rounded-[16px] border border-[#183341]/70 bg-white">
                   <img src={previa} alt="Ticket escolhido" className="max-h-[300px] w-full object-contain" />
                   <button
                     type="button"
@@ -529,9 +529,9 @@ export default function FreteApp() {
               ) : (
                 <label
                   htmlFor="foto-ticket"
-                  className="flex cursor-pointer flex-col items-center gap-2 rounded-[18px] border-2 border-dashed border-[#5376f4]/60 bg-[#030856]/50 px-4 py-6 text-center transition-colors hover:border-ciano/70"
+                  className="flex cursor-pointer flex-col items-center gap-2 rounded-[18px] border-2 border-dashed border-[#183341]/60 bg-[#071A28]/50 px-4 py-6 text-center transition-colors hover:border-ciano/70"
                 >
-                  <span className="grid h-14 w-14 place-items-center rounded-full bg-[#5376f4] text-white shadow-[0_0_24px_-4px_rgba(83, 118, 244, 0.8)]">
+                  <span className="grid h-14 w-14 place-items-center rounded-full bg-[#00B8BC] text-[#000D16] shadow-[0_0_24px_-4px_rgba(0, 184, 188, 0.8)]">
                     <ImageIcon size={26} />
                   </span>
                   <span className="font-display text-[17px] font-extrabold text-white">
@@ -559,7 +559,7 @@ export default function FreteApp() {
                 rows={5}
                 spellCheck={false}
                 placeholder={"Quant    Valor\n27.120   21.52\n24.860   19.20\n27.500   17.93"}
-                className="tabular mt-2 w-full resize-y rounded-[14px] border-[1.5px] border-[#222fb3]/80 bg-[#02042b]/80 px-3.5 py-3 font-mono text-[13.5px] leading-relaxed text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
+                className="tabular mt-2 w-full resize-y rounded-[14px] border-[1.5px] border-[#183341]/80 bg-[#071A28]/80 px-3.5 py-3 font-mono text-[13.5px] leading-relaxed text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
               />
             </Bloco>
 
@@ -585,7 +585,7 @@ export default function FreteApp() {
                       className={`rounded-[14px] py-3 font-display text-[16px] font-black transition-transform active:scale-95 ${
                         ativo
                           ? "ouro"
-                          : "border border-[#222fb3]/80 bg-[#02042b]/80 text-white hover:border-ciano/60"
+                          : "border border-[#183341]/80 bg-[#071A28]/80 text-white hover:border-ciano/60"
                       }`}
                     >
                       {v}%
@@ -593,7 +593,7 @@ export default function FreteApp() {
                   );
                 })}
               </div>
-              <div className="mt-3 flex items-center gap-2 rounded-[14px] border-[1.5px] border-[#222fb3]/80 bg-[#02042b]/80 px-4 py-3 focus-within:border-ciano/70">
+              <div className="mt-3 flex items-center gap-2 rounded-[14px] border-[1.5px] border-[#183341]/80 bg-[#071A28]/80 px-4 py-3 focus-within:border-ciano/70">
                 <input
                   value={porcentagem}
                   onChange={(e) => setPorcentagem(e.target.value)}
@@ -624,9 +624,9 @@ export default function FreteApp() {
                   {calculando && <span className="tabular shrink-0">{progresso}%</span>}
                 </div>
                 {calculando && (
-                  <div className="h-2 overflow-hidden rounded-full bg-[#02042b]">
+                  <div className="progresso-trilho h-2 overflow-hidden rounded-full">
                     <motion.div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#5376f4,#8ce7ed)]"
+                      className="progresso-ciano h-full rounded-full"
                       animate={{ width: `${Math.max(progresso, 6)}%` }}
                       transition={{ duration: 0.25 }}
                     />
@@ -705,7 +705,7 @@ export default function FreteApp() {
                     <button
                       type="button"
                       onClick={() => compartilhar(resultado)}
-                      className="mt-4 flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-[#25d366] font-display text-[16px] font-extrabold text-[#062b14] shadow-[0_10px_28px_-12px_rgba(37,211,102,0.9)]"
+                      className="mt-4 flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-[#00C853] font-display text-[16px] font-extrabold text-[#00C853] shadow-[0_10px_28px_-12px_rgba(0, 200, 83, 0.9)]"
                     >
                       <Share2 size={19} /> Compartilhar no WhatsApp
                     </button>
@@ -813,7 +813,7 @@ export default function FreteApp() {
               <button
                 type="button"
                 onClick={() => compartilhar(aberto)}
-                className="mt-4 flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-[#25d366] font-display text-[16px] font-extrabold text-[#062b14]"
+                className="mt-4 flex h-[50px] w-full items-center justify-center gap-2 rounded-full bg-[#00C853] font-display text-[16px] font-extrabold text-[#00C853]"
               >
                 <Share2 size={19} /> Compartilhar no WhatsApp
               </button>

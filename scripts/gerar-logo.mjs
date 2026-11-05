@@ -33,8 +33,8 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-/** Mesmo cobalto do fundo do app (usado no fundo dos ícones gerados). */
-export const FUNDO_APP = "#010a38";
+/** Fundo Dark Navy do app (usado no fundo dos ícones gerados). */
+export const FUNDO_APP = "#000D16";
 
 /* ------------------------------------------------------ 1. tirar o fundo */
 

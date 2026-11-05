@@ -33,7 +33,7 @@ export default function NavInferior({
   return (
     <nav
       aria-label="Navegação principal"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[#222fb3]/60 bg-[#02042b]/95 backdrop-blur-lg"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-[#183341]/60 bg-[#071A28]/95 backdrop-blur-lg"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="largura-aparelho grid grid-cols-3 items-center gap-2 px-3 py-1.5">
@@ -63,7 +63,7 @@ export default function NavInferior({
                 {id === "sobre" && Boolean(totalMotoristas) && (
                   <span
                     aria-hidden
-                    className="tabular absolute -top-1.5 left-[14px] grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-[#02042b] bg-[#5376f4] px-1 font-display text-[10px] leading-none font-extrabold text-white"
+                    className="tabular absolute -top-1.5 left-[14px] grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-[#183341] bg-[#00B8BC] px-1 font-display text-[10px] leading-none font-extrabold text-[#000D16]"
                   >
                     {(totalMotoristas ?? 0) > 99 ? "99+" : totalMotoristas}
                   </span>
@@ -74,7 +74,7 @@ export default function NavInferior({
               <span
                 aria-hidden
                 className={`h-[2.5px] w-8 rounded-full transition-colors ${
-                  ativo ? "bg-ouro shadow-[0_0_10px_rgba(245,197,24,0.85)]" : "bg-transparent"
+                  ativo ? "bg-ouro shadow-[0_0_10px_rgba(255, 184, 46, 0.85)]" : "bg-transparent"
                 }`}
               />
             </button>
@@ -89,10 +89,10 @@ export default function NavInferior({
               aria-label={naoLidas ? `Abrir o chat · ${naoLidas} mensagens novas` : "Abrir o chat dos motoristas"}
               className="group flex flex-col items-center justify-center gap-0.5 py-0.5"
             >
-              <span className="relative -mt-5 grid h-[48px] w-[48px] place-items-center rounded-full border-[3px] border-[#02042b] bg-[linear-gradient(135deg,#ffd84d,#e9a400)] text-[#2a1a00] shadow-[0_8px_22px_-8px_rgba(245,197,24,0.9)] transition-transform group-active:scale-95">
+              <span className="relative -mt-5 grid h-[48px] w-[48px] place-items-center rounded-full border-[3px] border-[#071A28] bg-ambar text-[#000D16] shadow-[0_8px_22px_-8px_rgba(255, 184, 46, 0.9)] transition-transform group-active:scale-95">
                 <MessagesSquare size={21} strokeWidth={2.4} />
                 {Boolean(naoLidas) && (
-                  <span aria-hidden className="tabular absolute -top-1 -right-1 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-[#02042b] bg-red-500 px-1 font-display text-[10px] leading-none font-extrabold text-white">
+                  <span aria-hidden className="tabular absolute -top-1 -right-1 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-[#183341] bg-red-500 px-1 font-display text-[10px] leading-none font-extrabold text-white">
                     {(naoLidas ?? 0) > 99 ? "99+" : naoLidas}
                   </span>
                 )}

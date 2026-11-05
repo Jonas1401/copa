@@ -230,7 +230,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
   const nomeCategoria = (chave: string) => categorias.find((c) => c.chave === chave)?.nome ?? chave;
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
+    <section className="mt-4 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/90 p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -238,7 +238,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
         className="flex w-full items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#619bff] uppercase">
+          <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#00B8BC] uppercase">
             <Sticker size={22} /> Figurinhas do chat
           </h2>
           <p className="mt-0.5 text-[12.5px] text-gelo/60">
@@ -252,9 +252,9 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
       </button>
 
       {aberto && (
-        <div className="mt-3 space-y-4 border-t border-[#3342d0]/35 pt-3">
+        <div className="mt-3 space-y-4 border-t border-[#183341]/35 pt-3">
           {/* ---------------------------- publicar figurinha nova */}
-          <div className="rounded-[18px] border border-[#3342d0]/50 bg-[#01093d]/70 p-3.5">
+          <div className="rounded-[18px] border border-[#183341]/50 bg-[#071A28]/70 p-3.5">
             <h3 className="font-display text-[14px] font-extrabold text-white">Nova figurinha</h3>
             <p className="mt-0.5 text-[12px] text-gelo/55">PNG, WebP ou GIF (fundo transparente), até 512 KB. Veja a prévia antes de publicar.</p>
 
@@ -263,7 +263,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                 <button
                   type="button"
                   onClick={() => arquivoInput.current?.click()}
-                  className="grid h-[112px] w-[112px] place-items-center overflow-hidden rounded-[16px] border-[1.5px] border-dashed border-[#5376f4]/60 bg-[#020b50]/70 text-[#8dbaff] transition-colors hover:border-ciano/70"
+                  className="grid h-[112px] w-[112px] place-items-center overflow-hidden rounded-[16px] border-[1.5px] border-dashed border-[#183341]/60 bg-[#071A28]/70 text-[#8FA8AC] transition-colors hover:border-ciano/70"
                 >
                   {arquivo ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -287,7 +287,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                     value={nome}
                     onChange={(e) => setNome(e.target.value.slice(0, 60))}
                     placeholder="Ex.: Caminhão feliz"
-                    className="w-full rounded-[13px] border-[1.5px] border-[#3342d0]/70 bg-[#02042b]/85 px-3 py-2 text-[14px] text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
+                    className="w-full rounded-[13px] border-[1.5px] border-[#183341]/70 bg-[#071A28]/85 px-3 py-2 text-[14px] text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
                   />
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -296,7 +296,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                     <select
                       value={categoria}
                       onChange={(e) => setCategoria(e.target.value)}
-                      className="w-full rounded-[13px] border-[1.5px] border-[#3342d0]/70 bg-[#02042b]/85 px-3 py-2 text-[14px] text-white outline-none focus:border-ciano/70"
+                      className="w-full rounded-[13px] border-[1.5px] border-[#183341]/70 bg-[#071A28]/85 px-3 py-2 text-[14px] text-white outline-none focus:border-ciano/70"
                     >
                       <option value="">Escolha…</option>
                       {categorias.map((c) => <option key={c.chave} value={c.chave}>{c.nome}</option>)}
@@ -309,7 +309,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                       onChange={(e) => setOrdem(e.target.value.replace(/\D/g, "").slice(0, 4))}
                       inputMode="numeric"
                       placeholder="0"
-                      className="w-full rounded-[13px] border-[1.5px] border-[#3342d0]/70 bg-[#02042b]/85 px-3 py-2 text-[14px] text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
+                      className="w-full rounded-[13px] border-[1.5px] border-[#183341]/70 bg-[#071A28]/85 px-3 py-2 text-[14px] text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
                     />
                   </label>
                 </div>
@@ -317,7 +317,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                   type="button"
                   onClick={() => void publicar()}
                   disabled={ocupado !== null}
-                  className="mt-1 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#5376f4] px-5 font-display text-[14px] font-extrabold text-white uppercase shadow-[0_8px_24px_-12px_rgba(83,118,244,.9)] transition-transform hover:scale-[1.01] active:scale-95 disabled:opacity-50"
+                  className="mt-1 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#00B8BC] px-5 font-display text-[14px] font-extrabold text-[#000D16] uppercase shadow-[0_8px_24px_-12px_rgba(0, 184, 188, .9)] transition-transform hover:scale-[1.01] active:scale-95 disabled:opacity-50"
                 >
                   {ocupado === "publicar" ? <LoaderCircle size={17} className="animate-spin" /> : <Plus size={17} />}
                   Publicar figurinha
@@ -327,12 +327,12 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
           </div>
 
           {/* -------------------------------------- categorias/pacotes */}
-          <div className="rounded-[18px] border border-[#3342d0]/50 bg-[#01093d]/70 p-3.5">
+          <div className="rounded-[18px] border border-[#183341]/50 bg-[#071A28]/70 p-3.5">
             <h3 className="font-display text-[14px] font-extrabold text-white">Categorias</h3>
             <p className="mt-0.5 text-[12px] text-gelo/55">Categorias novas viram pacotes no seletor do chat, sem alterar código.</p>
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {categorias.map((c) => (
-                <span key={c.chave} className="inline-flex items-center gap-1.5 rounded-full border border-[#3342d0]/60 bg-[#020b50]/70 px-2.5 py-1.5 text-[12px] font-bold text-gelo/85">
+                <span key={c.chave} className="inline-flex items-center gap-1.5 rounded-full border border-[#183341]/60 bg-[#071A28]/70 px-2.5 py-1.5 text-[12px] font-bold text-gelo/85">
                   {c.nome}
                   <button type="button" onClick={() => void removerCategoria(c.chave, c.nome)} aria-label={`Remover categoria ${c.nome}`} className="text-gelo/45 transition-colors hover:text-red-300">
                     <X size={13} />
@@ -345,7 +345,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                 value={novaCategoria}
                 onChange={(e) => setNovaCategoria(e.target.value.slice(0, 40))}
                 placeholder="Nome da categoria nova"
-                className="min-w-0 flex-1 rounded-[13px] border-[1.5px] border-[#3342d0]/70 bg-[#02042b]/85 px-3 py-2 text-[13.5px] text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
+                className="min-w-0 flex-1 rounded-[13px] border-[1.5px] border-[#183341]/70 bg-[#071A28]/85 px-3 py-2 text-[13.5px] text-white outline-none placeholder:text-gelo/35 focus:border-ciano/70"
               />
               <button
                 type="button"
@@ -369,7 +369,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                 value={filtro}
                 onChange={(e) => setFiltro(e.target.value)}
                 aria-label="Filtrar por categoria"
-                className="rounded-full border border-[#3342d0]/60 bg-[#020b50]/70 px-3 py-1.5 text-[12px] font-bold text-gelo/85 outline-none"
+                className="rounded-full border border-[#183341]/60 bg-[#071A28]/70 px-3 py-1.5 text-[12px] font-bold text-gelo/85 outline-none"
               >
                 <option value="todas">Todas as categorias</option>
                 {categorias.map((c) => <option key={c.chave} value={c.chave}>{c.nome}</option>)}
@@ -377,14 +377,14 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
             </div>
 
             {visiveis.length === 0 ? (
-              <p className="mt-3 rounded-[14px] border border-dashed border-[#3342d0]/50 py-6 text-center text-[12.5px] text-gelo/50">
+              <p className="mt-3 rounded-[14px] border border-dashed border-[#183341]/50 py-6 text-center text-[12.5px] text-gelo/50">
                 Nenhuma figurinha publicada ainda.
               </p>
             ) : (
               <ul className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
                 {visiveis.map((f) => (
-                  <li key={f.id} className={`rounded-[16px] border p-2.5 ${f.ativa ? "border-[#3342d0]/55 bg-[#01093d]/70" : "border-white/10 bg-white/[.03] opacity-70"}`}>
-                    <div className="relative grid aspect-square place-items-center overflow-hidden rounded-[12px] border border-white/10 bg-[radial-gradient(circle_at_50%_35%,rgba(83,118,244,.16),rgba(1,9,61,.9))]">
+                  <li key={f.id} className={`rounded-[16px] border p-2.5 ${f.ativa ? "border-[#183341]/55 bg-[#071A28]/70" : "border-white/10 bg-white/[.03] opacity-70"}`}>
+                    <div className="relative grid aspect-square place-items-center overflow-hidden rounded-[12px] border border-white/10 bg-[radial-gradient(circle_at_50%_35%,rgba(0, 184, 188, .16),rgba(7, 26, 40, .9))]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={f.imagemUrl} alt="" className="h-full w-full object-contain p-2" />
                       {!f.ativa && (
@@ -425,7 +425,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
                         value={f.categoria}
                         onChange={(e) => void atualizar(f, { categoria: e.target.value })}
                         disabled={ocupado !== null}
-                        className="w-full rounded-[10px] border border-white/10 bg-[#02042b]/85 px-2 py-1.5 text-[11px] font-bold text-gelo/85 outline-none disabled:opacity-45"
+                        className="w-full rounded-[10px] border border-white/10 bg-[#071A28]/85 px-2 py-1.5 text-[11px] font-bold text-gelo/85 outline-none disabled:opacity-45"
                       >
                         {categorias.map((c) => <option key={c.chave} value={c.chave}>{c.nome}</option>)}
                       </select>
@@ -441,7 +441,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
       {/* confirmação de exclusão */}
       {remover && (
         <div role="alertdialog" aria-modal="true" aria-label="Excluir figurinha" className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-[420px] rounded-[22px] border border-red-500/50 bg-[linear-gradient(180deg,#1a1030,#0d0a22)] p-5">
+          <div className="w-full max-w-[420px] rounded-[22px] border border-red-500/50 bg-[#071A28] p-5">
             <div className="flex items-start justify-between gap-3">
               <span className="grid h-11 w-11 place-items-center rounded-full bg-red-500/15 text-red-400"><Trash2 size={22} /></span>
               <button type="button" onClick={() => setRemover(null)} aria-label="Fechar" className="text-gelo/60 hover:text-white"><X size={20} /></button>
@@ -451,7 +451,7 @@ export default function CartaoFigurinhasAdmin({ api, onSessaoExpirada }: {
               Ela some do seletor de todos os motoristas. As mensagens já enviadas continuam no chat — cada mensagem guarda a própria cópia.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2.5">
-              <button type="button" onClick={() => setRemover(null)} className="rounded-full border-[1.5px] border-[#3342d0]/70 py-2.5 font-display text-[14px] font-bold text-white uppercase hover:bg-white/5">Cancelar</button>
+              <button type="button" onClick={() => setRemover(null)} className="rounded-full border-[1.5px] border-[#183341]/70 py-2.5 font-display text-[14px] font-bold text-white uppercase hover:bg-white/5">Cancelar</button>
               <button type="button" onClick={() => void confirmarRemocao()} disabled={ocupado !== null} className="rounded-full bg-red-500 py-2.5 font-display text-[14px] font-extrabold text-white uppercase hover:bg-red-600 disabled:opacity-50">
                 {ocupado === `del-${remover.id}` ? <LoaderCircle size={16} className="mx-auto animate-spin" /> : "Excluir"}
               </button>

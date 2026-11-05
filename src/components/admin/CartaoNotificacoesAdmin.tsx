@@ -155,7 +155,7 @@ export default function CartaoNotificacoesAdmin() {
   }
 
   return (
-    <section className="mt-4 rounded-[22px] border border-[#3342d0]/60 bg-[#02063d]/90 p-4">
+    <section className="mt-4 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/90 p-4">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -181,7 +181,7 @@ export default function CartaoNotificacoesAdmin() {
       </button>
 
       {aberto && (
-        <div className="mt-3 border-t border-[#3342d0]/35 pt-3">
+        <div className="mt-3 border-t border-[#183341]/35 pt-3">
           <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
@@ -204,7 +204,7 @@ export default function CartaoNotificacoesAdmin() {
 
           {msg && (
             <p
-              className={`mt-3 flex gap-2 rounded-2xl border border-gelo/12 bg-black/30 px-4 py-3 text-[14px] leading-relaxed ${msgErro ? "text-[#ff9c9c]" : "text-ciano"}`}
+              className={`mt-3 flex gap-2 rounded-2xl border border-gelo/12 bg-black/30 px-4 py-3 text-[14px] leading-relaxed ${msgErro ? "text-[#FFB82E]" : "text-ciano"}`}
             >
               {msgErro && <TriangleAlert size={16} className="mt-0.5 shrink-0" />}
               <span>{msg}</span>

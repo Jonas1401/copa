@@ -47,7 +47,7 @@ export default function BoasVindas({
   }
 
   const campo =
-    "w-full appearance-none rounded-full border-[1.5px] border-[#3342d0]/80 bg-[#02042b]/85 px-4 py-3 font-display text-[16px] font-bold text-white outline-none transition-colors placeholder:font-medium placeholder:text-gelo/40 focus:border-ciano/80";
+    "w-full appearance-none rounded-full border-[1.5px] border-[#183341]/80 bg-[#071A28]/85 px-4 py-3 font-display text-[16px] font-bold text-white outline-none transition-colors placeholder:font-medium placeholder:text-gelo/40 focus:border-ciano/80";
 
   return (
     <div className="fundo-app fixed inset-0 z-[80] overflow-y-auto bg-fundo">
@@ -93,10 +93,10 @@ export default function BoasVindas({
         </section>
 
         {/* ponto (opcional) */}
-        <section className="mt-3 rounded-[24px] border-[1.5px] border-violeta/45 bg-[linear-gradient(180deg,rgba(40,22,86,0.88),rgba(22,14,56,0.92))] p-4">
+        <section className="mt-3 rounded-[24px] border-[1.5px] border-violeta/45 bg-[#071A28] p-4">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2 font-display text-[15px] font-extrabold tracking-[0.04em] text-violeta uppercase">
-              <MapPin size={19} className="fill-violeta text-[#1c1240]" /> Seu ponto
+              <MapPin size={19} className="fill-violeta text-[#071A28]" /> Seu ponto
             </span>
             <span className="rounded-full border border-gelo/20 px-2.5 py-0.5 text-[12px] font-semibold text-gelo/75">
               opcional

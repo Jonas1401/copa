@@ -25,7 +25,7 @@ export default async function Home() {
 function AguardandoBanco() {
   return (
     <main className="fundo-app flex min-h-screen items-center justify-center bg-fundo px-4">
-      <div className="largura-aparelho rounded-[28px] border border-[#3342d0]/60 bg-[#030849]/90 p-7 text-center">
+      <div className="largura-aparelho rounded-[28px] border border-[#183341]/60 bg-[#071A28]/90 p-7 text-center">
         <img
           src={LOGO.src}
           alt="CopaLinks"
@@ -40,7 +40,7 @@ function AguardandoBanco() {
           O aplicativo está publicado. Falta apenas conectar o banco de dados
           PostgreSQL neste projeto da Vercel.
         </p>
-        <ol className="mt-4 space-y-2 rounded-[16px] border border-[#3342d0]/50 bg-[#02042b]/70 p-4 text-left text-[14px] text-gelo/85">
+        <ol className="mt-4 space-y-2 rounded-[16px] border border-[#183341]/50 bg-[#071A28]/70 p-4 text-left text-[14px] text-gelo/85">
           <li>
             1. Na Vercel, abra este projeto e vá em{" "}
             <b className="text-white">Storage → Create → Postgres</b>.
@@ -56,7 +56,7 @@ function AguardandoBanco() {
         </p>
         <Link
           href="/"
-          className="mt-5 inline-flex min-h-[48px] items-center justify-center rounded-full bg-[linear-gradient(180deg,#ffd84d,#e9a400)] px-6 font-display text-[15px] font-extrabold text-[#2a1a00]"
+          className="mt-5 inline-flex min-h-[48px] items-center justify-center rounded-full bg-ambar px-6 font-display text-[15px] font-extrabold text-[#000D16]"
         >
           Já conectei — atualizar
         </Link>

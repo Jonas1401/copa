@@ -31,15 +31,16 @@ const SEM_BARRA = URL_APP.replace(/^https?:\/\//, "");
 
 /* ------------------------------------------------------------- cores */
 
+// Tema Dark Navy (FertNavios): fundo sólido, sem o degradê cobalto antigo.
 const COBALTO = {
-  brilho: "#0319ba",
-  meio: "#021285",
-  borda: "#010e5a",
-  base: "#010a38",
-  ouro: "#f5c518",
-  gelo: "#e6edff",
-  aco: "#a9b6d9",
-  ciano: "#8ce7ed",
+  brilho: "#000D16",
+  meio: "#000D16",
+  borda: "#000D16",
+  base: "#000D16",
+  ouro: "#FFB82E",
+  gelo: "#EAF4F7",
+  aco: "#8FA8AC",
+  ciano: "#00B8BC",
 };
 
 /* ------------------------------------------------------------- helpers */
@@ -65,19 +66,19 @@ async function medir(texto, { fontFamily, fontSize, fontWeight = 400 }) {
   return width;
 }
 
-/** Fundo cobalto (o mesmo degradê do app) como SVG. */
+/** Fundo Dark Navy sólido (o mesmo do app) como SVG. */
 function fundoSvg(largura, altura) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${largura}" height="${altura}">
   <defs>
     <radialGradient id="brilho" cx="50%" cy="38%" r="78%">
       <stop offset="0%" stop-color="${COBALTO.brilho}"/>
-      <stop offset="26%" stop-color="#0216a5"/>
+      <stop offset="26%" stop-color="#000D16"/>
       <stop offset="48%" stop-color="${COBALTO.meio}"/>
       <stop offset="70%" stop-color="${COBALTO.borda}"/>
       <stop offset="100%" stop-color="${COBALTO.base}"/>
     </radialGradient>
     <linearGradient id="rodape" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#01062e" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#000D16" stop-opacity="0"/>
       <stop offset="100%" stop-color="#01062e" stop-opacity="0.55"/>
     </linearGradient>
   </defs>
@@ -123,7 +124,7 @@ async function gerarStatus() {
   <defs>
     <radialGradient id="brilho" cx="50%" cy="34%" r="80%">
       <stop offset="0%" stop-color="${COBALTO.brilho}"/>
-      <stop offset="26%" stop-color="#0216a5"/>
+      <stop offset="26%" stop-color="#000D16"/>
       <stop offset="48%" stop-color="${COBALTO.meio}"/>
       <stop offset="72%" stop-color="${COBALTO.borda}"/>
       <stop offset="100%" stop-color="${COBALTO.base}"/>
