@@ -1,24 +1,79 @@
 import Link from "next/link";
 import MonitorApp from "@/components/MonitorApp";
-import { garantirSemente, montarEstado } from "@/lib/estado";
+import { temBancoConfigurado } from "@/db";
+import {
+  estadoInicialOffline,
+  garantirSemente,
+  montarEstado,
+  type EstadoDTO,
+} from "@/lib/estado";
 import { motoristaDaSessao } from "@/lib/motorista-sessao";
 import { LOGO } from "@/lib/logo";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  let inicial;
+/**
+ * Teto da leitura inicial no servidor (bem abaixo do limite de 10 s da Vercel
+ * Hobby): mesmo se o banco demorar a acordar, o link do app abre na hora e o
+ * navegador sincroniza os dados pelo ciclo de 5 s de /api/estado.
+ */
+const PRAZO_ABERTURA_MS = 3_500;
+
+function erroEsquemaAusente(erro: unknown): boolean {
+  const codigo =
+    typeof erro === "object" && erro !== null && "code" in erro
+      ? String((erro as { code?: unknown }).code)
+      : "";
+  const msg = erro instanceof Error ? erro.message : String(erro);
+  const causa =
+    erro instanceof Error && erro.cause instanceof Error ? erro.cause.message : "";
+  return (
+    codigo === "42P01" ||
+    codigo === "42703" ||
+    /does not exist|não existe/i.test(`${msg} ${causa}`)
+  );
+}
+
+async function carregarEstadoInicial(): Promise<EstadoDTO> {
   try {
+    const motorista = await motoristaDaSessao();
+    return await montarEstado(motorista?.id ?? null);
+  } catch (erro) {
+    if (!erroEsquemaAusente(erro)) throw erro;
+    // Primeiro acesso de um banco recém-criado: prepara as tabelas e semeia.
     await garantirSemente();
     const motorista = await motoristaDaSessao();
-    inicial = await montarEstado(motorista?.id ?? null);
-  } catch {
-    // Banco ainda não conectado neste ambiente (ex.: deploy novo na Vercel
-    // antes de criar o Postgres). Mostra uma tela de espera amigável.
+    return await montarEstado(motorista?.id ?? null);
+  }
+}
+
+function comPrazo<T>(tarefa: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const limite = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+    timer.unref?.();
+  });
+  return Promise.race([tarefa, limite]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+export default async function Home() {
+  if (!temBancoConfigurado) {
+    // Banco ainda não configurado nas variáveis do ambiente: mostra o passo a passo.
     return <AguardandoBanco />;
   }
-  // Sem rede e sem escrita aqui: a página pinta na hora. A varredura do site
-  // roda no ciclo de 5s do cliente (e no cadastro de cada ponto).
+
+  let inicial: EstadoDTO;
+  try {
+    const lido = await comPrazo(carregarEstadoInicial(), PRAZO_ABERTURA_MS);
+    inicial = lido ?? estadoInicialOffline();
+  } catch (erro) {
+    console.error("[home] abertura em contingência após falha temporária do banco:", erro);
+    inicial = estadoInicialOffline();
+  }
+  // Sem rede externa aqui: a página pinta na hora. A varredura do site roda
+  // no ciclo de 5s do cliente (e no cadastro de cada ponto).
   return <MonitorApp inicial={inicial} />;
 }
 
