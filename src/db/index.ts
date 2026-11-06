@@ -24,6 +24,88 @@ export const CONNECTION_TIMEOUT_MS = 3_500;
 /** Prazo de leitura de cada consulta: impede socket congelado de travar o pool. */
 export const QUERY_TIMEOUT_MS = 6_000;
 
+/**
+ * Quantas vezes uma conexão que nem chegou a ser aberta é tentada de novo.
+ *
+ * O pooler do Supabase (Supavisor) recusa conexões por alguns instantes em
+ * situações do próprio provedor: `PAM authentication failed for user "postgres"`
+ * (28P01/28000) e `Authentication credentials are invalid. Please reconnect
+ * with fresh credentials to restore pool functionality.` (o tenant fica em
+ * `waiting_for_secrets` depois de um restart). Nos dois casos a senha está
+ * certa e a conexão seguinte costuma autenticar — o erro só chega cedo, antes
+ * de qualquer consulta rodar. Sem esta nova tentativa, cada oscilação dessas
+ * derrubava a rota (500 sem corpo) e o app caía para OFFLINE.
+ */
+export const TENTATIVAS_CONEXAO = 4;
+/**
+ * Espera entre as tentativas (cresce a cada rodada; base do backoff + jitter).
+ * A soma fica em torno de 2 s: suficiente para atravessar o pisca-pisca do
+ * pooler e curto o bastante para não estourar o limite de 10 s da função.
+ */
+export const ESPERA_ENTRE_TENTATIVAS_MS = 300;
+/**
+ * Teto de tempo das novas tentativas. A função serverless da Vercel Hobby tem
+ * 10 s: nunca vale a pena gastar mais que isto para abrir uma conexão — é
+ * melhor devolver o erro e a próxima batida do app (5 s) tentar de novo.
+ */
+export const PRAZO_RETENTATIVA_MS = 7_000;
+
+/** Códigos/mensagens de falha que acontecem ANTES de a consulta ser enviada. */
+const CODIGOS_TRANSITORIOS = new Set([
+  "28P01", // invalid_password (senha/pooler)
+  "28000", // invalid_authorization_specification (PAM do Supabase)
+  "53300", // too many connections
+  "57P03", // cannot_connect_now (banco acordando)
+  "08000", // connection_exception
+  "08001", // sqlclient_unable_to_establish_sqlconnection
+  "08003", // connection_does_not_exist
+  "08004", // sqlserver_rejected_establishment_of_sqlconnection
+  "08006", // connection_failure
+  "08007", // transaction_resolution_unknown
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EPIPE",
+]);
+
+const MENSAGENS_TRANSITORIAS = [
+  "timeout exceeded when trying to connect",
+  "connection terminated",
+  "connection timeout",
+  "authentication credentials are invalid",
+  "pam authentication failed",
+  "password authentication failed",
+  "server closed the connection unexpectedly",
+  "cannot connect now",
+  "too many connections",
+  "getaddrinfo",
+];
+
+/**
+ * Falha de conexão/autenticação: a consulta não chegou ao banco, então repetir
+ * é seguro (nada foi gravado) e é o que salva o app nas oscilações do pooler.
+ */
+export function erroTransitorioDeConexao(erro: unknown): boolean {
+  if (!erro || typeof erro !== "object") return false;
+  const e = erro as { code?: unknown; message?: unknown; cause?: unknown };
+  const codigo = typeof e.code === "string" ? e.code.toUpperCase() : "";
+  if (CODIGOS_TRANSITORIOS.has(codigo)) return true;
+  if (e.cause && e.cause !== erro && erroTransitorioDeConexao(e.cause)) return true;
+  const texto = (typeof e.message === "string" ? e.message : String(erro)).toLowerCase();
+  return MENSAGENS_TRANSITORIAS.some((m) => texto.includes(m));
+}
+
+const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Backoff com jitter: evita que várias funções acordem e batam juntas. */
+function esperaDaTentativa(tentativa: number): number {
+  const base = ESPERA_ENTRE_TENTATIVAS_MS * tentativa * tentativa;
+  return base + Math.floor(Math.random() * ESPERA_ENTRE_TENTATIVAS_MS);
+}
+
 type ClienteRastreado = PoolClient & {
   __idleSince?: number;
   connection?: {
@@ -107,7 +189,9 @@ function criarPool(): Pool {
     ssl: isLocal ? undefined : { rejectUnauthorized: false },
     connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
     query_timeout: QUERY_TIMEOUT_MS,
-    max: usaPooler ? 3 : 5,
+    // Com pooler, cada vaga precisa de folga para a nova tentativa de conexão
+    // acontecer sem esperar (o app aberto faz várias consultas ao mesmo tempo).
+    max: usaPooler ? 4 : 5,
     idleTimeoutMillis: IDLE_TIMEOUT_MS,
     maxLifetimeSeconds: 45,
     allowExitOnIdle: true,
@@ -137,11 +221,54 @@ function criarPool(): Pool {
     const connectOriginal = instancia.connect.bind(instancia);
     instancia.connect = ((...args: Parameters<Pool["connect"]>) => {
       descartarConexoesOciosasVencidas(instancia);
-      return connectOriginal(...args);
+      const ultimo = args[args.length - 1];
+      if (typeof ultimo === "function") {
+        const callback = ultimo as (
+          erro: Error | undefined,
+          cliente?: PoolClient,
+          liberar?: () => void,
+        ) => void;
+        conectarComNovaTentativa(instancia, connectOriginal).then(
+          (cliente) => callback(undefined, cliente, () => cliente.release()),
+          (erro: unknown) => callback(erro instanceof Error ? erro : new Error(String(erro))),
+        );
+        return undefined as unknown as Promise<PoolClient>;
+      }
+      return conectarComNovaTentativa(instancia, connectOriginal) as unknown as ReturnType<
+        Pool["connect"]
+      >;
     }) as Pool["connect"];
   }
 
   return instancia;
+}
+
+/**
+ * Abre uma conexão repetindo SÓ quando a falha aconteceu antes da consulta
+ * sair (o pooler recusou/derrubou o handshake). Assim nenhuma escrita roda
+ * duas vezes. Cada nova tentativa recebe uma vaga nova no pool: o cliente que
+ * falhou já foi descartado pelo pg-pool.
+ */
+async function conectarComNovaTentativa(
+  instancia: PoolInterno,
+  connectOriginal: Pool["connect"],
+): Promise<PoolClient> {
+  const inicio = Date.now();
+  let ultimoErro: unknown;
+  for (let tentativa = 1; tentativa <= TENTATIVAS_CONEXAO; tentativa += 1) {
+    try {
+      return (await connectOriginal()) as PoolClient;
+    } catch (erro) {
+      ultimoErro = erro;
+      if (tentativa >= TENTATIVAS_CONEXAO || !erroTransitorioDeConexao(erro)) break;
+      const espera = esperaDaTentativa(tentativa);
+      if (Date.now() - inicio + espera >= PRAZO_RETENTATIVA_MS) break;
+      // Descarta o que sobrou de conexão ruim antes de tentar de novo.
+      descartarConexoesOciosasVencidas(instancia);
+      await esperar(espera);
+    }
+  }
+  throw ultimoErro;
 }
 
 const urlAtual = databaseUrl ?? "";
@@ -153,3 +280,34 @@ if (!globalForDb.__arenaNextJsPostgresqlPool || globalForDb.__arenaNextJsPostgre
 export const pool = globalForDb.__arenaNextJsPostgresqlPool;
 
 export const db = drizzle(pool);
+
+/**
+ * Consulta do Drizzle com nova tentativa em falha de conexão.
+ *
+ * O `db` (drizzle) usa `pool.query`, que obtém a conexão por dentro — o caminho
+ * onde o pooler do Supabase recusa o handshake. Este helper repete a MESMA
+ * leitura quando a falha é só de conexão/autenticação, sem risco de duplicar
+ * escrita (se a consulta não chegou ao banco, nada foi gravado).
+ */
+export async function comBanco<T>(
+  tarefa: () => Promise<T>,
+  tentativas = TENTATIVAS_CONEXAO,
+): Promise<T> {
+  const inicio = Date.now();
+  let ultimoErro: unknown;
+  for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
+    try {
+      return await tarefa();
+    } catch (erro) {
+      ultimoErro = erro;
+      if (tentativa >= tentativas || !erroTransitorioDeConexao(erro)) break;
+      const espera = esperaDaTentativa(tentativa);
+      if (Date.now() - inicio + espera >= PRAZO_RETENTATIVA_MS) break;
+      // Uma conexão que acabou de ser recusada pode estar presa no pool: limpa
+      // as ociosas e deixa a próxima tentativa abrir um socket novo.
+      descartarConexoesOciosasVencidas(pool);
+      await esperar(espera);
+    }
+  }
+  throw ultimoErro;
+}

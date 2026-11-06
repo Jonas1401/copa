@@ -8,9 +8,15 @@ export const dynamic = "force-dynamic";
  * do servidor — este endpoint não a conhece.
  */
 export async function GET() {
-  return NextResponse.json({
-    publicKey: await chavePublica(),
-    vapid: await vapidConfigurado(),
-    assinaturas: await totalAssinaturas(),
-  });
+  // As chaves VAPID são o que permite o aviso chegar no celular. Se o banco
+  // oscilar na hora do cadastro, devolve as chaves que estiverem no ambiente e
+  // NUNCA um 500 — o app precisa poder se inscrever mesmo com o banco instável.
+  const envPub = process.env.VAPID_PUBLIC_KEY?.trim();
+  const envPriv = process.env.VAPID_PRIVATE_KEY?.trim();
+  const [publicKey, vapid, assinaturas] = await Promise.all([
+    chavePublica().catch(() => envPub ?? ""),
+    vapidConfigurado().catch(() => Boolean(envPub && envPriv)),
+    totalAssinaturas().catch(() => null),
+  ]);
+  return NextResponse.json({ publicKey, vapid, assinaturas });
 }
