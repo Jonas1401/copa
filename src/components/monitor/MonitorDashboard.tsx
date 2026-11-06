@@ -20,7 +20,8 @@ const TOKEN_ADMIN = "copalinks-admin-sessao";
 
 function cabecalho(): Record<string, string> {
   try {
-    const t = localStorage.getItem(TOKEN_ADMIN) || sessionStorage.getItem(TOKEN_ADMIN);
+    localStorage.removeItem(TOKEN_ADMIN); // apaga token permanente de versões antigas
+    const t = sessionStorage.getItem(TOKEN_ADMIN);
     return t ? { authorization: `Bearer ${t}` } : {};
   } catch { return {}; }
 }
