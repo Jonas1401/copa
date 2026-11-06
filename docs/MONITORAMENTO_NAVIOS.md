@@ -80,7 +80,8 @@ Cron autenticado (a cada minuto)
 | `src/lib/chat-politica.ts` | Filtro do histórico e contador |
 | `src/lib/chat-push.ts`, `src/lib/push.ts` | Política de agentes e recibos por aparelho |
 | `src/app/api/cron/route.ts` | Execução no backend, inclusive com app fechado |
-| `supabase/migrations/20261008_navios_composio.sql` | Migração para aplicação manual, se necessária |
+| `supabase/migrations/20261008_navios_composio.sql` | Migração para aplicação manual, se necessária (incluída no SQL completo de 06/11) |
+| `supabase/migrations/20261106_atualizacao_completa.sql` | Atualização única e idempotente de TODO o esquema — ver `supabase/ATUALIZAR.md` |
 
 A função `verificarNaviosFertilizantes` permanece como ponto de entrada compatível, mas delega ao novo monitor. Utilitários antigos da APPA ficam para compatibilidade de consultas, não para o envio de avisos.
 
