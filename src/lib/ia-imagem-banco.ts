@@ -11,13 +11,20 @@ import { iaMensagens } from "@/db/schema";
 let colunaPronta: Promise<void> | null = null;
 
 export function garantirColunaImagem(): Promise<void> {
-  colunaPronta ??= db
-    .execute(sql`ALTER TABLE ia_mensagens ADD COLUMN IF NOT EXISTS imagem_dados TEXT`)
-    .then(() => undefined)
-    .catch((e) => {
-      colunaPronta = null;
-      throw e;
-    });
+  colunaPronta ??= (async () => {
+    const r = await db.execute<{ pronto: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = to_regclass('ia_mensagens')
+          AND attname = 'imagem_dados' AND NOT attisdropped
+      ) AS pronto
+    `);
+    if (r.rows[0]?.pronto) return;
+    await db.execute(sql`ALTER TABLE ia_mensagens ADD COLUMN IF NOT EXISTS imagem_dados TEXT`);
+  })().catch((e) => {
+    colunaPronta = null;
+    throw e;
+  });
   return colunaPronta;
 }
 

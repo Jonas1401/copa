@@ -8,7 +8,23 @@ let schemaPromise: Promise<void> | null = null;
 export async function garantirSchemaEsim() {
   await garantirTabelas();
   if (!schemaPromise) {
-    schemaPromise = db.execute(sql`
+    schemaPromise = (async () => {
+      const r = await db.execute<{ pronto: boolean }>(sql`
+        SELECT (
+          to_regclass('esim_users') IS NOT NULL
+          AND to_regclass('esim_plans') IS NOT NULL
+          AND to_regclass('esim_orders') IS NOT NULL
+          AND to_regclass('esim_payments') IS NOT NULL
+          AND to_regclass('esims') IS NOT NULL
+          AND to_regclass('esim_usage') IS NOT NULL
+          AND to_regclass('esim_topups') IS NOT NULL
+          AND to_regclass('esim_webhook_events') IS NOT NULL
+          AND to_regclass('esim_api_errors') IS NOT NULL
+          AND to_regclass('esim_settings') IS NOT NULL
+        ) AS pronto
+      `);
+      if (r.rows[0]?.pronto) return;
+      await db.execute(sql`
       CREATE TABLE IF NOT EXISTS esim_users (
         id SERIAL PRIMARY KEY,
         motorista_id INTEGER UNIQUE REFERENCES motoristas(id) ON DELETE SET NULL,
@@ -172,7 +188,8 @@ export async function garantirSchemaEsim() {
       ALTER TABLE esim_webhook_events ENABLE ROW LEVEL SECURITY;
       ALTER TABLE esim_api_errors ENABLE ROW LEVEL SECURITY;
       ALTER TABLE esim_settings ENABLE ROW LEVEL SECURITY;
-    `).then(() => undefined).catch((error) => {
+    `);
+    })().catch((error) => {
       schemaPromise = null;
       throw error;
     });

@@ -11,9 +11,26 @@ const cab = { "Cache-Control": "no-store" };
 
 /** Consulta a identidade deste aparelho, sem aceitar ID fornecido pelo cliente. */
 export async function GET() {
-  await garantirTabelas();
-  const m = await motoristaDaSessao();
-  return m ? NextResponse.json(paraMotorista(m), { headers: cab }) : naoAutorizadoMotorista();
+  try {
+    const m = await motoristaDaSessao();
+    return m ? NextResponse.json(paraMotorista(m), { headers: cab }) : naoAutorizadoMotorista();
+  } catch (erro) {
+    const msg = erro instanceof Error ? erro.message : String(erro);
+    const causa = erro instanceof Error && erro.cause instanceof Error ? erro.cause.message : "";
+    if (/does not exist|não existe/i.test(`${msg} ${causa}`)) {
+      try {
+        await garantirTabelas();
+        const m = await motoristaDaSessao();
+        return m ? NextResponse.json(paraMotorista(m), { headers: cab }) : naoAutorizadoMotorista();
+      } catch {
+        // cai no retorno temporário abaixo
+      }
+    }
+    return NextResponse.json(
+      { erro: "Servidor reconectando. Tente novamente em instantes." },
+      { status: 503, headers: cab },
+    );
+  }
 }
 
 /**

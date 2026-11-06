@@ -5,7 +5,16 @@ import { db } from "@/db";
 let pronta: Promise<void> | null = null;
 export async function garantirTabelasNavios() {
   if (!pronta) {
-    pronta = db.execute(sql.raw(`-- Monitor de navios em segundo plano. Migração aditiva, sem alterar o visual.
+    pronta = (async () => {
+      const r = await db.execute<{ pronto: boolean }>(sql`
+        SELECT (
+          to_regclass('navios_monitor_fontes') IS NOT NULL
+          AND to_regclass('navios_monitor_eventos') IS NOT NULL
+          AND to_regclass('push_entregas') IS NOT NULL
+        ) AS pronto
+      `);
+      if (r.rows[0]?.pronto) return;
+      await db.execute(sql.raw(`-- Monitor de navios em segundo plano. Migração aditiva, sem alterar o visual.
 -- Execute depois das tabelas base do CopaLinks (configuracao, subscriptions).
 -- O servidor também aplica este DDL idempotente na primeira execução.
 CREATE TABLE IF NOT EXISTS navios_monitor_fontes (
@@ -52,7 +61,8 @@ CREATE INDEX IF NOT EXISTS push_entregas_criado_em_idx ON push_entregas (criado_
 ALTER TABLE navios_monitor_fontes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE navios_monitor_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_entregas ENABLE ROW LEVEL SECURITY;
-`)).then(() => undefined).catch((e) => {
+`));
+    })().catch((e) => {
       pronta = null; // Falha não é confundida com migração aplicada.
       throw e;
     });

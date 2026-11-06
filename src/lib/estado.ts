@@ -727,6 +727,39 @@ export async function getEstado(motoristaId: number | null, forcar = false): Pro
   return montarEstado(motoristaId);
 }
 
+/**
+ * Estado vazio imediato (sem banco nem rede): permite abrir a página inicial
+ * mesmo se o banco oscilar na abertura; o navegador sincroniza em seguida
+ * pelo ciclo normal de /api/estado.
+ */
+export function estadoInicialOffline(): EstadoDTO {
+  const agoraIso = new Date().toISOString();
+  const base = baseFila();
+  const fila = TIPOS.flatMap((tipo) =>
+    LIVROS.map((livro) => ({
+      ...base[chave(tipo, livro)],
+      naFila: 0,
+      ultimo: 0,
+      codigos: [],
+      vermelhos: [],
+      historico: [],
+    })),
+  );
+  return {
+    atualizadoEm: agoraIso,
+    temLeitura: false,
+    servidorAgora: agoraIso,
+    origem: "offline",
+    online: false,
+    fila,
+    pontos: [],
+    eventos: [],
+    totalLeituras: 0,
+    site: linksDoSite(),
+    tabelas: 0,
+  };
+}
+
 /** Sem ponto cadastrado não há varredura: o monitor fica em repouso. */
 export async function temPontoCadastrado() {
   const [{ count }] = await db
@@ -735,10 +768,85 @@ export async function temPontoCadastrado() {
   return (count ?? 0) > 0;
 }
 
-let tabelasGarantidas = false;
+const globalTabelas = globalThis as typeof globalThis & {
+  __copalinksTabelasProntas?: boolean;
+  __copalinksTabelasPromessa?: Promise<void> | null;
+};
+
+/**
+ * Consulta leve somente-leitura nos catálogos do PostgreSQL: não adquire
+ * bloqueios exclusivos (DDL) nas tabelas quando o esquema já existe.
+ */
+async function esquemaBasePronto(): Promise<boolean> {
+  const r = await db.execute<{ pronto: boolean }>(sql`
+    SELECT (
+      to_regclass('pontos') IS NOT NULL
+      AND to_regclass('motoristas') IS NOT NULL
+      AND to_regclass('motorista_sessoes') IS NOT NULL
+      AND to_regclass('amostras') IS NOT NULL
+      AND to_regclass('eventos') IS NOT NULL
+      AND to_regclass('subscriptions') IS NOT NULL
+      AND to_regclass('configuracao') IS NOT NULL
+      AND to_regclass('notificacoes') IS NOT NULL
+      AND to_regclass('admins') IS NOT NULL
+      AND to_regclass('admin_sessoes') IS NOT NULL
+      AND to_regclass('segredos') IS NOT NULL
+      AND to_regclass('integracoes_status') IS NOT NULL
+      AND to_regclass('auditoria') IS NOT NULL
+      AND to_regclass('chat_mensagens') IS NOT NULL
+      AND to_regclass('testes_push') IS NOT NULL
+      AND to_regclass('ia_mensagens') IS NOT NULL
+      AND to_regclass('monitor_codes') IS NOT NULL
+      AND to_regclass('monitor_pair_codes') IS NOT NULL
+      AND to_regclass('monitor_devices') IS NOT NULL
+      AND to_regclass('monitor_messages') IS NOT NULL
+      AND to_regclass('monitor_deliveries') IS NOT NULL
+      AND to_regclass('banners_motorista') IS NOT NULL
+      AND to_regclass('banner_fontes') IS NOT NULL
+      AND to_regclass('regras_envios') IS NOT NULL
+      AND to_regclass('navios_avisos') IS NOT NULL
+      AND to_regclass('clima_mudancas') IS NOT NULL
+      AND to_regclass('alertas_motorista') IS NOT NULL
+      AND to_regclass('chat_silenciados') IS NOT NULL
+      AND to_regclass('chat_reacoes') IS NOT NULL
+      AND to_regclass('figurinha_categorias') IS NOT NULL
+      AND to_regclass('figurinhas_catalogo') IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = to_regclass('motoristas')
+          AND attname = 'ultimo_acesso_em' AND NOT attisdropped
+      )
+      AND EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = to_regclass('chat_mensagens')
+          AND attname = 'duracao_segundos' AND NOT attisdropped
+      )
+      AND EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = to_regclass('pontos')
+          AND conname = 'ponto_unico_motorista'
+      )
+    ) AS pronto
+  `);
+  return Boolean(r.rows[0]?.pronto);
+}
 
 export async function garantirTabelas() {
-  if (tabelasGarantidas) return;
+  if (globalTabelas.__copalinksTabelasProntas) return;
+  if (!globalTabelas.__copalinksTabelasPromessa) {
+    globalTabelas.__copalinksTabelasPromessa = executarGarantirTabelas()
+      .then(() => {
+        globalTabelas.__copalinksTabelasProntas = true;
+      })
+      .finally(() => {
+        globalTabelas.__copalinksTabelasPromessa = null;
+      });
+  }
+  await globalTabelas.__copalinksTabelasPromessa;
+}
+
+async function executarGarantirTabelas() {
+  if (await esquemaBasePronto()) return;
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS pontos (
@@ -948,10 +1056,8 @@ export async function garantirTabelas() {
       ALTER TABLE monitor_messages ENABLE ROW LEVEL SECURITY;
       ALTER TABLE monitor_deliveries ENABLE ROW LEVEL SECURITY;
     `);
-    tabelasGarantidas = true;
-  } catch (e) {
-    // Se já existem, segue em frente
-    tabelasGarantidas = true;
+  } catch {
+    // Se já existem ou sem permissão de RLS, segue para os blocos aditivos.
   }
   // Imagem do topo personalizada por motorista (tabelas novas, separadas).
   try {

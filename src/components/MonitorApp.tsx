@@ -814,18 +814,28 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
           guardarMotorista(await r.json());
           // O estado atualiza sozinho no efeito de busca (dispara ao confirmar
           // o perfil): não espera aqui para a abertura sair rápido.
+        } else if (r.status >= 500 && salvo?.id && salvo?.nome) {
+          // Falha temporária do servidor: conserva o perfil local na tela sem
+          // deslogar o motorista nem acusar aparelho incorreto.
+          motoristaRef.current = salvo;
+          setMotorista(salvo);
         } else {
           motoristaRef.current = null;
           setMotorista(null);
-          if (r.status === 403 || salvo?.id) {
+          if (r.status === 403 || (r.status < 500 && salvo?.id)) {
             setErroEntrada("Não foi possível confirmar este perfil neste aparelho. Reabra no aparelho original.");
           }
         }
       } catch {
         if (vivo) {
-          motoristaRef.current = null;
-          setMotorista(null);
-          setErroEntrada("Sem conexão. Confira a internet e tente abrir o app novamente.");
+          if (salvo?.id && salvo?.nome) {
+            motoristaRef.current = salvo;
+            setMotorista(salvo);
+          } else {
+            motoristaRef.current = null;
+            setMotorista(null);
+            setErroEntrada("Sem conexão. Confira a internet e tente abrir o app novamente.");
+          }
         }
       } finally {
         clearTimeout(prazo);
