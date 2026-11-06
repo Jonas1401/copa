@@ -1,5 +1,5 @@
 import { and, desc, eq, ne, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { comBanco, db } from "@/db";
 import { amostras, eventos, pontos } from "@/db/schema";
 import { notificarEvento } from "@/lib/push";
 import { composioConfigurado, lerPaginas } from "@/lib/composio";
@@ -678,12 +678,25 @@ export function paraDTO(p: typeof pontos.$inferSelect): PontoDTO {
  */
 export async function montarEstado(motoristaId: number | null): Promise<EstadoDTO> {
   const dono = Number.isInteger(motoristaId) && (motoristaId as number) > 0 ? (motoristaId as number) : null;
+  // Uma oscilação do banco aqui devolvia 500 e o app ficava OFFLINE com a fila
+  // vazia. O estado vazio é honesto ("sem leitura") e o ciclo de 5 s corrige.
+  try {
+    return await lerEstado(dono);
+  } catch (erro) {
+    console.error("[estado] leitura falhou:", erro instanceof Error ? erro.message : erro);
+    return estadoInicialOffline();
+  }
+}
+
+async function lerEstado(dono: number | null): Promise<EstadoDTO> {
   const [ultimaAmostra, lista, contagens] = await Promise.all([
-    db.select().from(amostras).orderBy(desc(amostras.id)).limit(1),
+    comBanco(() => db.select().from(amostras).orderBy(desc(amostras.id)).limit(1)),
     dono === null
       ? Promise.resolve([] as (typeof pontos.$inferSelect)[])
-      : db.select().from(pontos).where(eq(pontos.motoristaId, dono)).orderBy(pontos.ordem, pontos.id),
-    db.select({ leituras: sql<number>`count(*)::int` }).from(amostras),
+      : comBanco(() =>
+          db.select().from(pontos).where(eq(pontos.motoristaId, dono)).orderBy(pontos.ordem, pontos.id),
+        ),
+    comBanco(() => db.select({ leituras: sql<number>`count(*)::int` }).from(amostras)),
   ]);
 
   const ultima = ultimaAmostra[0];
@@ -762,9 +775,9 @@ export function estadoInicialOffline(): EstadoDTO {
 
 /** Sem ponto cadastrado não há varredura: o monitor fica em repouso. */
 export async function temPontoCadastrado() {
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(pontos);
+  const [{ count }] = await comBanco(() =>
+    db.select({ count: sql<number>`count(*)::int` }).from(pontos),
+  );
   return (count ?? 0) > 0;
 }
 

@@ -1,6 +1,6 @@
 import { after, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
-import { db } from "@/db";
+import { comBanco, db } from "@/db";
 import { motoristas } from "@/db/schema";
 import { garantirTabelas } from "@/lib/estado";
 import { iniciarSessaoMotorista, motoristaDaSessao } from "@/lib/motorista-sessao";
@@ -13,13 +13,25 @@ export const maxDuration = 30;
 
 /** Quantos motoristas usam o CopaLinks (só o número — nenhum nome sai daqui). */
 export async function GET() {
-  const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(motoristas);
-  return NextResponse.json({ total: total ?? 0 }, { headers: { "Cache-Control": "no-store" } });
+  // A contagem é só um número decorativo: se o banco oscilar, responde sem
+  // total (o app simplesmente não mostra o contador) em vez de estourar 500.
+  try {
+    const [{ total }] = await comBanco(() =>
+      db.select({ total: sql<number>`count(*)::int` }).from(motoristas),
+    );
+    return NextResponse.json({ total: total ?? 0 }, { headers: { "Cache-Control": "no-store" } });
+  } catch (erro) {
+    console.error("[motoristas] contagem falhou:", erro instanceof Error ? erro.message : erro);
+    return NextResponse.json(
+      { total: null, indisponivel: true },
+      { status: 200, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 }
 
 /** Cadastro neste aparelho: nome obrigatório, ponto opcional. */
 export async function POST(req: Request) {
-  await garantirTabelas();
+  await comBanco(() => garantirTabelas());
   const atual = await motoristaDaSessao();
   if (atual) return NextResponse.json(paraMotorista(atual), { headers: { "Cache-Control": "no-store" } });
   const corpo = await req.json().catch(() => ({}));
