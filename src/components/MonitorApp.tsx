@@ -1340,7 +1340,15 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               motoristaId={motorista?.id ?? null}
               nome={motorista ? primeiroNome(motorista.nome) : null}
             >
-              <Cabecalho onCompartilhar={compartilhar} />
+              {/* menu ⋮ (canto esquerdo): as MESMAS ações da aba "Sobre" —
+                  trocar o nome, ativar notificações e o painel do admin */}
+              <Cabecalho
+                onCompartilhar={compartilhar}
+                nome={motorista?.nome ?? null}
+                assinada={assinada}
+                onRenomear={renomear}
+                onAtivarNotificacoes={() => setPainelNotif("geral")}
+              />
             </BannerCaminhao>
 
             {/* ------------------------------------------ cartão do número */}
