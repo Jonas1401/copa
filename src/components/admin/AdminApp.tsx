@@ -120,7 +120,8 @@ const NOMES_INTEGRACAO: Record<string, string> = {
 /**
  * Token da sessão desta aba. Vai no header de cada chamada, para a sessão
  * continuar mesmo quando o navegador bloqueia o cookie (app aberto dentro de
- * outra página). Some ao fechar a aba ou ao sair.
+ * outra página). Fica SOMENTE no sessionStorage (que some ao fechar a aba) e
+ * nunca em localStorage: abrir o /admin sempre pede a senha de administrador.
  */
 const CHAVE_TOKEN = "copalinks-admin-sessao";
 let tokenSessao: string | null = null;
@@ -128,11 +129,9 @@ let tokenSessao: string | null = null;
 function lerToken() {
   if (tokenSessao) return tokenSessao;
   try {
-    // Tenta primeiro localStorage (persistente no celular e PWA)
-    tokenSessao = localStorage.getItem(CHAVE_TOKEN);
-    if (!tokenSessao) {
-      tokenSessao = sessionStorage.getItem(CHAVE_TOKEN);
-    }
+    // Apaga o token permanente que versões antigas guardavam no aparelho.
+    localStorage.removeItem(CHAVE_TOKEN);
+    tokenSessao = sessionStorage.getItem(CHAVE_TOKEN);
   } catch {
     tokenSessao = null;
   }
@@ -142,11 +141,10 @@ function lerToken() {
 function guardarToken(t: string | null) {
   tokenSessao = t;
   try {
+    localStorage.removeItem(CHAVE_TOKEN);
     if (t) {
-      localStorage.setItem(CHAVE_TOKEN, t);
       sessionStorage.setItem(CHAVE_TOKEN, t);
     } else {
-      localStorage.removeItem(CHAVE_TOKEN);
       sessionStorage.removeItem(CHAVE_TOKEN);
     }
   } catch {
@@ -671,11 +669,16 @@ export default function AdminApp({ url }: { url: string }) {
 
   useEffect(() => {
     void (async () => {
-      const r = await api<{ logado: boolean; admin: Admin | null; precisaSetup: boolean }>("/api/admin/sessao");
-      if (r.dados.logado && r.dados.admin) {
-        setAdmin(r.dados.admin);
-        setFase("painel");
-      } else setFase(r.dados.precisaSetup ? "setup" : "login");
+      // Abrir o /admin SEMPRE pede a senha de administrador: uma sessão
+      // guardada (cookie ou token) nunca pula a tela de entrada. A consulta
+      // serve só para decidir entre "criar o primeiro administrador" e
+      // "entrar" — o campo `logado` é propositalmente ignorado aqui.
+      try {
+        const r = await api<{ logado: boolean; admin: Admin | null; precisaSetup: boolean }>("/api/admin/sessao");
+        setFase(r.dados.precisaSetup ? "setup" : "login");
+      } catch {
+        setFase("login");
+      }
     })();
   }, []);
 

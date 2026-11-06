@@ -88,7 +88,8 @@ const CHAVE_TOKEN = "copalinks-admin-sessao";
 
 function cabecalhoAdmin(): Record<string, string> {
   try {
-    const t = localStorage.getItem(CHAVE_TOKEN) || sessionStorage.getItem(CHAVE_TOKEN);
+    localStorage.removeItem(CHAVE_TOKEN); // apaga token permanente de versões antigas
+    const t = sessionStorage.getItem(CHAVE_TOKEN);
     return t ? { authorization: `Bearer ${t}` } : {};
   } catch {
     return {};

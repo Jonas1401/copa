@@ -9,8 +9,9 @@ import { adminSessoes, admins, auditoria, configuracao } from "@/db/schema";
 /**
  * Controle de acesso da área administrativa.
  *   - Senha: scrypt com sal aleatório.
- *   - Sessão: token aleatório em cookie httpOnly + SameSite=Strict; no banco
- *     fica só o SHA-256 do token. Validade de 12 horas.
+ *   - Sessão: token aleatório em cookie httpOnly + SameSite=Lax (cookie de
+ *     SESSÃO do navegador: some ao fechar a janela; no banco fica só o
+ *     SHA-256 do token; validade máxima de 12 horas também no servidor).
  *   - O mesmo token também vale no header "Authorization: Bearer ...". Isso
  *     mantém a sessão quando o navegador bloqueia o cookie (app aberto dentro
  *     de outra página, como a janela de pré-visualização, ou em WebViews).
@@ -58,12 +59,13 @@ export async function criarSessao(adminId: number) {
 }
 
 export function gravarCookie(res: NextResponse, token: string) {
+  // Sem maxAge: cookie de sessão do navegador (some ao fechar). O banco também
+  // expira a sessão em 12 h. Assim, reabrir o app nunca pula a senha.
   res.cookies.set(COOKIE_ADMIN, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: VALIDADE_MS / 1000,
   });
   return res;
 }
