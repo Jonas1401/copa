@@ -269,7 +269,15 @@ dentro da faixa de 5%, com o nome cortado em reticências para não invadir o
 botão da câmera. O topo da foto ficou só com os controles discretos:
 compartilhar, previsão do tempo e trocar a imagem — ícone pequeno (17 px),
 ganho de toque de 44 px, fundo `bg-black/20` e borda `border-white/10`, sem
-caixa azul pesada.
+caixa azul pesada. No **canto superior esquerdo** fica o menu **⋮**
+(`src/components/inicio/MenuConta.tsx`), com o mesmo peso visual: ele reúne o
+que já existe na aba "Sobre" — **trocar o nome do perfil**, **ativar as
+notificações** e o **painel de administração** — reaproveitando as mesmas
+funções (`renomear` e `setPainelNotif("geral")`), sem criar conteúdo nem
+chamadas novas. O painel abre ancorado no botão (nasce abaixo dele, nunca vaza
+para fora da tela), fecha com Esc, toque fora, rolagem ou ao girar o aparelho,
+e o link do admin continua também no fim da aba Sobre. Teste:
+`tests/menu-conta.test.ts`.
 
 O **rodapé de navegação é uma faixa estreita** (~69 px): ícones de 22 px,
 rótulos de 12,5 px e o botão do chat de 48 px — sobra mais tela para o

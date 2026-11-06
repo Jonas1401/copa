@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Share2 } from "lucide-react";
 import type { Icone } from "@/lib/tempo";
 import { IconeLinha } from "@/components/tempo/IconeTempo";
+import MenuConta from "@/components/inicio/MenuConta";
 
 type Agora = { temperatura: number; descricao: string; icone: Icone };
 
@@ -48,12 +49,36 @@ function ChipClima() {
 /**
  * Controles do topo da foto do caminhão. A logo e a saudação saíram daqui:
  * agora vivem no canto esquerdo da base da imagem (ver `BannerCaminhao`), logo
- * acima do cartão do número. Aqui ficam só os controles discretos, alinhados à
- * direita, para não tapar a frente do caminhão.
+ * acima do cartão do número. Aqui ficam só os controles discretos: o menu ⋮
+ * no canto esquerdo (perfil, notificações e painel do administrador — o mesmo
+ * conteúdo da aba "Sobre", sem criar nada novo) e, à direita, compartilhar e
+ * a previsão do tempo.
  */
-export default function Cabecalho({ onCompartilhar }: { onCompartilhar: () => void }) {
+export default function Cabecalho({
+  onCompartilhar,
+  nome,
+  assinada,
+  onRenomear,
+  onAtivarNotificacoes,
+}: {
+  onCompartilhar: () => void;
+  /** Nome do motorista neste aparelho (null = ainda sem perfil). */
+  nome: string | null;
+  /** Este aparelho já recebe os avisos. */
+  assinada: boolean;
+  onRenomear: (nome: string) => Promise<boolean>;
+  onAtivarNotificacoes: () => void;
+}) {
   return (
     <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+      {/* canto esquerdo: menu ⋮ discreto, no mesmo ganho de toque (44 px) */}
+      <MenuConta
+        nome={nome}
+        assinada={assinada}
+        onRenomear={onRenomear}
+        onAtivarNotificacoes={onAtivarNotificacoes}
+      />
+
       {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
           para não brigar com a foto do caminhão. Ganhos de toque mantidos
           em 44 px (acessibilidade). */}
