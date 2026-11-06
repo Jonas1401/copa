@@ -401,6 +401,12 @@ branch `main` aciona um novo deploy. O domínio e as variáveis são do projeto
 Para recriar do zero, consulte [DEPLOY.md](./DEPLOY.md) e [SUPABASE.md](./SUPABASE.md).
 Não comite `.env` nem cole a `DATABASE_URL` no chat.
 
+**Atualizar o esquema do banco:** rode
+[`supabase/migrations/20261106_atualizacao_completa.sql`](./supabase/migrations/20261106_atualizacao_completa.sql)
+no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
+`npm run db:checar`. O passo a passo está em
+[supabase/ATUALIZAR.md](./supabase/ATUALIZAR.md).
+
 ## Variáveis de ambiente
 
 | Variável | Obrigatória | O que é |

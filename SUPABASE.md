@@ -4,6 +4,10 @@ Este guia mostra exatamente onde tocar no Supabase para encontrar a
 **senha do banco** — a única informação que falta para o app funcionar no
 endereço permanente (`copa-links.vercel.app`).
 
+> **O banco já está no ar e quer só a atualização do esquema?**
+> Vá direto para [ATUALIZAR.md](./supabase/ATUALIZAR.md) (um único SQL,
+> idempotente, no SQL Editor do Supabase).
+
 ---
 
 ## 1. No computador (mais fácil)
@@ -58,6 +62,10 @@ nova, então tudo bem.
 O código SQL do `create table notes` que o Supabase mostra na tela inicial é
 **apenas um exemplo**. Não precisa rodar. O CopaLinks cria as próprias tabelas
 (`pontos`, `motoristas`, `subscriptions`...) sozinho na primeira abertura.
+
+Para deixar o banco igual ao código atual **de uma vez** (ou conferir se já
+está), use [ATUALIZAR.md](./supabase/ATUALIZAR.md): é um SQL único e
+idempotente, que não apaga dados.
 
 ---
 
