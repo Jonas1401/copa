@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { comBanco, db } from "@/db";
 import { chatMensagens, motoristas } from "@/db/schema";
 import { garantirTabelas } from "@/lib/estado";
 import { notificarMensagemChat } from "@/lib/chat-push";
@@ -60,14 +60,28 @@ const camposTela = {
  * GET /api/chat?contar=ID    → quantas chegaram depois de ID (bolinha do rodapé)
  */
 export async function GET(req: Request) {
-  await garantirTabelas();
   const url = new URL(req.url);
   const cab = { "Cache-Control": "no-store" };
+  try {
+    return await lerChat(url, cab);
+  } catch (erro) {
+    // Banco oscilando (pooler do Supabase recusando a conexão): o chat não pode
+    // sumir com 500 vazio — responde uma lista vazia e o poll de 4 s corrige.
+    console.error("[chat] leitura falhou:", erro instanceof Error ? erro.message : erro);
+    return NextResponse.json(
+      { mensagens: [], erro: "Chat indisponível no momento. Tentando de novo…" },
+      { status: 200, headers: cab },
+    );
+  }
+}
+
+async function lerChat(url: URL, cab: Record<string, string>) {
+  await comBanco(() => garantirTabelas());
 
   const contar = Number(url.searchParams.get("contar"));
   if (url.searchParams.has("contar")) {
     const eu = Number(url.searchParams.get("eu")) || 0;
-    const [{ n }] = await db
+    const [{ n }] = await comBanco(() => db
       .select({ n: sql<number>`count(*)::int` })
       .from(chatMensagens)
       .where(
@@ -76,23 +90,25 @@ export async function GET(req: Request) {
           gt(chatMensagens.id, Number.isFinite(contar) ? contar : 0),
           sql`${chatMensagens.motoristaId} <> ${eu}`,
         ),
-      );
+      ));
     return NextResponse.json({ novas: n ?? 0 }, { headers: cab });
   }
 
   const depois = Number(url.searchParams.get("depois"));
   if (Number.isFinite(depois) && depois > 0) {
-    const novas = await db
+    const novas = await comBanco(() => db
       .select(camposTela)
       .from(chatMensagens)
       .where(and(chatVisivel, gt(chatMensagens.id, depois)))
       .orderBy(asc(chatMensagens.id))
-      .limit(100);
+      .limit(100));
     const reacoes = await listarReacoes(novas.map((m) => m.id));
     return NextResponse.json({ mensagens: novas.map((m) => paraTela(m, reacoes[m.id] ?? [])) }, { headers: cab });
   }
 
-  const ultimas = await db.select(camposTela).from(chatMensagens).where(chatVisivel).orderBy(desc(chatMensagens.id)).limit(80);
+  const ultimas = await comBanco(() =>
+    db.select(camposTela).from(chatMensagens).where(chatVisivel).orderBy(desc(chatMensagens.id)).limit(80),
+  );
   const reacoes = await listarReacoes(ultimas.map((m) => m.id));
   return NextResponse.json({ mensagens: ultimas.reverse().map((m) => paraTela(m, reacoes[m.id] ?? [])) }, { headers: cab });
 }
@@ -164,8 +180,27 @@ function nomeSeguro(nome: string) {
 }
 
 export async function POST(req: Request) {
-  await garantirTabelas();
+  try {
+    await comBanco(() => garantirTabelas());
+  } catch (erro) {
+    console.error("[chat] banco indisponível ao enviar:", erro instanceof Error ? erro.message : erro);
+    return NextResponse.json(
+      { erro: "Banco indisponível no momento. Tente enviar de novo em instantes." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  try {
+    return await registrarMensagem(req);
+  } catch (erro) {
+    console.error("[chat] envio falhou:", erro instanceof Error ? erro.message : erro);
+    return NextResponse.json(
+      { erro: "Não foi possível enviar agora. Tente de novo em instantes." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+}
 
+async function registrarMensagem(req: Request) {
   let motoristaId = 0;
   let texto = "";
   let tipo: TipoMidia | "texto" | "figurinha" = "texto";
