@@ -1,58 +1,54 @@
 /**
- * Ícone "quem usa o app": cabeça com capacete + distintivo com o total de
- * motoristas cadastrados no CopaLinks (o mesmo número do `/api/motoristas`).
+ * Ícone "quem usa o app": só o capacete de segurança, ao lado do menu ⋮ no
+ * canto superior esquerdo.
  *
- * Pedido do Jonas: um desenho no estilo da arte enviada (cabeça de capacete +
- * "balão" com o número), ao lado do menu ⋮ no canto superior esquerdo. O
- * distintivo é dinâmico — cresce/encolhe a fonte conforme a contagem — e usa
- * só as cores da paleta Dark Navy (tema-dark-navy.test.ts).
+ * Pedido do Jonas: tirar o balão com o número e deixar apenas um capacete
+ * bem desenhado. O desenho agora é um capacete de obra de verdade — domo
+ * largo e baixo, crista central descendo até a aba e aba saliente dos dois
+ * lados — no mesmo traço dos outros controles do topo (compartilhar, clima).
+ *
+ * A contagem NÃO sumiu do app: continua no cartão e no distintivo da aba
+ * "Sobre". Aqui ela fica só no rótulo acessível (leitor de tela e toque
+ * longo), sem desenhar número nenhum na tela.
+ *
+ * Cores: só a paleta Dark Navy (tema-dark-navy.test.ts) — o traço é o amarelo
+ * de segurança via token `text-ambar`, a cor de capacete de obra e a mesma
+ * do botão do Chat. A sombra é o fundo de cartão, para o capacete continuar
+ * legível quando o motorista troca o topo por uma foto clara.
  */
 export default function IconeUsuarios({ total }: { total: number | null }) {
   const rotulo =
     total === null
       ? "Contando os usuários do aplicativo"
       : `${total} ${total === 1 ? "usuário" : "usuários"} no CopaLinks`;
-  const texto = total === null ? "…" : total > 999 ? "999+" : String(total);
-  const fonte = texto.length <= 2 ? 13 : texto.length === 3 ? 10 : 8.2;
 
   return (
     <span
       role="img"
       aria-label={rotulo}
       title={rotulo}
-      className="grid h-11 w-11 shrink-0 place-items-center sm:h-12 sm:w-12"
+      className="grid h-11 w-11 shrink-0 place-items-center text-ambar sm:h-12 sm:w-12"
     >
-      <svg viewBox="0 0 64 64" aria-hidden="true" className="h-full w-full overflow-visible">
-        {/* cabeça com capacete (contorno claro, como na arte) */}
-        <g fill="none" stroke="#EAF4F7" strokeLinecap="round" strokeLinejoin="round">
-          {/* nervuras do capacete */}
-          <path d="M19.5 7 V29" strokeWidth="3.6" />
-          <path d="M13.6 29 C13.5 20.5 15.1 15.7 17.1 13.4" strokeWidth="3" />
-          <path d="M25.4 29 C25.5 20.5 23.9 15.7 21.9 13.4" strokeWidth="3" />
-          {/* domo */}
-          <path d="M8 29 C8 16.5 12.4 11.2 19.5 11.2 C26.6 11.2 31 16.5 31 29" strokeWidth="3" />
-          {/* aba do capacete */}
-          <path d="M3.5 32 H35.5" strokeWidth="4.4" />
-          {/* rosto */}
-          <path d="M10 36.5 V42 a9.5 10.75 0 0 0 19 0 V36.5" strokeWidth="3" />
-          {/* orelhas */}
-          <path d="M10 38 H7.6 M29 38 H31.4" strokeWidth="3" />
-        </g>
-        {/* distintivo com o total de usuários */}
-        <rect x="29" y="3.5" width="31.5" height="22" rx="11" fill="#00B8BC" stroke="#183341" strokeWidth="3.4" />
-        <text
-          x="44.75"
-          y="19.2"
-          textAnchor="middle"
-          fontFamily="var(--font-display), system-ui, sans-serif"
-          fontWeight={800}
-          fontSize={fonte}
-          letterSpacing="-0.5"
-          fill="#000D16"
-          className="tabular"
+      <svg
+        viewBox="0 0 44 30"
+        aria-hidden="true"
+        className="h-[21px] w-[30px] drop-shadow-[0_1px_2px_rgba(7,26,40,0.9)] sm:h-[22px] sm:w-[32px]"
+      >
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          {texto}
-        </text>
+          {/* casco: domo largo e baixo, assentado na aba */}
+          <path d="M7.6 21.4v-2.2C7.6 11.3 14 4.9 22 4.9s14.4 6.4 14.4 14.3v2.2" />
+          {/* crista central: os dois vincos que descem do topo até a aba */}
+          <path d="M18.3 21.4V6.4" />
+          <path d="M25.7 21.4V6.4" />
+          {/* aba saliente dos dois lados, com as pontas arredondadas */}
+          <path d="M4.6 21.4h34.8a3.1 3.1 0 0 1 0 6.2H4.6a3.1 3.1 0 0 1 0-6.2Z" />
+        </g>
       </svg>
     </span>
   );
