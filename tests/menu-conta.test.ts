@@ -5,11 +5,9 @@ import { readFileSync } from "node:fs";
 /**
  * Menu ⋮ do canto superior esquerdo da foto do caminhão.
  *
- * Pedido do Jonas: o acesso que hoje fica no fim da aba "Sobre" (trocar o nome
- * do perfil, ativar notificações e o painel de administração) também aparece
- * num menu discreto de três pontinhos no canto superior ESQUERDO. Nada de
- * conteúdo novo — o menu chama as mesmas ações da aba "Sobre", que continua
- * exatamente como está.
+ * Pedido do Jonas: o menu discreto de três pontinhos no canto superior
+ * esquerdo deve conter só as ações para trocar o nome, ativar notificações e
+ * abrir o painel de administração — sem o atalho "Sobre o CopaLinks".
  */
 
 const ler = (p: string) => readFileSync(p, "utf8");
@@ -44,7 +42,7 @@ test("o menu reúne exatamente o que já existe: nome, notificações e admin", 
   assert.ok(m.includes("Ativar notificações"), "sem o botão de ativar as notificações");
   assert.ok(/href="\/admin"/.test(m), "sem o acesso ao painel de administração");
   assert.ok(m.includes("Painel de administração"), "o link do admin perdeu o rótulo");
-  // Mesmas ações da aba "Sobre" (nada duplicado com regra própria).
+  // O menu reutiliza as ações existentes, sem chamadas próprias.
   const a = app();
   assert.ok(/onRenomear=\{renomear\}/.test(a), "o menu não usa a mesma função de renomear da aba Sobre");
   assert.ok(
@@ -62,10 +60,13 @@ test("a aba Sobre continua com o link do painel de administração", () => {
   );
 });
 
-test("o menu ⋮ mantém a aba Sobre acessível depois que o rodapé virou Navios", () => {
-  assert.ok(menu().includes("Sobre o CopaLinks"), "sem o atalho para a aba Sobre");
-  assert.match(menu(), /onAbrirSobre/, "o menu não repassa a abertura da aba Sobre");
-  assert.match(app(), /onAbrirSobre=\{\(\) => setAba\("sobre"\)\}/);
+test("o menu não mostra mais o cartão de informações Sobre o CopaLinks", () => {
+  const m = menu();
+  assert.ok(!m.includes("Sobre o CopaLinks"), "o atalho Sobre ainda aparece no menu");
+  assert.ok(!m.includes("Motoristas, notificações e admin"), "a descrição removida ainda aparece no menu");
+  assert.ok(!m.includes("onAbrirSobre"), "o menu ainda contém uma ação para abrir Sobre");
+  // A aba Sobre continua acessível pela navegação própria do app.
+  assert.match(app(), /aba === "sobre"/);
 });
 
 test("o menu abre ancorado no botão, fecha com Esc/clique fora e não vaza da tela", () => {

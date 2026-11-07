@@ -1366,15 +1366,13 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               motoristaId={motorista?.id ?? null}
               nome={motorista ? primeiroNome(motorista.nome) : null}
             >
-              {/* menu ⋮ (canto esquerdo): as MESMAS ações da aba "Sobre" —
-                  trocar o nome, ativar notificações e o painel do admin */}
+              {/* menu ⋮: trocar o nome, ativar notificações e painel do admin */}
               <Cabecalho
                 onCompartilhar={compartilhar}
                 nome={motorista?.nome ?? null}
                 assinada={assinada}
                 onRenomear={renomear}
                 onAtivarNotificacoes={() => setPainelNotif("geral")}
-                onAbrirSobre={() => setAba("sobre")}
               />
             </BannerCaminhao>
 
