@@ -53,14 +53,6 @@ export const SERVICOS: Servico[] = [
     href: "https://intranet.copadubo.com.br/ponto/",
   },
   {
-    id: "appa",
-    titulo: "Informações APPA",
-    subtitulo: "Navios e manobras",
-    cor: "vermelho",
-    icone: "ficha",
-    href: "https://berth-buddy-bot.lovable.app/",
-  },
-  {
     id: "frete",
     titulo: "Cálculo de Frete",
     subtitulo: "Leitura de ticket",
@@ -76,14 +68,6 @@ export const SERVICOS: Servico[] = [
     cor: "verde",
     icone: "telefone",
     href: "/contatos",
-  },
-  {
-    id: "sinprapar",
-    titulo: "SINPRAPAR",
-    subtitulo: "Manobras previstas",
-    cor: "indigo",
-    icone: "navio",
-    href: "https://www.sinprapar.com.br/PREV.HTM",
   },
 ];
 
