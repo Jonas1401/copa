@@ -1,9 +1,12 @@
 # Espelho do COPALINKS — Navios de Fertilizantes
 
 Cópia do painel `https://berth-buddy-bot.lovable.app/` **dentro** do CopaLinks,
-acessível de duas formas pelo ícone **Sobre**: o pequeno selo de navio no próprio
-ícone abre `/navios` direto, e a aba Sobre traz o cartão
-"Navios · cópia do COPALINKS" com os dois atalhos.
+acessível pelo terceiro item do rodapé: **Navios** (ícone de navio), com um selo
+numérico sempre visível mostrando a quantidade de navios de fertilizantes
+**atracados** — **0** quando não há nenhum ou a leitura falha. Um toque abre
+`/navios`. A antiga aba **Sobre** continua no app, agora aberta pelo **menu ⋮ →
+Sobre o CopaLinks**, e traz o cartão "Navios · cópia do COPALINKS" com os dois
+atalhos.
 
 ## Telas
 
@@ -71,8 +74,9 @@ telas e garante que nenhuma cor fora da paleta entre na interface.
 | `src/app/api/navios/espelho/route.ts` | API de atualização |
 | `src/components/espelho/EspelhoNaviosApp.tsx` | As duas telas da cópia |
 | `src/app/navios/page.tsx`, `src/app/navios/sinprapar/page.tsx`, `src/app/sinprapar/page.tsx` | Rotas |
-| `src/components/MonitorApp.tsx` | Cartão de acesso na aba **Sobre** |
-| `src/components/inicio/NavInferior.tsx` | Selo de navio no próprio ícone **Sobre** (atalho direto para `/navios`) |
+| `src/components/MonitorApp.tsx` | Cartão de acesso na aba **Sobre**, leitura de `atracados.length` a cada 30 s e abertura da aba Sobre pelo menu ⋮ |
+| `src/components/inicio/NavInferior.tsx` | Item **Navios**: ícone `Ship`, link direto para `/navios` e selo numérico dos atracados (0 quando vazio) |
+| `src/components/inicio/MenuConta.tsx` / `Cabecalho.tsx` | Atalho "Sobre o CopaLinks" para a aba que saiu do rodapé |
 | `tests/espelho-navios.test.ts` | Regressão de parsers, filtros, saldos, modos e links |
 
 O monitor automático do chat (`src/lib/navios-monitor.ts`, `/api/cron`) continua

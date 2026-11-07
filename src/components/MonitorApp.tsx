@@ -725,6 +725,9 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const [entrando, setEntrando] = useState(false);
   const [erroEntrada, setErroEntrada] = useState("");
   const [totalMotoristas, setTotalMotoristas] = useState<number | null>(null);
+  // Quantidade de navios de fertilizantes ATRACADOS: alimenta o selo do item
+  // "Navios" do rodapé. Começa em 0 e continua 0 se a leitura falhar.
+  const [naviosAtracados, setNaviosAtracados] = useState(0);
   const [chatAberto, setChatAberto] = useState(false);
   const [naoLidas, setNaoLidas] = useState(0);
   const [editandoNome, setEditandoNome] = useState(false);
@@ -894,6 +897,26 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     const t = setInterval(() => void carregarContagem(), 60_000);
     return () => clearInterval(t);
   }, [carregarContagem]);
+
+  // Mesma leitura das 2 fontes usada pela cópia do COPALINKS: só o tamanho da
+  // lista de atracados interessa ao selo. Sem resposta, mantém 0 (não esconde).
+  const carregarNaviosAtracados = useCallback(async () => {
+    try {
+      const r = await fetch("/api/navios/espelho", { cache: "no-store" });
+      if (!r.ok) return;
+      const dados = (await r.json()) as { atracados?: unknown };
+      if (Array.isArray(dados.atracados)) setNaviosAtracados(dados.atracados.length);
+      else setNaviosAtracados(0);
+    } catch {
+      /* sem leitura: o selo continua 0 */
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregarNaviosAtracados();
+    const t = setInterval(() => void carregarNaviosAtracados(), 30_000);
+    return () => clearInterval(t);
+  }, [carregarNaviosAtracados]);
 
   const total = estado.pontos.length;
 
@@ -1351,6 +1374,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 assinada={assinada}
                 onRenomear={renomear}
                 onAtivarNotificacoes={() => setPainelNotif("geral")}
+                onAbrirSobre={() => setAba("sobre")}
               />
             </BannerCaminhao>
 
@@ -1733,7 +1757,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       <NavInferior
         aba={aba}
         onTrocar={setAba}
-        totalMotoristas={totalMotoristas}
+        naviosAtracados={naviosAtracados}
         onChat={() => setChatAberto(true)}
         naoLidas={naoLidas}
       />

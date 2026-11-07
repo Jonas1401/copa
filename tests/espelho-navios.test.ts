@@ -120,15 +120,26 @@ test("carimbos das fontes e modo ao vivo / parcial / referência", () => {
   assert.equal(painelReferencia().aviso, "Conectando às fontes oficiais…");
 });
 
-test("acesso pela aba Sobre, pelo próprio ícone e rotas da cópia idêntica", () => {
-  const sobre = ler("src/components/MonitorApp.tsx");
-  assert.ok(sobre.includes('href="/navios"'), "aba Sobre sem link para a cópia");
-  assert.ok(sobre.includes('href="/navios/sinprapar"'), "aba Sobre sem link para as manobras");
-  assert.match(sobre, /cópia idêntica/i);
+test("acesso pelo item Navios do rodapé, pelo menu Sobre e rotas da cópia idêntica", () => {
+  const app = ler("src/components/MonitorApp.tsx");
+  assert.ok(app.includes('href="/navios"'), "aba Sobre sem link para a cópia");
+  assert.ok(app.includes('href="/navios/sinprapar"'), "aba Sobre sem link para as manobras");
+  assert.match(app, /cópia idêntica/i);
 
   const nav = ler("src/components/inicio/NavInferior.tsx");
-  assert.ok(nav.includes('href="/navios"'), "ícone Sobre sem atalho direto para a cópia");
-  assert.match(nav, /cópia do COPALINKS/i);
+  assert.ok(nav.includes('href="/navios"'), "item Navios sem link direto para a cópia");
+  assert.match(nav, /Ship/, "o item do rodapé deixou de usar o ícone de navio");
+  assert.match(nav, />Navios</, "o nome Sobre não foi trocado por Navios");
+  assert.match(nav, /naviosAtracados/, "o selo não usa a contagem de atracados");
+  assert.match(nav, /naviosAtracados\s*=\s*0/, "sem atracados o selo precisa mostrar 0");
+  assert.ok(!/Boolean\(naviosAtracados\)/.test(nav), "o selo não pode desaparecer quando a contagem é 0");
+  assert.match(app, /dados\.atracados\.length/, "a contagem precisa vir de atracados da API");
+
+  // A antiga aba Sobre continua alcançável pelo menu ⋮ do topo.
+  const menu = ler("src/components/inicio/MenuConta.tsx");
+  assert.match(menu, /Sobre o CopaLinks/, "a aba Sobre ficou sem acesso");
+  assert.match(menu, /onAbrirSobre/, "o menu não repassa a abertura da aba Sobre");
+  assert.match(app, /onAbrirSobre=\{\(\) => setAba\("sobre"\)\}/);
 
   const tela = ler("src/components/espelho/EspelhoNaviosApp.tsx");
   assert.match(tela, /SINPRAPAR\s*<\/h1>/, "cabeçalho SINPRAPAR diferente da referência");

@@ -25,8 +25,11 @@ test("o menu, compartilhamento e previsão permanecem no topo", () => {
   assert.match(app(), /onCompartilhar=\{compartilhar\}/);
 });
 
-test("a contagem permanece na aba Sobre e no rodapé", () => {
+test("a contagem de motoristas permanece na aba Sobre; o rodapé mostra navios atracados", () => {
   assert.match(app(), /usando o CopaLinks/);
-  assert.match(ler("src/components/inicio/NavInferior.tsx"), /totalMotoristas/);
-  assert.match(app(), /<NavInferior[\s\S]*?totalMotoristas=\{totalMotoristas\}/);
+  const nav = ler("src/components/inicio/NavInferior.tsx");
+  assert.match(nav, /naviosAtracados\s*=\s*0/, "o selo de navios precisa começar/voltar em 0");
+  assert.match(nav, /Navios/, "o item do rodapé precisa se chamar Navios");
+  assert.match(nav, /Ship/, "o item do rodapé precisa usar o ícone de navio");
+  assert.match(app(), /<NavInferior[\s\S]*?naviosAtracados=\{naviosAtracados\}/);
 });
