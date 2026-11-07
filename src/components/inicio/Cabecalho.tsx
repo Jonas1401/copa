@@ -50,8 +50,8 @@ function ChipClima() {
  * Controles do topo da foto do caminhão. A logo e a saudação saíram daqui:
  * agora vivem no canto esquerdo da base da imagem (ver `BannerCaminhao`), logo
  * acima do cartão do número. Aqui ficam só os controles discretos: o menu ⋮
- * no canto esquerdo (trocar o nome, ativar notificações e painel de
- * administração) e, à direita, compartilhar e a previsão do tempo.
+ * no canto esquerdo (trocar o nome, ativar notificações, painel de
+ * administração e site oficial do SINPRAPAR) e, à direita, compartilhar e a previsão do tempo.
  */
 export default function Cabecalho({
   onCompartilhar,

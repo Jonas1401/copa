@@ -1366,7 +1366,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               motoristaId={motorista?.id ?? null}
               nome={motorista ? primeiroNome(motorista.nome) : null}
             >
-              {/* menu ⋮: trocar o nome, ativar notificações e painel do admin */}
+              {/* menu ⋮: opções da conta, administração e site SINPRAPAR */}
               <Cabecalho
                 onCompartilhar={compartilhar}
                 nome={motorista?.nome ?? null}

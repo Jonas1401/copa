@@ -6,8 +6,9 @@ import { readFileSync } from "node:fs";
  * Menu ⋮ do canto superior esquerdo da foto do caminhão.
  *
  * Pedido do Jonas: o menu discreto de três pontinhos no canto superior
- * esquerdo deve conter só as ações para trocar o nome, ativar notificações e
- * abrir o painel de administração — sem o atalho "Sobre o CopaLinks".
+ * esquerdo deve conter as ações para trocar o nome, ativar notificações,
+ * abrir o painel de administração e o site oficial SINPRAPAR — sem o atalho
+ * "Sobre o CopaLinks".
  */
 
 const ler = (p: string) => readFileSync(p, "utf8");
@@ -36,12 +37,15 @@ test("o menu é discreto como os outros controles do topo", () => {
   assert.ok(!m.includes("bg-[#0b2152]") && !m.includes("border-[#2a5bb0]"), "o menu voltou a ter caixa azul pesada");
 });
 
-test("o menu reúne exatamente o que já existe: nome, notificações e admin", () => {
+test("o menu reúne as ações da conta, admin e o site oficial do SINPRAPAR", () => {
   const m = menu();
   assert.ok(m.includes("Trocar meu nome"), "sem a troca do nome do perfil");
   assert.ok(m.includes("Ativar notificações"), "sem o botão de ativar as notificações");
   assert.ok(/href="\/admin"/.test(m), "sem o acesso ao painel de administração");
   assert.ok(m.includes("Painel de administração"), "o link do admin perdeu o rótulo");
+  assert.match(m, /href="https:\/\/www\.sinprapar\.com\.br\/PREV\.HTM"/, "sem o link oficial do SINPRAPAR");
+  assert.ok(m.includes("Abrir site oficial do SINPRAPAR"), "o link oficial perdeu o rótulo");
+  assert.match(m, /target="_blank"[\s\S]*rel="noopener noreferrer"/, "o site oficial não abre com segurança em nova aba");
   // O menu reutiliza as ações existentes, sem chamadas próprias.
   const a = app();
   assert.ok(/onRenomear=\{renomear\}/.test(a), "o menu não usa a mesma função de renomear da aba Sobre");

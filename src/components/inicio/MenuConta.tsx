@@ -6,6 +6,7 @@ import {
   Bell,
   CheckCircle2,
   EllipsisVertical,
+  ExternalLink,
   Pencil,
   ShieldCheck,
   X,
@@ -14,9 +15,9 @@ import {
 /**
  * Menu ⋮ do canto superior esquerdo da foto do caminhão.
  *
- * É o acesso discreto às ações da conta: trocar o nome do perfil, abrir o
- * pedido de notificações e entrar no painel de administração. Cada item
- * reaproveita a ação já existente no app. O gatilho tem o mesmo tamanho dos
+ * É o acesso discreto às ações da conta e links úteis: trocar o nome, abrir
+ * o pedido de notificações, entrar no painel de administração e acessar o
+ * site oficial do SINPRAPAR. O gatilho tem o mesmo tamanho dos
  * outros controles do topo (44 px de toque), mas aparência ainda mais leve
  * (sem borda chamativa), para não brigar
  * com a foto.
@@ -215,6 +216,19 @@ export default function MenuConta({
                   <ShieldCheck size={16} className="shrink-0 text-gelo/50" />
                   Painel de administração
                 </Link>
+                <div className="my-1 h-px bg-white/[.08]" />
+                <a
+                  href="https://www.sinprapar.com.br/PREV.HTM"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  role="menuitem"
+                  onClick={fechar}
+                  title="Abrir site oficial do SINPRAPAR"
+                  className={item}
+                >
+                  <ExternalLink size={16} className="shrink-0 text-gelo/50" />
+                  Abrir site oficial do SINPRAPAR
+                </a>
               </>
             )}
           </div>
