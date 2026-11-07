@@ -251,10 +251,28 @@ aviso. O usuário pode revogar o acesso a notificações no Android quando quise
 
 ## Imagem do topo personalizável
 
-A tela inicial mostra uma foto de caminhão no topo
-(`public/images/caminhao-padrao.webp`), numa moldura com a **proporção do
-arquivo original (1536×1024)** — nada de deformar a imagem nem sobrar azul. A
-foto é mostrada **nítida, sem véu azul** (era assim antes e sujava o céu): a
+A tela inicial mostra uma imagem no topo, numa moldura **1536×1024 (3:2)** —
+nada de deformar a imagem nem sobrar azul. Enquanto o motorista não manda a
+foto dele, aparece a **arte padrão da marca**: porto + motorista + `COPA
+LINKS` + estrada, em `public/images/inicio/banner-padrao.webp`. É o **mesmo
+lugar** onde ele põe a foto que quiser em **Personalizar imagem** — padrão e
+foto usam a mesma moldura, então trocar de um para o outro não muda a altura
+do topo.
+
+Para trocar a arte padrão (o endereço, as medidas e o `?v=` de cache em
+`src/lib/banner-padrao.ts` saem prontos do script):
+
+```bash
+node scripts/gerar-banner-padrao.mjs caminho/da/arte.png      # ou uma URL
+node scripts/gerar-banner-padrao.mjs arte.png --margem=10      # tira moldura fina da arte
+```
+
+A arte original fica guardada em `public/images/inicio/banner-padrao-fonte.png`
+e o script grava o WebP no formato do banner (recorte central, sem deformar).
+Teste: `tests/banner-padrao.test.ts`.
+
+A
+imagem é mostrada **nítida, sem véu azul** (era assim antes e sujava o céu): a
 máscara `.imagem-nitida` (`src/app/globals.css`) deixa 0–95% exatamente como o
 arquivo original e só os últimos **5% da base** se dissolvem no fundo
 Dark Navy `#000D16` do app, para não ficar linha dura.

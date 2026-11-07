@@ -3,14 +3,19 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Camera, ImageIcon, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
 import { LOGO } from "@/lib/logo";
+import { BANNER_PADRAO } from "@/lib/banner-padrao";
 
 /**
- * Imagem padrão do topo: o arquivo do repositório, usado EXATAMENTE como está —
- * `public/images/inicio/tempo-topo.webp` (WebP), sem gerar, recortar, tratar ou
- * reempacotar nada. O `?v=` é só o carimbo do conteúdo, para o celular não
- * reaproveitar uma versão antiga guardada no cache.
+ * Imagem padrão do topo: a arte da marca (porto + motorista + COPA LINKS +
+ * estrada) em `public/images/inicio/banner-padrao.webp`, no MESMO formato
+ * 1536×1024 que o servidor gera para a foto que o motorista manda. Assim o
+ * padrão e a foto personalizada ocupam exatamente a mesma moldura: nada é
+ * deformado e a troca de um para o outro não muda a altura do topo.
+ *
+ * Para trocar a arte: `node scripts/gerar-banner-padrao.mjs caminho/da/arte.png`
+ * (o `?v=` é o carimbo do conteúdo: o celular não reaproveita a arte antiga).
  */
-export const BANNER_PADRAO = "/images/inicio/tempo-topo.webp?v=1";
+export { BANNER_PADRAO };
 const LADO_MAX = 1600;
 
 type Estado = "parado" | "processando" | "ok" | "erro";
@@ -139,15 +144,19 @@ export default function BannerCaminhao({
   }
 
   // Sem perfil neste aparelho: sempre a imagem padrão (nada de outro motorista).
-  const src = motoristaId && versao && !falhou ? `/api/motoristas/banner/imagem?v=${versao}` : BANNER_PADRAO;
+  const personalizada = Boolean(motoristaId && versao && !falhou);
+  const src = personalizada ? `/api/motoristas/banner/imagem?v=${versao}` : BANNER_PADRAO.src;
 
   return (
     <div className="relative -mx-3 -mt-3">
-      {/* Mantém a proporção original do logo e das fotos personalizadas. */}
-      <div className={`relative w-full ${src === BANNER_PADRAO ? "aspect-[1536/1071]" : "aspect-[1536/1024]"}`}>
+      {/* A moldura é a MESMA para o padrão e para a foto do motorista
+          (1536×1024): trocar de uma para a outra não muda a altura do topo e o
+          cartão do número continua começando exatamente nos últimos 5%. */}
+      <div className="relative aspect-[1536/1024] w-full">
         {/* camada da foto: nítida de cima até a base, só os últimos 5% em degradê */}
         <div aria-hidden className="imagem-nitida pointer-events-none absolute inset-0 overflow-hidden">
-          {/* Logo centralizado; fotos personalizadas mantêm o enquadramento original. */}
+          {/* Arte padrão centralizada; a foto personalizada mantém o
+              enquadramento que o servidor escolheu (caminhão à direita). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={src}
@@ -157,7 +166,7 @@ export default function BannerCaminhao({
             fetchPriority="high"
             decoding="async"
             onError={() => setFalhou(true)}
-            className={`banner-entra absolute inset-0 h-full w-full ${src === BANNER_PADRAO ? "object-contain object-center" : "object-cover object-[68%_46%]"}`}
+            className={`banner-entra absolute inset-0 h-full w-full object-cover ${personalizada ? "object-[68%_46%]" : "object-center"}`}
           />
           {/* integração com o fundo cobalto: só a base da foto (5%) se dissolve no meio do degradê do app */}
           <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0, 13, 22, 0)_0%,var(--fundo-meio)_100%)]" />
