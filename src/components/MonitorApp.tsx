@@ -1374,7 +1374,6 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 assinada={assinada}
                 onRenomear={renomear}
                 onAtivarNotificacoes={() => setPainelNotif("geral")}
-                onAbrirSobre={() => setAba("sobre")}
               />
             </BannerCaminhao>
 

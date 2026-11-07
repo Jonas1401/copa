@@ -6,7 +6,6 @@ import {
   Bell,
   CheckCircle2,
   EllipsisVertical,
-  Info,
   Pencil,
   ShieldCheck,
   X,
@@ -16,8 +15,7 @@ import {
  * Menu ⋮ do canto superior esquerdo da foto do caminhão.
  *
  * É o acesso discreto ao que já existe no app: trocar o nome do perfil, abrir
- * o pedido de notificações, entrar no painel de administração e — agora que o
- * rodapé virou "Navios" — abrir a antiga aba "Sobre". Nada novo é criado aqui:
+ * o pedido de notificações e entrar no painel de administração. Nada novo é criado aqui:
  * cada item chama a MESMA ação da aba "Sobre", que continua exatamente como
  * está. O gatilho tem o mesmo tamanho dos outros controles do topo (44 px de
  * toque), mas aparência ainda mais leve (sem borda chamativa), para não brigar
@@ -28,7 +26,6 @@ export default function MenuConta({
   assinada,
   onRenomear,
   onAtivarNotificacoes,
-  onAbrirSobre,
 }: {
   /** Nome atual do motorista (null = este aparelho ainda não tem perfil). */
   nome: string | null;
@@ -38,8 +35,6 @@ export default function MenuConta({
   onRenomear: (nome: string) => Promise<boolean>;
   /** Abre o painel de notificações já existente. */
   onAtivarNotificacoes: () => void;
-  /** Mostra a aba "Sobre" (motoristas, notificações e admin). */
-  onAbrirSobre: () => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [trocandoNome, setTrocandoNome] = useState(false);
@@ -220,24 +215,6 @@ export default function MenuConta({
                   <ShieldCheck size={16} className="shrink-0 text-gelo/50" />
                   Painel de administração
                 </Link>
-                <div className="my-1 h-px bg-white/[.08]" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    fechar();
-                    onAbrirSobre();
-                  }}
-                  className={item}
-                >
-                  <Info size={16} className="shrink-0 text-gelo/50" />
-                  <span className="min-w-0">
-                    Sobre o CopaLinks
-                    <span className="mt-0.5 block truncate text-[11px] leading-tight font-medium text-gelo/50">
-                      Motoristas, notificações e admin
-                    </span>
-                  </span>
-                </button>
               </>
             )}
           </div>

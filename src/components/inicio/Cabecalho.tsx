@@ -60,7 +60,6 @@ export default function Cabecalho({
   assinada,
   onRenomear,
   onAtivarNotificacoes,
-  onAbrirSobre,
 }: {
   onCompartilhar: () => void;
   /** Nome do motorista neste aparelho (null = ainda sem perfil). */
@@ -70,7 +69,6 @@ export default function Cabecalho({
   onRenomear: (nome: string) => Promise<boolean>;
   onAtivarNotificacoes: () => void;
   /** Abre a antiga aba "Sobre" (agora acessível pelo menu ⋮). */
-  onAbrirSobre: () => void;
 }) {
   return (
     <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -80,7 +78,6 @@ export default function Cabecalho({
         assinada={assinada}
         onRenomear={onRenomear}
         onAtivarNotificacoes={onAtivarNotificacoes}
-        onAbrirSobre={onAbrirSobre}
       />
 
       {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
