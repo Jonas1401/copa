@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
+  Anchor,
   Bell,
   BellOff,
   CheckCircle2,
@@ -15,6 +16,7 @@ import {
   Clock,
   Crown,
   ExternalLink,
+  Info,
   MapPin,
   Truck,
   Users,
@@ -22,6 +24,7 @@ import {
   Plus,
   RotateCw,
   ShieldCheck,
+  Ship,
   Trash2,
   X,
 } from "lucide-react";
@@ -722,6 +725,9 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const [entrando, setEntrando] = useState(false);
   const [erroEntrada, setErroEntrada] = useState("");
   const [totalMotoristas, setTotalMotoristas] = useState<number | null>(null);
+  // Quantidade de navios de fertilizantes ATRACADOS: alimenta o selo do item
+  // "Navios" do rodapé. Começa em 0 e continua 0 se a leitura falhar.
+  const [naviosAtracados, setNaviosAtracados] = useState(0);
   const [chatAberto, setChatAberto] = useState(false);
   const [naoLidas, setNaoLidas] = useState(0);
   const [editandoNome, setEditandoNome] = useState(false);
@@ -891,6 +897,26 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     const t = setInterval(() => void carregarContagem(), 60_000);
     return () => clearInterval(t);
   }, [carregarContagem]);
+
+  // Mesma leitura das 2 fontes usada pela cópia do COPALINKS: só o tamanho da
+  // lista de atracados interessa ao selo. Sem resposta, mantém 0 (não esconde).
+  const carregarNaviosAtracados = useCallback(async () => {
+    try {
+      const r = await fetch("/api/navios/espelho", { cache: "no-store" });
+      if (!r.ok) return;
+      const dados = (await r.json()) as { atracados?: unknown };
+      if (Array.isArray(dados.atracados)) setNaviosAtracados(dados.atracados.length);
+      else setNaviosAtracados(0);
+    } catch {
+      /* sem leitura: o selo continua 0 */
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregarNaviosAtracados();
+    const t = setInterval(() => void carregarNaviosAtracados(), 30_000);
+    return () => clearInterval(t);
+  }, [carregarNaviosAtracados]);
 
   const total = estado.pontos.length;
 
@@ -1348,6 +1374,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 assinada={assinada}
                 onRenomear={renomear}
                 onAtivarNotificacoes={() => setPainelNotif("geral")}
+                onAbrirSobre={() => setAba("sobre")}
               />
             </BannerCaminhao>
 
@@ -1576,6 +1603,42 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               </p>
             </div>
 
+            {/* Acesso à CÓPIA IDÊNTICA do COPALINKS de navios, no ícone Sobre:
+                monitora APPA + SINPRAPAR e mostra só navios de fertilizantes. */}
+            <Painel
+              titulo="Navios · cópia do COPALINKS"
+              corTitulo="text-white"
+              icone={<Ship size={22} className="text-ciano" />}
+              className="border-ciano/50"
+            >
+              <p className="text-[14px] leading-relaxed text-gelo/85">
+                Painel idêntico ao aplicativo de navios, com todas as
+                funcionalidades e o mesmo tema do CopaLinks. Monitora os 2 sites
+                oficiais (APPA e SINPRAPAR) e busca apenas dados de navios de
+                fertilizantes: berço, operadoras, saldos, descarga e manobras
+                previstas.
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+                <Link
+                  href="/navios"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-ciano/15 px-3 text-center font-display text-[13.5px] font-extrabold text-ciano transition-colors hover:bg-ciano/25"
+                >
+                  <Ship size={16} /> Navios Atracados
+                </Link>
+                <Link
+                  href="/navios/sinprapar"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border border-borda px-3 text-center font-display text-[13.5px] font-extrabold text-gelo transition-colors hover:border-ciano/60 hover:text-ciano"
+                >
+                  <Anchor size={16} /> Manobras Previstas
+                </Link>
+              </div>
+              <p className="mt-3 flex items-start gap-2 text-[12px] leading-snug text-aco">
+                <Info size={14} className="mt-0.5 shrink-0 text-discreto" />
+                Atualização automática, filtros de manobras, progresso de
+                descarga e links para os sites oficiais.
+              </p>
+            </Painel>
+
             {/* motoristas: contagem + o próprio nome (com troca) */}
             <section className="painel p-4">
               <div className="flex items-center gap-3">
@@ -1694,7 +1757,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       <NavInferior
         aba={aba}
         onTrocar={setAba}
-        totalMotoristas={totalMotoristas}
+        naviosAtracados={naviosAtracados}
         onChat={() => setChatAberto(true)}
         naoLidas={naoLidas}
       />

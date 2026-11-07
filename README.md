@@ -220,7 +220,7 @@ Testes: `tests/whatsapp-webhook.test.ts`.
 ## Monitor WhatsApp → Firebase (Android)
 
 O recurso novo **não substitui** a fila, o chat ou o Web Push já existentes.
-Cada motorista cadastra em **Sobre → Monitor WhatsApp** os códigos A/B/M que deseja
+Cada motorista cadastra em **menu ⋮ → Sobre → Monitor WhatsApp** os códigos A/B/M que deseja
 acompanhar (lista `monitor_codes`, independente dos pontos da fila). No `/admin →
 Monitor WhatsApp` (`/monitor`), o administrador gera um código temporário para
 parear o Android monitor. Cada motorista gera um código diferente para parear
@@ -277,14 +277,18 @@ caixa azul pesada. No **canto superior esquerdo** fica o menu **⋮**
 que já existe na aba "Sobre" — **trocar o nome do perfil**, **ativar as
 notificações** e o **painel de administração** — reaproveitando as mesmas
 funções (`renomear` e `setPainelNotif("geral")`), sem criar conteúdo nem
-chamadas novas. O painel abre ancorado no botão (nasce abaixo dele, nunca vaza
-para fora da tela), fecha com Esc, toque fora, rolagem ou ao girar o aparelho,
-e o link do admin continua também no fim da aba Sobre. Teste:
-`tests/menu-conta.test.ts`.
+chamadas novas, e ainda **abre a própria aba Sobre** (`Sobre o CopaLinks`),
+que saiu do rodapé quando o terceiro item virou "Navios". O painel abre
+ancorado no botão (nasce abaixo dele, nunca vaza para fora da tela), fecha com
+Esc, toque fora, rolagem ou ao girar o aparelho, e o link do admin continua
+também no fim da aba Sobre. Teste: `tests/menu-conta.test.ts`.
 
 O **rodapé de navegação é uma faixa estreita** (~69 px): ícones de 22 px,
 rótulos de 12,5 px e o botão do chat de 48 px — sobra mais tela para o
-conteúdo (o `pb` do app acompanha, `pb-[92px]`).
+conteúdo (o `pb` do app acompanha, `pb-[92px]`). O terceiro item é **Navios**
+(ícone `Ship`), com um selo numérico sempre visível: a quantidade de navios de
+fertilizantes **atracados**, lida de `/api/navios/espelho` a cada 30 s, e **0**
+quando não há nenhum ou a leitura falha. Um toque abre `/navios`.
 
 **Nada de voltar a cobrir a foto com degradê no topo, na esquerda ou com
 brilho**, nem de subir o cartão além dos 5% — `tests/layout-largura.test.ts`
@@ -358,6 +362,42 @@ Consulte [GITHUB_VERCEL.md](GITHUB_VERCEL.md) e
 
 Testes: `npm test`; integração isolada: `tests/navios-aviso.test.ts` com
 `DATABASE_URL=TEST_DATABASE_URL` em um banco local `fila_push_test_*`.
+
+## Cópia do COPALINKS de navios (item **Navios** do rodapé)
+
+O terceiro item da barra inferior agora é o **Navios**: ícone de navio, nome
+"Navios" e um **selo numérico sempre visível** com a quantidade de navios de
+fertilizantes **atracados** — mostra **0** quando não há nenhum (e enquanto a
+leitura não chega). Um toque abre `/navios`, a réplica idêntica do painel
+`https://berth-buddy-bot.lovable.app/`, com todas as funcionalidades e o mesmo
+tema Dark Navy do aplicativo. A antiga aba **Sobre** (contagem de motoristas,
+notificações, WhatsApp e admin) continua inteira e passa a ser aberta pelo
+**menu ⋮ → Sobre o CopaLinks**; nela também fica o cartão
+**"Navios · cópia do COPALINKS"** com os dois atalhos. São duas rotas, uma para
+cada tela da cópia:
+
+| Rota | Tela da cópia |
+|---|---|
+| `/navios` | **Navios Atracados** — berço, operadoras, mercadoria, saldo de cada operadora, barra de descarga (%) e saldo total do navio |
+| `/navios/sinprapar` | **Manobras Previstas** — código (EA/EF/DF/DS/AT/MB), berço, data/hora, explicação, situação e filtros "Em manobra / Aguardando manobra / Atracado" |
+| `/sinprapar` | atalho que redireciona para `/navios/sinprapar` (mesmo caminho da referência) |
+| `/api/navios/espelho` | dados das duas fontes em JSON, usados pela atualização automática a cada 30 s |
+
+O espelho monitora **exatamente dois sites oficiais** e cruza as leituras pelo
+nome/IMO do navio: **APPA** (`relLineUpRetroativo`) fornece berços, operadoras,
+previstos e saldos; **SINPRAPAR** (`PREV.HTM`) fornece as manobras. O filtro
+`ehFertilizante` de `src/lib/navios.ts` deixa passar **somente navios de
+fertilizantes** (ureia, KCl, sulfato de amônio, MAP, NPK, adubos nitrogenados…).
+O percentual de descarga é `1 − saldo total / previsto total`, arredondado como
+na referência. Nenhum outro site é consultado e nenhum valor é inventado.
+
+Se uma fonte não responder, o trecho correspondente vem da última leitura
+pública gravada em `src/lib/espelho-navios-referencia.json` e a tela mostra o
+selo **PARCIAL/REFERÊNCIA** com o horário daquela leitura — nunca finge estar
+ao vivo. Em produção (Vercel), as duas leituras são ao vivo; botão de atualizar,
+links para os sites oficiais e volta ao CopaLinks ficam na própria tela.
+Detalhes: [docs/ESPELHO_NAVIOS.md](docs/ESPELHO_NAVIOS.md). Testes:
+`tests/espelho-navios.test.ts`.
 
 ## Filtro automático do grupo (PONTOS NA VEZ / PULADAS)
 
