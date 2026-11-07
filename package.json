@@ -10,6 +10,7 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "test": "tsx --test tests/*.test.ts",
+    "figurinhas": "node scripts/gerar-figurinhas.mjs && node scripts/empacotar-figurinhas.mjs",
     "db:checar": "tsx scripts/checar-esquema.mjs"
   },
   "dependencies": {

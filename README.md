@@ -119,10 +119,32 @@ arquivo) com pré-visualização, nome, categoria e ordem, além de ativar,
 desativar, reordenar, excluir e criar categorias novas (pacotes futuros entram
 sem mexer no código do chat) — tudo auditado. Rotas `/api/figurinhas` (lista),
 `/api/figurinhas/:id/imagem` (imagem) e `/api/admin/figurinhas*` (gestão). O
-pacote inicial de 22 figurinhas é semeado uma única vez no primeiro uso
-(`src/lib/figurinhas-pacote.ts`, gerado por `node scripts/gerar-figurinhas.mjs`
-a partir da arte em `scripts/figurinhas-arte.mjs`). Testes:
-`tests/figurinhas-catalogo.test.ts`.
+pacote atual de **42 figurinhas** (folha *CopaLinks Caminhões e Bordo*) é
+semeado/versionado em `src/lib/figurinhas-pacote.ts`, gerado por
+`node scripts/gerar-figurinhas.mjs` a partir de
+`assets/figurinhas/copalinks-bordo.png` + `copalinks-bordo.json`. A migração
+(`src/lib/figurinhas-migracao.ts`) troca o pacote antigo de 22 figurinhas pelo
+atual uma única vez por banco, removendo apenas as imagens oficiais antigas
+(pelo MD5 exato do base64) e preservando figurinhas publicadas pelo admin e o
+histórico do chat. Testes: `tests/figurinhas-catalogo.test.ts`.
+
+**Como a folha é recortada** (`scripts/lib/segmentar-folha.mjs`, lógica pura): as
+caixas do JSON são só a *região de referência* de cada figurinha. O gerador
+remove o fundo preto/preto-azulado da folha inteira, rotula os componentes
+conexos e entrega cada desenho **completo**, mesmo quando ele ultrapassa a caixa
+— era o que cortava a ponta da estrela do *Top!* e o dedo do *Gostei!*. Detalhes
+soltos (vapor do café, riscos de movimento) acompanham a figurinha mais próxima.
+Quando dois desenhos se encostam na folha e viram um blob só (caminhão +
+motorista, motorista + *Obrigado!*), a divisão é feita por **distância
+geodésica** — cada pixel vai para o lado cujo miolo está mais perto, medido por
+dentro do desenho — com um alisamento de maioria na divisa; o corte acompanha o
+contorno em vez de ser uma reta. Onde uma figurinha foi desenhada por cima da
+outra, o campo `sobreposicao` do JSON registra o retoque fino. O gerador confere
+a conservação dos pixels e falha se algum desenho sumir. Testes com imagens
+sintéticas: `tests/figurinhas-recorte.test.ts`.
+
+Saídas em `public/figurinhas/` (fora do Git): `png/<slug>.png` no tamanho
+original, `<slug>.webp` 256×256 para o chat e um ZIP com tudo para download.
 
 **Chat — curtidas com emoji:** qualquer mensagem recebida (texto, áudio, foto,
 arquivo, figurinha ou aviso do sistema) pode ser curtida com 1 emoji, como no

@@ -36,8 +36,9 @@ yarn-error.log*
 # backups de banco
 *.dump
 
-# figurinhas: arte gerada (scripts/gerar-figurinhas.mjs); o pacote que o app
-# usa em runtime é src/lib/figurinhas-pacote.ts (gerado junto e versionado)
+# figurinhas: prévias/backup gerados (scripts/gerar-figurinhas.mjs); a fonte
+# versionada fica em assets/figurinhas/ e o pacote que o app usa em runtime é
+# src/lib/figurinhas-pacote.ts (gerado junto e versionado)
 /public/figurinhas/
 
 # rascunhos locais de teste
