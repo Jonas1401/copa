@@ -251,16 +251,19 @@ aviso. O usuário pode revogar o acesso a notificações no Android quando quise
 
 ## Imagem do topo personalizável
 
-A tela inicial mostra uma foto de caminhão no topo
-(`public/images/caminhao-padrao.webp`), numa moldura com a **proporção do
-arquivo original (1536×1024)** — nada de deformar a imagem nem sobrar azul. A
+A tela inicial mostra uma imagem no topo
+(`public/images/Interface CopaLinks em Tema Escuro(1).png`, 850×540), numa
+moldura com a **proporção do próprio arquivo** — nada de deformar, cortar ou
+sobrar azul. As fotos personalizadas dos motoristas entram na proporção gerada
+pelo servidor (**1536×1024**). A
 foto é mostrada **nítida, sem véu azul** (era assim antes e sujava o céu): a
 máscara `.imagem-nitida` (`src/app/globals.css`) deixa 0–95% exatamente como o
 arquivo original e só os últimos **5% da base** se dissolvem no fundo
 Dark Navy `#000D16` do app, para não ficar linha dura.
 
 O **cartão do número começa exatamente nos 5% finais da foto**: 5% da altura =
-3,3333% da largura (altura = largura ÷ 1,5), e o cartão sobe com
+3,3333% da largura (altura = largura ÷ 1,5 — exato nas fotos 1536×1024; no
+padrão 850×540 a diferença fica abaixo de 1 px), e o cartão sobe com
 `-mt-[3.3333%]` dentro de um invólucro full-bleed (`-mx-3`) com a mesma largura
 da imagem, para a conta valer em qualquer tela. A **logo e a saudação do
 motorista** ficam no **canto esquerdo da parte de baixo da foto**

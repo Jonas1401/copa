@@ -6,11 +6,19 @@ import { LOGO } from "@/lib/logo";
 
 /**
  * Imagem padrão do topo: o arquivo do repositório, usado EXATAMENTE como está —
- * `public/images/inicio/tempo-topo.webp` (WebP), sem gerar, recortar, tratar ou
- * reempacotar nada. O `?v=` é só o carimbo do conteúdo, para o celular não
- * reaproveitar uma versão antiga guardada no cache.
+ * `public/images/Interface CopaLinks em Tema Escuro(1).png`, sem gerar, recortar,
+ * tratar ou reempacotar nada (o caminho vai codificado porque o nome do arquivo
+ * tem espaços e parênteses). O `?v=` é só o carimbo do conteúdo, para o celular
+ * não reaproveitar uma versão antiga guardada no cache.
  */
-export const BANNER_PADRAO = "/images/inicio/tempo-topo.webp?v=1";
+export const BANNER_PADRAO = "/images/Interface%20CopaLinks%20em%20Tema%20Escuro(1).png?v=1";
+/**
+ * Moldura do padrão: a proporção do próprio arquivo (850×540), então a imagem
+ * aparece inteira — sem corte nas laterais e sem faixa sobrando.
+ */
+const MOLDURA_PADRAO = "aspect-[85/54]";
+/** Moldura das fotos personalizadas: a proporção gerada pelo servidor (1536×1024). */
+const MOLDURA_FOTO = "aspect-[1536/1024]";
 const LADO_MAX = 1600;
 
 type Estado = "parado" | "processando" | "ok" | "erro";
@@ -71,8 +79,9 @@ function Identidade({ nome }: { nome?: string | null }) {
  * do próprio caminhão; o servidor transforma em imagem profissional e guarda
  * só para ele.
  *
- * A moldura da foto tem a proporção do arquivo original (1536×1024), então a
- * imagem nunca é deformada nem sobra azul sobrando. O cartão do número sobe
+ * A moldura da foto tem a proporção do arquivo que está sendo mostrado
+ * (850×540 no padrão, 1536×1024 nas fotos personalizadas), então a imagem nunca
+ * é deformada, cortada, nem sobra azul sobrando. O cartão do número sobe
  * exatamente sobre os últimos 5% desta altura (ver `MonitorApp`), e o logo
  * com o nome do motorista fica no canto esquerdo da base, logo acima do
  * cartão — dentro da faixa de 5%, sem encostar nele.
@@ -140,11 +149,12 @@ export default function BannerCaminhao({
 
   // Sem perfil neste aparelho: sempre a imagem padrão (nada de outro motorista).
   const src = motoristaId && versao && !falhou ? `/api/motoristas/banner/imagem?v=${versao}` : BANNER_PADRAO;
+  const padrao = src === BANNER_PADRAO;
 
   return (
     <div className="relative -mx-3 -mt-3">
-      {/* Mantém a proporção original do logo e das fotos personalizadas. */}
-      <div className={`relative w-full ${src === BANNER_PADRAO ? "aspect-[1536/1071]" : "aspect-[1536/1024]"}`}>
+      {/* Cada caso mantém a proporção do seu arquivo: nada é deformado nem cortado. */}
+      <div className={`relative w-full ${padrao ? MOLDURA_PADRAO : MOLDURA_FOTO}`}>
         {/* camada da foto: nítida de cima até a base, só os últimos 5% em degradê */}
         <div aria-hidden className="imagem-nitida pointer-events-none absolute inset-0 overflow-hidden">
           {/* Logo centralizado; fotos personalizadas mantêm o enquadramento original. */}
@@ -157,7 +167,7 @@ export default function BannerCaminhao({
             fetchPriority="high"
             decoding="async"
             onError={() => setFalhou(true)}
-            className={`banner-entra absolute inset-0 h-full w-full ${src === BANNER_PADRAO ? "object-contain object-center" : "object-cover object-[68%_46%]"}`}
+            className={`banner-entra absolute inset-0 h-full w-full ${padrao ? "object-cover object-center" : "object-cover object-[68%_46%]"}`}
           />
           {/* integração com o fundo cobalto: só a base da foto (5%) se dissolve no meio do degradê do app */}
           <div className="absolute inset-x-0 bottom-0 h-[5%] bg-[linear-gradient(180deg,rgba(0, 13, 22, 0)_0%,var(--fundo-meio)_100%)]" />
