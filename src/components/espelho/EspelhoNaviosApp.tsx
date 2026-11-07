@@ -35,8 +35,10 @@ import type {
 
 type Vista = "atracados" | "manobras";
 
-const URL_APPA = "https://www.appaweb.appa.pr.gov.br/appaweb/pesquisa.aspx?WCI=relLineUpRetroativo";
-const URL_SINPRAPAR = "https://www.sinprapar.com.br/PREV.HTM";
+/**
+ * Os acessos aos sites oficiais ficam no rodapé (URLs vêm de `painel.fontes`,
+ * a mesma fonte usada no status do monitoramento) — nunca duplicados no topo.
+ */
 
 const FILTROS = ["Em manobra", "Aguardando manobra", "Atracado"] as const;
 type Filtro = (typeof FILTROS)[number];
@@ -186,23 +188,24 @@ function CartaoManobra({ m }: { m: ManobraEspelho }) {
 function CartaoFonte({ fonte }: { fonte: PainelEspelho["fontes"][number] }) {
   const aoVivo = fonte.estado === "ao-vivo";
   return (
-    <div className="flex items-start gap-2.5 rounded-[14px] border border-borda/70 bg-fundo/40 p-3">
-      <span aria-hidden className={`led mt-1.5 ${aoVivo ? "led-verde" : "led-aco"}`} />
-      <div className="min-w-0 flex-1">
-        <a
-          href={fonte.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 font-display text-[13px] font-bold text-gelo hover:text-ciano"
-        >
-          {fonte.rotulo}
-          <ExternalLink size={12} />
-        </a>
-        <p className="mt-0.5 text-[11.5px] leading-snug text-aco">
+    <div className="rounded-[16px] border border-borda/70 bg-fundo/40 p-3">
+      {/* O acesso ao site oficial vive só aqui, no rodapé. */}
+      <a
+        href={fonte.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Abrir site oficial · ${fonte.rotulo}`}
+        className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-ciano/60 bg-ciano/10 px-3 text-center font-display text-[13px] font-extrabold text-ciano transition-colors hover:bg-ciano/20"
+      >
+        <ExternalLink size={14} className="shrink-0" /> Site oficial · {fonte.rotulo}
+      </a>
+      <p className="mt-2 flex items-start gap-2 text-[11.5px] leading-snug text-aco">
+        <span aria-hidden className={`led mt-0.5 shrink-0 ${aoVivo ? "led-verde" : "led-aco"}`} />
+        <span>
           {aoVivo ? "Leitura ao vivo" : "Última leitura gravada"} · {fonte.atualizadoFonte ?? "—"}
           {fonte.erro ? ` · ${fonte.erro}` : ""}
-        </p>
-      </div>
+        </span>
+      </p>
     </div>
   );
 }
@@ -307,43 +310,24 @@ export default function EspelhoNaviosApp({
             </>
           )}
 
-          <div className="mt-4 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+          {/* Só a navegação interna fica no topo. Os acessos aos sites
+              oficiais ficam no rodapé (uma única vez), junto do status das
+              fontes — nada de link externo repetido aqui em cima. */}
+          <div className="mt-4">
             {vista === "atracados" ? (
-              <>
-                <Link
-                  href="/navios/sinprapar"
-                  className="flex min-h-[46px] items-center justify-center gap-2 rounded-full border border-ciano/70 bg-ciano/10 px-3 text-center font-display text-[13px] font-extrabold text-ciano transition-colors hover:bg-ciano/20"
-                >
-                  <Ship size={16} /> Manobras Previstas
-                </Link>
-                <a
-                  href={URL_APPA}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Abrir site oficial da APPA"
-                  className="flex min-h-[46px] items-center justify-center gap-2 rounded-full border border-borda px-3 text-center font-display text-[13px] font-bold text-gelo transition-colors hover:border-ciano/60 hover:text-ciano"
-                >
-                  <ExternalLink size={15} /> Abrir site oficial da APPA
-                </a>
-              </>
+              <Link
+                href="/navios/sinprapar"
+                className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-full border border-ciano/70 bg-ciano/10 px-3 text-center font-display text-[13px] font-extrabold text-ciano transition-colors hover:bg-ciano/20"
+              >
+                <Ship size={16} /> Manobras Previstas
+              </Link>
             ) : (
-              <>
-                <Link
-                  href="/navios"
-                  className="flex min-h-[46px] items-center justify-center gap-2 rounded-full border border-ciano/70 bg-ciano/10 px-3 text-center font-display text-[13px] font-extrabold text-ciano transition-colors hover:bg-ciano/20"
-                >
-                  <Anchor size={16} /> Navios Atracados
-                </Link>
-                <a
-                  href={URL_SINPRAPAR}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Abrir site oficial do SINPRAPAR"
-                  className="flex min-h-[46px] items-center justify-center gap-2 rounded-full border border-borda px-3 text-center font-display text-[13px] font-bold text-gelo transition-colors hover:border-ciano/60 hover:text-ciano"
-                >
-                  <ExternalLink size={15} /> Abrir site oficial do SINPRAPAR
-                </a>
-              </>
+              <Link
+                href="/navios"
+                className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-full border border-ciano/70 bg-ciano/10 px-3 text-center font-display text-[13px] font-extrabold text-ciano transition-colors hover:bg-ciano/20"
+              >
+                <Anchor size={16} /> Navios Atracados
+              </Link>
             )}
           </div>
 
@@ -457,7 +441,7 @@ export default function EspelhoNaviosApp({
 
         <footer className="mt-8 rounded-[22px] border border-borda bg-cartao/70 p-4">
           <h2 className="micro font-display text-[11px] font-extrabold text-aco">
-            Monitoramento · 2 sites · somente fertilizantes
+            Acessos aos sites oficiais · 2 fontes · somente fertilizantes
           </h2>
           <div className="mt-3 grid gap-2">
             {painel.fontes.map((f) => (

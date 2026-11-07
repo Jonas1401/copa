@@ -12,8 +12,8 @@ atalhos.
 
 | Rota | Equivale a | Conteúdo |
 |---|---|---|
-| `/navios` | `/` da referência | Logo COPALINKS, botões **Manobras Previstas** e **Abrir site oficial da APPA**, "Atualizado HH:MM:SS", grupo por porto (PARANAGUÁ/ANTONINA) e cartões por berço: navio, N operadoras, operadora + mercadoria + saldo, barra "Descarga N% descarregado", "Saldo Total do Navio". |
-| `/navios/sinprapar` | `/sinprapar` da referência | Cabeçalho SINPRAPAR, botões **Navios Atracados** e **Abrir site oficial do SINPRAPAR**, filtros **Em manobra / Aguardando manobra / Atracado**, cartões com navio, mercadoria, Atracar/Desatracar, `dd/mm hh:mm·XX— Título: berço`, explicação da manobra e situação (EM ANDAMENTO / A CONFIRMAR / PREVISTA…). |
+| `/navios` | `/` da referência | Logo COPALINKS, botão **Manobras Previstas** (os acessos aos sites oficiais ficam no rodapé), "Atualizado HH:MM:SS", grupo por porto (PARANAGUÁ/ANTONINA) e cartões por berço: navio, N operadoras, operadora + mercadoria + saldo, barra "Descarga N% descarregado", "Saldo Total do Navio". |
+| `/navios/sinprapar` | `/sinprapar` da referência | Cabeçalho SINPRAPAR, botão **Navios Atracados** (os acessos aos sites oficiais ficam no rodapé), filtros **Em manobra / Aguardando manobra / Atracado**, cartões com navio, mercadoria, Atracar/Desatracar, `dd/mm hh:mm·XX— Título: berço`, explicação da manobra e situação (EM ANDAMENTO / A CONFIRMAR / PREVISTA…). |
 | `/sinprapar` | — | Redireciona para `/navios/sinprapar`. |
 | `/api/navios/espelho` | — | JSON com `modo`, `fontes`, `atracados`, `manobras` e `aviso`. |
 
