@@ -14,6 +14,14 @@ import {
   textoFigurinhaEnviada,
 } from "../src/lib/figurinhas-catalogo";
 import { PACOTE_FIGURINHAS } from "../src/lib/figurinhas-pacote";
+import {
+  HASHES_PACOTE_ANTERIOR,
+  PACOTE_FIGURINHAS_ID,
+  VERSAO_PACOTE_FIGURINHAS,
+} from "../src/lib/figurinhas-migracao";
+import sharp from "sharp";
+
+const ler = (caminho: string) => readFileSync(caminho, "utf8");
 
 /* --------------------------------------------- regras puras do catálogo */
 
@@ -74,8 +82,17 @@ test("mensagem e push da figurinha têm formato próprio (não confunde com text
 
 /* ------------------------------------------ pacote oficial semeado no banco */
 
-test("pacote inicial: figurinhas válidas, WebP com assinatura correta e dentro do limite", () => {
-  assert.ok(PACOTE_FIGURINHAS.length >= 16, "o pacote inicial precisa ter a biblioteca completa");
+test("pacote atual: as 42 figurinhas da folha, WebP válido e dentro do limite", () => {
+  const manifesto = JSON.parse(ler("assets/figurinhas/copalinks-bordo.json")) as {
+    figurinhas: { slug: string; nome: string; categoria: string }[];
+  };
+  assert.equal(manifesto.figurinhas.length, 42);
+  assert.equal(PACOTE_FIGURINHAS.length, 42, "o pacote precisa ter as 42 figurinhas recortadas");
+  assert.deepEqual(
+    PACOTE_FIGURINHAS.map((f) => [f.slug, f.nome, f.categoria]),
+    manifesto.figurinhas.map((f) => [f.slug, f.nome, f.categoria]),
+    "o pacote gerado precisa seguir o manifesto da folha",
+  );
   for (const f of PACOTE_FIGURINHAS) {
     assert.ok(nomeFigurinha(f.nome), `nome inválido: ${f.nome}`);
     assert.ok(CATEGORIAS_PADRAO.some((c) => c.chave === f.categoria), `categoria desconhecida: ${f.categoria}`);
@@ -94,9 +111,31 @@ test("pacote inicial: figurinhas válidas, WebP com assinatura correta e dentro 
   }
 });
 
-/* ---------------------------------------------- o chat continua inteiro */
+test("pacote atual: WebP 256×256 com transparência", async () => {
+  for (const f of PACOTE_FIGURINHAS) {
+    const meta = await sharp(Buffer.from(f.base64, "base64")).metadata();
+    assert.equal(meta.width, 256, f.slug);
+    assert.equal(meta.height, 256, f.slug);
+    assert.equal(meta.hasAlpha, true, `${f.slug} precisa de fundo transparente`);
+  }
+});
 
-const ler = (caminho: string) => readFileSync(caminho, "utf8");
+test("migração do pacote antigo: versionada, por hash, sem tocar no histórico", () => {
+  assert.equal(PACOTE_FIGURINHAS_ID, "copalinks-bordo");
+  assert.equal(VERSAO_PACOTE_FIGURINHAS, "copalinks-bordo-42");
+  assert.equal(HASHES_PACOTE_ANTERIOR.length, 22, "o pacote antigo tinha 22 figurinhas");
+  assert.equal(new Set(HASHES_PACOTE_ANTERIOR).size, 22);
+  for (const hash of HASHES_PACOTE_ANTERIOR) assert.match(hash, /^[a-f0-9]{32}$/);
+
+  const admin = ler("src/lib/figurinhas-admin.ts");
+  assert.ok(admin.includes("db.transaction"), "a troca do pacote precisa ser atômica");
+  assert.ok(admin.includes("pg_advisory_xact_lock"), "a semente precisa de trava contra corrida");
+  assert.ok(admin.includes("md5("), "a remoção do pacote antigo precisa casar a imagem exata");
+  assert.ok(admin.includes("CHAVE_SEMENTE_FIGURINHAS"), "a semente precisa ser versionada");
+  assert.ok(!admin.includes("chatMensagens"), "a migração do catálogo não pode mexer nas mensagens");
+});
+
+/* ---------------------------------------------- o chat continua inteiro */
 
 test("seletor do chat: abas Emojis e Figurinhas, categorias e grade de 4 por linha", () => {
   const s = ler("src/components/chat/ChatMotoristas.tsx");

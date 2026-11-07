@@ -11,7 +11,7 @@
  * muda nem some quando o catálogo é editado depois.
  */
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { configuracao, figurinhaCategorias, figurinhasCatalogo } from "@/db/schema";
 import {
@@ -23,9 +23,13 @@ import {
   type CategoriaFigurinha,
 } from "@/lib/figurinhas-catalogo";
 import { PACOTE_FIGURINHAS } from "@/lib/figurinhas-pacote";
-
-/** Marca na tabela `configuracao`: o pacote inicial já foi semeado. */
-const CHAVE_SEMENTE = "figurinhas_pacote_copalinks";
+import {
+  CHAVE_SEMENTE_FIGURINHAS,
+  HASHES_PACOTE_ANTERIOR,
+  PACOTE_FIGURINHAS_ANTERIOR_ID,
+  PACOTE_FIGURINHAS_ID,
+  VERSAO_PACOTE_FIGURINHAS,
+} from "@/lib/figurinhas-migracao";
 
 export type FigurinhaCatalogo = {
   id: number;
@@ -51,41 +55,79 @@ const semDados = {
   atualizadoEm: figurinhasCatalogo.atualizadoEm,
 } as const;
 
-/** Semeia categorias + figurinhas oficiais na primeira chamada do servidor. */
+/**
+ * Prepara o catálogo oficial. Na primeira chamada (ou quando a versão do
+ * pacote muda), semeia as categorias e troca o pacote antigo pelo atual.
+ * A marca em `configuracao` impede que o pacote volte sozinho se o admin
+ * apagar tudo depois. Mensagens já enviadas não são tocadas: elas guardam
+ * a própria cópia da imagem.
+ */
 export async function garantirFigurinhasPadrao() {
   try {
-    const semeada = await db
-      .select({ chave: configuracao.chave })
+    const [marco] = await db
+      .select({ valor: configuracao.valor })
       .from(configuracao)
-      .where(eq(configuracao.chave, CHAVE_SEMENTE))
+      .where(eq(configuracao.chave, CHAVE_SEMENTE_FIGURINHAS))
       .limit(1);
-    if (semeada.length) return;
-    for (const categoria of CATEGORIAS_PADRAO) {
-      await db
-        .insert(figurinhaCategorias)
-        .values(categoria)
-        .onConflictDoNothing({ target: figurinhaCategorias.chave });
-    }
-    for (const [indice, f] of PACOTE_FIGURINHAS.entries()) {
-      await db
-        .insert(figurinhasCatalogo)
-        .values({
+    if (marco?.valor === VERSAO_PACOTE_FIGURINHAS) return;
+
+    await db.transaction(async (tx) => {
+      // Uma requisição por vez prepara o pacote; as outras esperam e veem a marca.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${CHAVE_SEMENTE_FIGURINHAS})::bigint)`);
+      const [dentro] = await tx
+        .select({ valor: configuracao.valor })
+        .from(configuracao)
+        .where(eq(configuracao.chave, CHAVE_SEMENTE_FIGURINHAS))
+        .limit(1);
+      if (dentro?.valor === VERSAO_PACOTE_FIGURINHAS) return;
+
+      for (const categoria of CATEGORIAS_PADRAO) {
+        await tx
+          .insert(figurinhaCategorias)
+          .values(categoria)
+          .onConflictDoNothing({ target: figurinhaCategorias.chave });
+      }
+
+      // Remove só as figurinhas oficiais antigas, pelo hash exato da imagem.
+      // Figurinhas publicadas pelo admin com o mesmo nome sobrevivem.
+      if (HASHES_PACOTE_ANTERIOR.length) {
+        const hashes = sql.join(
+          HASHES_PACOTE_ANTERIOR.map((hash) => sql`${hash}`),
+          sql`, `,
+        );
+        await tx
+          .delete(figurinhasCatalogo)
+          .where(
+            and(
+              eq(figurinhasCatalogo.pacote, PACOTE_FIGURINHAS_ANTERIOR_ID),
+              sql`md5(${figurinhasCatalogo.dados}) IN (${hashes})`,
+            ),
+          );
+      }
+
+      // Idempotência: se uma tentativa anterior caiu antes de gravar a marca,
+      // não duplica o pacote atual.
+      await tx.delete(figurinhasCatalogo).where(eq(figurinhasCatalogo.pacote, PACOTE_FIGURINHAS_ID));
+      for (const [indice, f] of PACOTE_FIGURINHAS.entries()) {
+        await tx.insert(figurinhasCatalogo).values({
           nome: f.nome,
           categoria: f.categoria,
           mime: f.mime,
           dados: f.base64,
           ativa: true,
           ordem: indice,
-          pacote: "copalinks",
-        })
-        .onConflictDoNothing();
-    }
-    await db
-      .insert(configuracao)
-      .values({ chave: CHAVE_SEMENTE, valor: String(PACOTE_FIGURINHAS.length) })
-      .onConflictDoNothing({ target: configuracao.chave });
-  } catch {
-    // banco ainda não pronto: a próxima chamada tenta de novo
+          pacote: PACOTE_FIGURINHAS_ID,
+        });
+      }
+
+      await tx
+        .insert(configuracao)
+        .values({ chave: CHAVE_SEMENTE_FIGURINHAS, valor: VERSAO_PACOTE_FIGURINHAS })
+        .onConflictDoUpdate({ target: configuracao.chave, set: { valor: VERSAO_PACOTE_FIGURINHAS } });
+    });
+  } catch (erro) {
+    // Banco ainda não pronto: a próxima chamada tenta de novo.
+    console.error("[figurinhas] falha ao preparar pacote:", erro instanceof Error ? erro.message : erro);
   }
 }
 

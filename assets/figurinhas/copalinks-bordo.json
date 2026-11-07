@@ -1,0 +1,54 @@
+{
+  "fonte": "copalinks-bordo.png",
+  "tamanho": [1536, 1024],
+  "observacao": "Caixas [x0, y0, x1, y1] em pixels da folha original. São apenas a região de referência de cada figurinha: o gerador remove o fundo, rotula os componentes conexos da folha inteira e entrega o desenho completo mesmo quando ele ultrapassa a caixa. Blobs compartilhados por duas figurinhas são divididos por distância geodésica a partir do miolo de cada caixa.",
+  "figurinhas": [
+    { "slug": "caminhao-azul-frente", "nome": "Caminhão azul de frente", "categoria": "caminhoes", "caixa": [34, 14, 216, 181] },
+    { "slug": "caminhao-azul-estrada", "nome": "Caminhão azul na estrada", "categoria": "caminhoes", "caixa": [228, 33, 446, 175] },
+    { "slug": "caminhao-branco", "nome": "Caminhão branco carregado", "categoria": "caminhoes", "caixa": [463, 20, 656, 174] },
+    { "slug": "navio-containeres", "nome": "Navio de contêineres", "categoria": "porto", "caixa": [674, 48, 900, 184] },
+    { "slug": "guindaste-porto", "nome": "Guindaste do porto", "categoria": "porto", "caixa": [913, 6, 1143, 182] },
+    { "slug": "empilhadeira", "nome": "Empilhadeira", "categoria": "porto", "caixa": [1156, 21, 1338, 178] },
+    { "slug": "navio-frente", "nome": "Navio de frente", "categoria": "porto", "caixa": [1349, 21, 1515, 184] },
+
+    { "slug": "motorista-joinha", "nome": "Motorista joinha", "categoria": "motoristas", "caixa": [10, 184, 220, 396] },
+    { "slug": "motorista-bracos-cruzados", "nome": "Motorista braços cruzados", "categoria": "motoristas", "caixa": [265, 185, 446, 400] },
+    { "slug": "motorista-cafe", "nome": "Motorista com café", "categoria": "motoristas", "caixa": [455, 185, 654, 403] },
+    { "slug": "motorista-sono", "nome": "Motorista com sono", "categoria": "motoristas", "caixa": [677, 192, 887, 401] },
+    { "slug": "motorista-comemorando", "nome": "Motorista comemorando", "categoria": "motoristas", "caixa": [910, 193, 1148, 388] },
+    { "slug": "motorista-apontando", "nome": "Motorista apontando", "categoria": "motoristas", "caixa": [1147, 205, 1337, 399] },
+    { "slug": "motorista-ligacao", "nome": "Motorista na ligação", "categoria": "motoristas", "caixa": [1348, 200, 1525, 398] },
+
+    { "slug": "bom-dia", "nome": "Bom dia!", "categoria": "copalinks", "caixa": [29, 395, 212, 573] },
+    { "slug": "boa-tarde", "nome": "Boa tarde!", "categoria": "copalinks", "caixa": [244, 397, 421, 566] },
+    { "slug": "boa-noite", "nome": "Boa noite!", "categoria": "copalinks", "caixa": [457, 402, 650, 568] },
+    { "slug": "obrigado", "nome": "Obrigado!", "categoria": "copalinks", "caixa": [671, 402, 905, 568], "sobreposicao": [[804, 397, 837, 404]] },
+    { "slug": "valeu", "nome": "Valeu!", "categoria": "copalinks", "caixa": [923, 405, 1104, 563] },
+    { "slug": "beleza", "nome": "Beleza!", "categoria": "copalinks", "caixa": [1125, 407, 1326, 557] },
+    { "slug": "show", "nome": "Show!", "categoria": "copalinks", "caixa": [1346, 401, 1529, 559] },
+
+    { "slug": "top", "nome": "Top!", "categoria": "copalinks", "caixa": [33, 574, 219, 730] },
+    { "slug": "gostei", "nome": "Gostei!", "categoria": "copalinks", "caixa": [259, 566, 438, 720] },
+    { "slug": "nao-gostei", "nome": "Não gostei!", "categoria": "copalinks", "caixa": [502, 574, 637, 719] },
+    { "slug": "parabens", "nome": "Parabéns!", "categoria": "copalinks", "caixa": [688, 572, 879, 720] },
+    { "slug": "deus-abencoe", "nome": "Deus abençoe!", "categoria": "copalinks", "caixa": [913, 571, 1092, 728] },
+    { "slug": "amem", "nome": "Amém!", "categoria": "copalinks", "caixa": [1131, 563, 1309, 731] },
+    { "slug": "kkk", "nome": "KKK!", "categoria": "copalinks", "caixa": [1366, 572, 1512, 730] },
+
+    { "slug": "estou-chegando", "nome": "Estou chegando!", "categoria": "caminhoes", "caixa": [26, 730, 201, 860] },
+    { "slug": "ja-estou-indo", "nome": "Já estou indo!", "categoria": "caminhoes", "caixa": [236, 731, 424, 873] },
+    { "slug": "pode-deixar", "nome": "Pode deixar!", "categoria": "copalinks", "caixa": [480, 729, 636, 870] },
+    { "slug": "ate-mais", "nome": "Até mais!", "categoria": "copalinks", "caixa": [693, 734, 866, 864] },
+    { "slug": "bomba-combustivel", "nome": "Bomba de combustível", "categoria": "caminhoes", "caixa": [929, 735, 1093, 860] },
+    { "slug": "ferramentas", "nome": "Ferramentas", "categoria": "porto", "caixa": [1142, 738, 1299, 864] },
+    { "slug": "engrenagem", "nome": "Engrenagem", "categoria": "porto", "caixa": [1358, 737, 1503, 869] },
+
+    { "slug": "cafe", "nome": "Café", "categoria": "motoristas", "caixa": [24, 863, 195, 1013] },
+    { "slug": "cafe-da-manha", "nome": "Café da manhã", "categoria": "motoristas", "caixa": [224, 878, 433, 1008] },
+    { "slug": "almoco", "nome": "Almoço", "categoria": "motoristas", "caixa": [449, 873, 676, 1011] },
+    { "slug": "hora-de-descansar", "nome": "Hora de descansar", "categoria": "motoristas", "caixa": [697, 872, 896, 1017] },
+    { "slug": "boa-noite-pessoal", "nome": "Boa noite, pessoal!", "categoria": "motoristas", "caixa": [918, 865, 1108, 1013] },
+    { "slug": "partiu-trabalho", "nome": "Partiu trabalho!", "categoria": "caminhoes", "caixa": [1130, 867, 1329, 1018] },
+    { "slug": "bora-rodar", "nome": "Bora rodar!", "categoria": "caminhoes", "caixa": [1362, 876, 1508, 1009] }
+  ]
+}
