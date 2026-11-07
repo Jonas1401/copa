@@ -62,10 +62,9 @@ test("a aba Sobre continua com o link do painel de administração", () => {
   );
 });
 
-test("o menu ⋮ mantém a aba Sobre acessível depois que o rodapé virou Navios", () => {
-  assert.ok(menu().includes("Sobre o CopaLinks"), "sem o atalho para a aba Sobre");
-  assert.match(menu(), /onAbrirSobre/, "o menu não repassa a abertura da aba Sobre");
-  assert.match(app(), /onAbrirSobre=\{\(\) => setAba\("sobre"\)\}/);
+test("o menu ⋮ não mostra o atalho Sobre o CopaLinks", () => {
+  assert.ok(!menu().includes("Sobre o CopaLinks"));
+  assert.doesNotMatch(menu(), /onAbrirSobre/);
 });
 
 test("o menu abre ancorado no botão, fecha com Esc/clique fora e não vaza da tela", () => {

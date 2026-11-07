@@ -277,8 +277,7 @@ caixa azul pesada. No **canto superior esquerdo** fica o menu **⋮**
 que já existe na aba "Sobre" — **trocar o nome do perfil**, **ativar as
 notificações** e o **painel de administração** — reaproveitando as mesmas
 funções (`renomear` e `setPainelNotif("geral")`), sem criar conteúdo nem
-chamadas novas, e ainda **abre a própria aba Sobre** (`Sobre o CopaLinks`),
-que saiu do rodapé quando o terceiro item virou "Navios". O painel abre
+chamadas novas. O painel abre
 ancorado no botão (nasce abaixo dele, nunca vaza para fora da tela), fecha com
 Esc, toque fora, rolagem ou ao girar o aparelho, e o link do admin continua
 também no fim da aba Sobre. Teste: `tests/menu-conta.test.ts`.
@@ -370,11 +369,7 @@ O terceiro item da barra inferior agora é o **Navios**: ícone de navio, nome
 fertilizantes **atracados** — mostra **0** quando não há nenhum (e enquanto a
 leitura não chega). Um toque abre `/navios`, a réplica idêntica do painel
 `https://berth-buddy-bot.lovable.app/`, com todas as funcionalidades e o mesmo
-tema Dark Navy do aplicativo. A antiga aba **Sobre** (contagem de motoristas,
-notificações, WhatsApp e admin) continua inteira e passa a ser aberta pelo
-**menu ⋮ → Sobre o CopaLinks**; nela também fica o cartão
-**"Navios · cópia do COPALINKS"** com os dois atalhos. São duas rotas, uma para
-cada tela da cópia:
+tema Dark Navy do aplicativo. São duas rotas, uma para cada tela da cópia:
 
 | Rota | Tela da cópia |
 |---|---|
