@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
+  Anchor,
   Bell,
   BellOff,
   CheckCircle2,
@@ -15,6 +16,7 @@ import {
   Clock,
   Crown,
   ExternalLink,
+  Info,
   MapPin,
   Truck,
   Users,
@@ -22,6 +24,7 @@ import {
   Plus,
   RotateCw,
   ShieldCheck,
+  Ship,
   Trash2,
   X,
 } from "lucide-react";
@@ -1575,6 +1578,42 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 e avisa quando o seu número é chamado.
               </p>
             </div>
+
+            {/* Acesso à CÓPIA IDÊNTICA do COPALINKS de navios, no ícone Sobre:
+                monitora APPA + SINPRAPAR e mostra só navios de fertilizantes. */}
+            <Painel
+              titulo="Navios · cópia do COPALINKS"
+              corTitulo="text-white"
+              icone={<Ship size={22} className="text-ciano" />}
+              className="border-ciano/50"
+            >
+              <p className="text-[14px] leading-relaxed text-gelo/85">
+                Painel idêntico ao aplicativo de navios, com todas as
+                funcionalidades e o mesmo tema do CopaLinks. Monitora os 2 sites
+                oficiais (APPA e SINPRAPAR) e busca apenas dados de navios de
+                fertilizantes: berço, operadoras, saldos, descarga e manobras
+                previstas.
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+                <Link
+                  href="/navios"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-ciano/15 px-3 text-center font-display text-[13.5px] font-extrabold text-ciano transition-colors hover:bg-ciano/25"
+                >
+                  <Ship size={16} /> Navios Atracados
+                </Link>
+                <Link
+                  href="/navios/sinprapar"
+                  className="flex min-h-[48px] items-center justify-center gap-2 rounded-full border border-borda px-3 text-center font-display text-[13.5px] font-extrabold text-gelo transition-colors hover:border-ciano/60 hover:text-ciano"
+                >
+                  <Anchor size={16} /> Manobras Previstas
+                </Link>
+              </div>
+              <p className="mt-3 flex items-start gap-2 text-[12px] leading-snug text-aco">
+                <Info size={14} className="mt-0.5 shrink-0 text-discreto" />
+                Atualização automática, filtros de manobras, progresso de
+                descarga e links para os sites oficiais.
+              </p>
+            </Painel>
 
             {/* motoristas: contagem + o próprio nome (com troca) */}
             <section className="painel p-4">

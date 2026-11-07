@@ -359,6 +359,37 @@ Consulte [GITHUB_VERCEL.md](GITHUB_VERCEL.md) e
 Testes: `npm test`; integração isolada: `tests/navios-aviso.test.ts` com
 `DATABASE_URL=TEST_DATABASE_URL` em um banco local `fila_push_test_*`.
 
+## Cópia do COPALINKS de navios (acesso na aba **Sobre**)
+
+O ícone **Sobre** da barra inferior dá **dois** acessos à réplica do painel
+`https://berth-buddy-bot.lovable.app/`: o pequeno selo de navio no próprio ícone
+abre `/navios` direto, e a aba Sobre traz o cartão
+**"Navios · cópia do COPALINKS"** com todas as funcionalidades e o mesmo tema
+Dark Navy do aplicativo. São dois atalhos, um para cada tela da cópia:
+
+| Rota | Tela da cópia |
+|---|---|
+| `/navios` | **Navios Atracados** — berço, operadoras, mercadoria, saldo de cada operadora, barra de descarga (%) e saldo total do navio |
+| `/navios/sinprapar` | **Manobras Previstas** — código (EA/EF/DF/DS/AT/MB), berço, data/hora, explicação, situação e filtros "Em manobra / Aguardando manobra / Atracado" |
+| `/sinprapar` | atalho que redireciona para `/navios/sinprapar` (mesmo caminho da referência) |
+| `/api/navios/espelho` | dados das duas fontes em JSON, usados pela atualização automática a cada 30 s |
+
+O espelho monitora **exatamente dois sites oficiais** e cruza as leituras pelo
+nome/IMO do navio: **APPA** (`relLineUpRetroativo`) fornece berços, operadoras,
+previstos e saldos; **SINPRAPAR** (`PREV.HTM`) fornece as manobras. O filtro
+`ehFertilizante` de `src/lib/navios.ts` deixa passar **somente navios de
+fertilizantes** (ureia, KCl, sulfato de amônio, MAP, NPK, adubos nitrogenados…).
+O percentual de descarga é `1 − saldo total / previsto total`, arredondado como
+na referência. Nenhum outro site é consultado e nenhum valor é inventado.
+
+Se uma fonte não responder, o trecho correspondente vem da última leitura
+pública gravada em `src/lib/espelho-navios-referencia.json` e a tela mostra o
+selo **PARCIAL/REFERÊNCIA** com o horário daquela leitura — nunca finge estar
+ao vivo. Em produção (Vercel), as duas leituras são ao vivo; botão de atualizar,
+links para os sites oficiais e volta ao CopaLinks ficam na própria tela.
+Detalhes: [docs/ESPELHO_NAVIOS.md](docs/ESPELHO_NAVIOS.md). Testes:
+`tests/espelho-navios.test.ts`.
+
 ## Filtro automático do grupo (PONTOS NA VEZ / PULADAS)
 
 O Monitor Android lê as **notificações** que o WhatsApp publica no aparelho

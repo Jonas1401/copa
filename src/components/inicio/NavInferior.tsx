@@ -1,6 +1,7 @@
 "use client";
 
-import { House, Info, MessagesSquare } from "lucide-react";
+import Link from "next/link";
+import { House, Info, MessagesSquare, Ship } from "lucide-react";
 
 export type Aba = "inicio" | "sobre";
 
@@ -79,7 +80,28 @@ export default function NavInferior({
               />
             </button>
           );
-          if (i !== 0) return botao;
+          if (i !== 0) {
+            // Acesso direto pelo PRÓPRIO ícone "Sobre": o selo de navio abre a
+            // cópia idêntica do COPALINKS sem precisar entrar na aba primeiro.
+            // Fica fora do <button> para não aninhar links e sem atrapalhar o
+            // toque que troca de aba.
+            if (id === "sobre") {
+              return (
+                <div key={id} className="relative">
+                  {botao}
+                  <Link
+                    href="/navios"
+                    aria-label="Abrir a cópia do COPALINKS de navios de fertilizantes"
+                    title="Cópia do COPALINKS — Navios"
+                    className="absolute right-0 top-0 grid h-[24px] w-[24px] place-items-center rounded-full border-2 border-cartao bg-ciano text-fundo shadow-[0_0_10px_-2px_rgba(0,184,188,0.9)] transition-transform active:scale-95"
+                  >
+                    <Ship size={13} strokeWidth={2.6} />
+                  </Link>
+                </div>
+              );
+            }
+            return botao;
+          }
           return [
             botao,
             <button
