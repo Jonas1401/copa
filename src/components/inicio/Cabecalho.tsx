@@ -6,7 +6,6 @@ import { Share2 } from "lucide-react";
 import type { Icone } from "@/lib/tempo";
 import { IconeLinha } from "@/components/tempo/IconeTempo";
 import MenuConta from "@/components/inicio/MenuConta";
-import IconeUsuarios from "@/components/inicio/IconeUsuarios";
 
 type Agora = { temperatura: number; descricao: string; icone: Icone };
 
@@ -61,7 +60,6 @@ export default function Cabecalho({
   assinada,
   onRenomear,
   onAtivarNotificacoes,
-  totalMotoristas,
 }: {
   onCompartilhar: () => void;
   /** Nome do motorista neste aparelho (null = ainda sem perfil). */
@@ -70,8 +68,6 @@ export default function Cabecalho({
   assinada: boolean;
   onRenomear: (nome: string) => Promise<boolean>;
   onAtivarNotificacoes: () => void;
-  /** Total de motoristas no app (número ao lado do desenho; null = contando). */
-  totalMotoristas?: number | null;
 }) {
   return (
     <header className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -82,10 +78,6 @@ export default function Cabecalho({
         onRenomear={onRenomear}
         onAtivarNotificacoes={onAtivarNotificacoes}
       />
-
-      {/* do lado do menu: o desenho do motorista com o total de usuários, no
-          tamanho do ícone ⋮ (17 px) — pedido do Jonas no lugar do capacete */}
-      <IconeUsuarios total={totalMotoristas ?? null} />
 
       {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
           para não brigar com a foto do caminhão. Ganhos de toque mantidos
