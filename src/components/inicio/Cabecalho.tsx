@@ -70,7 +70,7 @@ export default function Cabecalho({
   assinada: boolean;
   onRenomear: (nome: string) => Promise<boolean>;
   onAtivarNotificacoes: () => void;
-  /** Total de motoristas no app (rótulo acessível do capacete; null = contando). */
+  /** Total de motoristas no app (número ao lado do desenho; null = contando). */
   totalMotoristas?: number | null;
 }) {
   return (
@@ -83,8 +83,8 @@ export default function Cabecalho({
         onAtivarNotificacoes={onAtivarNotificacoes}
       />
 
-      {/* do lado do menu: só o capacete (a contagem fica na aba "Sobre"; aqui
-          ela aparece apenas no rótulo acessível, sem número desenhado) */}
+      {/* do lado do menu: o desenho do motorista com o total de usuários, no
+          tamanho do ícone ⋮ (17 px) — pedido do Jonas no lugar do capacete */}
       <IconeUsuarios total={totalMotoristas ?? null} />
 
       {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
