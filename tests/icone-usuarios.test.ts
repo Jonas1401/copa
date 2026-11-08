@@ -6,12 +6,16 @@ const ler = (p: string) => readFileSync(p, "utf8");
 const cabecalho = () => ler("src/components/inicio/Cabecalho.tsx");
 const app = () => ler("src/components/MonitorApp.tsx");
 
-test("o topo não exibe a imagem do motorista nem o número de usuários", () => {
+test("o topo não exibe ícone nem imagem do motorista; a contagem vai só no selo do menu ⋮", () => {
   const c = cabecalho();
-  assert.doesNotMatch(c, /IconeUsuarios|motorista-icone|totalMotoristas/);
+  // Nada de ícone/avatar de usuário no topo: o pedido é apenas o número.
+  assert.doesNotMatch(c, /IconeUsuarios|motorista-icone/);
+  // O número de usuários aparece SÓ como selo pequeno do menu (pedido do
+  // Jonas: "um número pequeno discreto, igual ao ícone dos navios").
+  assert.match(c, /<MenuConta\b[\s\S]*?totalMotoristas=\{totalMotoristas\}/);
   const chamada = app().match(/<Cabecalho\b[\s\S]*?\/>/);
   assert.ok(chamada, "o cabeçalho deixou de ser exibido");
-  assert.doesNotMatch(chamada[0], /totalMotoristas/);
+  assert.match(chamada[0], /totalMotoristas=\{totalMotoristas\}/);
 });
 
 test("o menu, compartilhamento e previsão permanecem no topo", () => {

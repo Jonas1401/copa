@@ -58,6 +58,7 @@ export default function Cabecalho({
   onCompartilhar,
   nome,
   assinada,
+  totalMotoristas = null,
   onRenomear,
   onAtivarNotificacoes,
 }: {
@@ -66,6 +67,11 @@ export default function Cabecalho({
   nome: string | null;
   /** Este aparelho já recebe os avisos. */
   assinada: boolean;
+  /**
+   * Quantos motoristas usam o CopaLinks. Alimenta só o selo pequeno do menu ⋮
+   * (mesmo número da aba "Sobre"); enquanto não chega, o selo não aparece.
+   */
+  totalMotoristas?: number | null;
   onRenomear: (nome: string) => Promise<boolean>;
   onAtivarNotificacoes: () => void;
   /** Abre a antiga aba "Sobre" (agora acessível pelo menu ⋮). */
@@ -76,6 +82,7 @@ export default function Cabecalho({
       <MenuConta
         nome={nome}
         assinada={assinada}
+        totalMotoristas={totalMotoristas}
         onRenomear={onRenomear}
         onAtivarNotificacoes={onAtivarNotificacoes}
       />
