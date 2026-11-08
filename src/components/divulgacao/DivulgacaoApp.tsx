@@ -15,26 +15,29 @@ import {
   Copy,
   Download,
   ExternalLink,
-  Gauge,
   MapPin,
   MessageCircle,
   MessagesSquare,
   Phone,
   QrCode,
   Share2,
+  Ship,
   Signal,
   Smartphone,
-  Sparkles,
   Truck,
+  Wrench,
 } from "lucide-react";
 import {
   BENEFICIOS,
   CABECALHO_PROMO,
   FECHO_PROMO,
+  IMAGEM_COMPARTILHAR,
   IMAGEM_STATUS,
   NOME_APP,
   PASSOS,
   TITULO_PROMO,
+  carregarArquivoCompartilhar,
+  compartilharAplicativo,
   linhasDaMensagem,
   linkWhatsAppMensagem,
   mensagemCompartilhar,
@@ -144,14 +147,14 @@ function instrucoes(app: Aparelho) {
 
 /** Um ícone por recurso (mesma ordem da lista BENEFICIOS). */
 const ICONES_BENEFICIO = [
-  Gauge,
-  Bell,
   MapPin,
+  Bell,
   CloudSun,
   Calculator,
-  Sparkles,
-  MessagesSquare,
+  Wrench,
   Phone,
+  MessagesSquare,
+  Ship,
 ];
 
 /* ------------------------------------------------------------- página */
@@ -193,6 +196,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
 
   /* QR Code do endereço do app: o motorista aponta a câmera e já abre. */
   useEffect(() => {
+    void carregarArquivoCompartilhar();
     let vivo = true;
     QRCode.toDataURL(url, {
       errorCorrectionLevel: "M",
@@ -246,16 +250,13 @@ export default function DivulgacaoApp({ url }: { url: string }) {
   }, [mensagem, avisar]);
 
   const compartilharNativo = useCallback(async () => {
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: NOME_APP, text: mensagem, url });
-        return;
-      }
-      await copiar();
-    } catch {
-      // usuário fechou a janela de compartilhar: não é erro
+    const resultado = await compartilharAplicativo(url);
+    if (resultado === "copiou") {
+      avisar("Mensagem copiada. É só colar no WhatsApp.");
+    } else if (resultado === "link") {
+      avisar(mensagem);
     }
-  }, [mensagem, url, copiar]);
+  }, [url, avisar, mensagem]);
 
   const passos = instrucoes(app);
 
@@ -294,8 +295,7 @@ export default function DivulgacaoApp({ url }: { url: string }) {
             {CABECALHO_PROMO}
           </h2>
           <p className="mx-auto mt-2 max-w-[420px] text-[15px] leading-relaxed text-gelo/85">
-            {TITULO_PROMO} Acompanhe o seu ponto na fila da Copadubo sem ficar
-            atualizando o site.
+            {TITULO_PROMO}
           </p>
 
           <div className="mt-5 flex flex-col items-center gap-2.5">
@@ -468,14 +468,28 @@ export default function DivulgacaoApp({ url }: { url: string }) {
 
           {/* prévia da mensagem (como aparece no WhatsApp) */}
           <div className="mt-4 rounded-[18px] border border-[#183341]/50 bg-[#071A28]/60 p-3">
-            <div className="max-w-[92%] rounded-[16px] rounded-bl-[6px] bg-[#002F3B] px-3.5 py-2.5">
-              {linhas.map((linha, i) => (
-                <p key={i} className="text-[14px] leading-relaxed text-[#EAF4F7]">
-                  {linha.map((t, j) =>
-                    t.negrito ? <b key={j}>{t.texto}</b> : <span key={j}>{t.texto}</span>,
-                  )}
-                </p>
-              ))}
+            <div className="max-w-[92%] overflow-hidden rounded-[16px] rounded-bl-[6px] bg-[#002F3B] p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={IMAGEM_COMPARTILHAR}
+                alt="Imagem de compartilhamento do CopaLinks em tema Dark Navy"
+                width={1200}
+                height={630}
+                className="mb-2.5 h-auto w-full rounded-[12px] border border-[#183341]"
+              />
+              <div className="px-1.5 pb-1">
+                {linhas.map((linha, i) =>
+                  linha.length === 0 ? (
+                    <div key={i} className="h-2.5" aria-hidden />
+                  ) : (
+                    <p key={i} className="break-words text-[14px] leading-relaxed text-[#EAF4F7]">
+                      {linha.map((t, j) =>
+                        t.negrito ? <b key={j}>{t.texto}</b> : <span key={j}>{t.texto}</span>,
+                      )}
+                    </p>
+                  ),
+                )}
+              </div>
             </div>
           </div>
 

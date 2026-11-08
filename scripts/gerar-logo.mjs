@@ -131,7 +131,7 @@ const fundoSvg = (w, h) =>
   Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
       `<defs><radialGradient id="g" cx="50%" cy="42%" r="72%">` +
-      `<stop offset="0" stop-color="#0216a5"/><stop offset="1" stop-color="${FUNDO_APP}"/>` +
+      `<stop offset="0" stop-color="#002F3B"/><stop offset="1" stop-color="${FUNDO_APP}"/>` +
       `</radialGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`,
   );
 
