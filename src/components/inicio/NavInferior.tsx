@@ -49,18 +49,12 @@ export default function NavInferior({
           onClick={() => onTrocar("inicio")}
           aria-current={ativoInicio ? "page" : undefined}
           className={`flex flex-col items-center justify-center gap-0.5 rounded-[18px] border-2 border-transparent py-1 transition-colors ${
-            ativoInicio ? "text-gelo" : "text-aco hover:text-gelo"
+            ativoInicio ? "text-ouro" : "text-aco hover:border-ciano/50 hover:text-gelo"
           }`}
         >
           <House size={22} strokeWidth={2} />
           <span className="text-[12.5px] leading-tight font-semibold">Início</span>
-          {/* traço claro embaixo do item ativo (sem amarelo) */}
-          <span
-            aria-hidden
-            className={`h-[2.5px] w-8 rounded-full transition-colors ${
-              ativoInicio ? "bg-gelo" : "bg-transparent"
-            }`}
-          />
+          <span aria-hidden className="h-[2.5px] w-8 rounded-full bg-transparent" />
         </button>
 
         {/* ------------------------------------------------------------ Chat */}
