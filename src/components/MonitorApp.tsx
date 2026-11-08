@@ -1372,6 +1372,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 onCompartilhar={compartilhar}
                 nome={motorista?.nome ?? null}
                 assinada={assinada}
+                totalMotoristas={totalMotoristas}
                 onRenomear={renomear}
                 onAtivarNotificacoes={() => setPainelNotif("geral")}
               />

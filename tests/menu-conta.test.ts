@@ -62,6 +62,24 @@ test("a aba Sobre continua com o link do painel de administração", () => {
   );
 });
 
+test("o menu ⋮ leva a quantidade de usuários num selo pequeno, igual ao dos navios", () => {
+  const m = menu();
+  // Recebe o MESMO número da aba "Sobre" (nenhuma leitura nova é criada aqui).
+  assert.match(m, /totalMotoristas/, "o menu não recebeu a contagem de motoristas");
+  assert.match(m, /motoristas > 99 \? "99\+"/, "o selo não tem o corte de 99+");
+  // Desenho do selo: círculo ciano pequeno, como o do item "Navios" do rodapé.
+  const selo = m.match(/aria-hidden\s+className="tabular[^"]*"/);
+  assert.ok(selo, "o menu não desenha o selo numérico");
+  assert.ok(selo[0].includes("bg-ciano"), "o selo do menu perdeu o ciano");
+  assert.ok(selo[0].includes("h-[17px]"), "o selo do menu deixou de ser pequeno");
+  const nav = ler("src/components/inicio/NavInferior.tsx");
+  assert.match(nav, /bg-ciano px-1 font-display text-\[10px\]/, "o selo de navios mudou de estilo");
+  // O número vem pronto do app, junto com o resto do cabeçalho.
+  assert.match(cabecalho(), /totalMotoristas=\{totalMotoristas\}/);
+  assert.match(app(), /<Cabecalho[\s\S]*?totalMotoristas=\{totalMotoristas\}/);
+  assert.match(app(), /fetch\("\/api\/motoristas", \{ cache: "no-store" \}\)/);
+});
+
 test("o menu ⋮ não mostra o atalho Sobre o CopaLinks", () => {
   assert.ok(!menu().includes("Sobre o CopaLinks"));
   assert.doesNotMatch(menu(), /onAbrirSobre/);

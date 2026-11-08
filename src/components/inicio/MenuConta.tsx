@@ -24,6 +24,7 @@ import {
 export default function MenuConta({
   nome,
   assinada,
+  totalMotoristas = null,
   onRenomear,
   onAtivarNotificacoes,
 }: {
@@ -31,6 +32,11 @@ export default function MenuConta({
   nome: string | null;
   /** Este aparelho já recebe os avisos (só muda o texto de apoio). */
   assinada: boolean;
+  /**
+   * Quantos motoristas usam o CopaLinks — o MESMO número que a aba "Sobre"
+   * mostra. Chega pronto do app (uma leitura só, nenhuma chamada nova aqui).
+   */
+  totalMotoristas?: number | null;
   /** Mesma função da aba "Sobre": PATCH /api/motoristas/[id]. */
   onRenomear: (nome: string) => Promise<boolean>;
   /** Abre o painel de notificações já existente. */
@@ -96,6 +102,21 @@ export default function MenuConta({
     if (ok) fechar();
   }
 
+  /**
+   * Selo com a quantidade de motoristas usando o CopaLinks: um número pequeno
+   * no canto do ícone, no mesmo estilo do selo do item "Navios" do rodapé
+   * (círculo ciano, borda do app, fonte display de 9 px). É só uma referência
+   * discreta — o número grande e explicado continua na aba "Sobre".
+   *
+   * Enquanto a contagem não chega (ou o banco oscila e a API responde sem
+   * total), o selo simplesmente não aparece: um "0" aqui seria mentira.
+   */
+  const motoristas =
+    typeof totalMotoristas === "number" && Number.isFinite(totalMotoristas)
+      ? Math.max(0, Math.trunc(totalMotoristas))
+      : null;
+  const selo = motoristas === null ? null : motoristas > 99 ? "99+" : String(motoristas);
+
   const item =
     "flex min-h-11 w-full items-center gap-3 rounded-[14px] px-3 text-left text-[13px] font-semibold text-gelo/90 transition-colors hover:bg-white/[.07] disabled:opacity-45";
 
@@ -105,15 +126,28 @@ export default function MenuConta({
         ref={botao}
         type="button"
         onClick={() => (aberto ? fechar() : abrir())}
-        aria-label="Mais opções"
+        aria-label={
+          selo
+            ? `Mais opções · ${motoristas} motorista${motoristas === 1 ? "" : "s"} usando o CopaLinks`
+            : "Mais opções"
+        }
         aria-haspopup="menu"
         aria-expanded={aberto}
         title="Mais opções"
-        className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/55 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white sm:h-12 sm:w-12 ${
+        className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/55 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white sm:h-12 sm:w-12 ${
           aberto ? "border-white/25 bg-black/40 text-white" : ""
         }`}
       >
         <EllipsisVertical size={17} strokeWidth={1.8} />
+        {/* selo de quantidade: mesmo desenho do selo do item "Navios" */}
+        {selo && (
+          <span
+            aria-hidden
+            className="tabular absolute -top-0.5 -right-0.5 grid h-[17px] min-w-[17px] place-items-center rounded-full border-[1.5px] border-borda bg-ciano px-1 font-display text-[9px] leading-none font-extrabold text-fundo"
+          >
+            {selo}
+          </span>
+        )}
       </button>
 
       {aberto && (
