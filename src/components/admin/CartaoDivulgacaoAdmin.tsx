@@ -19,6 +19,8 @@ import {
   IMAGEM_DIVULGACAO,
   IMAGEM_STATUS,
   NOME_APP,
+  carregarArquivoCompartilhar,
+  compartilharAplicativo,
   linhasDaMensagem,
   linkWhatsAppMensagem,
   mensagemCompartilhar,
@@ -46,6 +48,7 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
   /* QR Code do endereço do app: só vale a pena gerar quando o cartão abre. */
   useEffect(() => {
     if (!aberto) return;
+    void carregarArquivoCompartilhar();
     let vivo = true;
     QRCode.toDataURL(url, {
       errorCorrectionLevel: "M",
@@ -83,30 +86,13 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
    * (celular com suporte a arquivo). Sem esse recurso, copia o texto.
    */
   const compartilhar = useCallback(async () => {
-    try {
-      if (navigator.share) {
-        let arquivo: File | null = null;
-        try {
-          const r = await fetch(IMAGEM_COMPARTILHAR, { cache: "force-cache" });
-          if (r.ok) {
-            arquivo = new File([await r.blob()], "copalinks.jpg", { type: "image/jpeg" });
-          }
-        } catch {
-          arquivo = null;
-        }
-        if (arquivo && navigator.canShare?.({ files: [arquivo] })) {
-          // Com arquivo, alguns apps ignoram o campo url: o link já vai no texto.
-          await navigator.share({ files: [arquivo], title: NOME_APP, text: mensagem });
-          return;
-        }
-        await navigator.share({ title: NOME_APP, text: mensagem, url });
-        return;
-      }
-      await copiar();
-    } catch {
-      // usuário fechou a janela de compartilhar: não é erro
+    const resultado = await compartilharAplicativo(url);
+    if (resultado === "copiou") {
+      avisar("Mensagem copiada. É só colar no WhatsApp.");
+    } else if (resultado === "link") {
+      avisar(mensagem);
     }
-  }, [mensagem, url, copiar]);
+  }, [url, avisar, mensagem]);
 
   return (
     <section className="mt-4 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/90 p-4">
@@ -200,14 +186,28 @@ export default function CartaoDivulgacaoAdmin({ url }: { url: string }) {
 
             {/* prévia da mensagem (como aparece no WhatsApp) */}
             <div className="mt-3 rounded-[14px] border border-[#183341]/50 bg-[#071A28]/60 p-3">
-              <div className="max-w-[92%] rounded-[16px] rounded-bl-[6px] bg-[#002F3B] px-3.5 py-2.5">
-                {linhas.map((linha, i) => (
-                  <p key={i} className="text-[13.5px] leading-relaxed text-[#EAF4F7]">
-                    {linha.map((t, j) =>
-                      t.negrito ? <b key={j}>{t.texto}</b> : <span key={j}>{t.texto}</span>,
-                    )}
-                  </p>
-                ))}
+              <div className="max-w-[92%] overflow-hidden rounded-[16px] rounded-bl-[6px] bg-[#002F3B] p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={IMAGEM_COMPARTILHAR}
+                  alt="Imagem de compartilhamento do CopaLinks em tema Dark Navy"
+                  width={1200}
+                  height={630}
+                  className="mb-2.5 h-auto w-full rounded-[12px] border border-[#183341]"
+                />
+                <div className="px-1.5 pb-1">
+                  {linhas.map((linha, i) =>
+                    linha.length === 0 ? (
+                      <div key={i} className="h-2.5" aria-hidden />
+                    ) : (
+                      <p key={i} className="break-words text-[13.5px] leading-relaxed text-[#EAF4F7]">
+                        {linha.map((t, j) =>
+                          t.negrito ? <b key={j}>{t.texto}</b> : <span key={j}>{t.texto}</span>,
+                        )}
+                      </p>
+                    ),
+                  )}
+                </div>
               </div>
             </div>
 

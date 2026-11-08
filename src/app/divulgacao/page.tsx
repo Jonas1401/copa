@@ -27,14 +27,14 @@ export async function generateMetadata(): Promise<Metadata> {
       description: DESCRICAO_CURTA,
       url: pagina,
       images: [
-        { url: "/images/divulgacao-card.jpg", width: 1200, height: 630, alt: NOME_APP },
+        { url: "/images/divulgacao-card.jpg?v=2", width: 1200, height: 630, alt: NOME_APP },
       ],
     },
     twitter: {
       card: "summary_large_image",
       title: `${NOME_APP} · Instale no celular`,
       description: DESCRICAO_CURTA,
-      images: ["/images/divulgacao-card.jpg"],
+      images: ["/images/divulgacao-card.jpg?v=2"],
     },
   };
 }

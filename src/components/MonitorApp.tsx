@@ -39,7 +39,11 @@ import BoasVindas, { type DadosBoasVindas } from "@/components/motoristas/BoasVi
 import CarregamentoLogo from "@/components/inicio/CarregamentoLogo";
 import { CHAVE_MOTORISTA, COOKIE_MOTORISTA, primeiroNome, type Motorista } from "@/lib/motoristas";
 import { PRAZO_SESSAO_MS } from "@/lib/carregamento";
-import { IMAGEM_COMPARTILHAR, NOME_APP, linkDoApp, mensagemCompartilhar } from "@/lib/compartilhar";
+import {
+  carregarArquivoCompartilhar,
+  compartilharAplicativo,
+  linkDoApp,
+} from "@/lib/compartilhar";
 import { LOGO } from "@/lib/logo";
 
 
@@ -1229,44 +1233,22 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   );
 
   // ------------------------------------------------ cabeçalho e serviços
+  useEffect(() => {
+    void carregarArquivoCompartilhar();
+  }, []);
+
   /**
-   * Compartilhar: imagem do app + mensagem explicando o que ele faz + link.
+   * Compartilhar: imagem do app (Dark Navy) + mensagem completa + link.
    * Celular com suporte a arquivos (Chrome Android, Safari iOS) → manda a
-   * imagem junto; senão manda só texto e link; sem nada disso, copia.
+   * imagem junto; senão manda a mensagem com o link; sem nada disso, copia.
    */
   const compartilhar = useCallback(async () => {
     const link = linkDoApp();
-    const texto = mensagemCompartilhar(link);
-    try {
-      if (navigator.share) {
-        let arquivo: File | null = null;
-        try {
-          const r = await fetch(IMAGEM_COMPARTILHAR, { cache: "force-cache" });
-          if (r.ok) {
-            arquivo = new File([await r.blob()], "copalinks.jpg", { type: "image/jpeg" });
-          }
-        } catch {
-          arquivo = null;
-        }
-        if (arquivo && navigator.canShare?.({ files: [arquivo] })) {
-          // Com arquivo, alguns apps ignoram o campo url: o link já vai no texto.
-          await navigator.share({ files: [arquivo], title: NOME_APP, text: texto });
-          return;
-        }
-        await navigator.share({ title: NOME_APP, text: texto, url: link });
-        return;
-      }
-      await navigator.clipboard.writeText(texto);
+    const resultado = await compartilharAplicativo(link);
+    if (resultado === "copiou") {
       setAviso({ texto: "Mensagem e link copiados. É só colar no WhatsApp.", erro: false });
-    } catch (e) {
-      // Usuário fechou a janela de compartilhar: não é erro.
-      if (e instanceof DOMException && e.name === "AbortError") return;
-      try {
-        await navigator.clipboard.writeText(texto);
-        setAviso({ texto: "Mensagem e link copiados. É só colar no WhatsApp.", erro: false });
-      } catch {
-        setAviso({ texto: `Link do aplicativo: ${link}`, erro: false });
-      }
+    } else if (resultado === "link") {
+      setAviso({ texto: `Link do aplicativo: ${link}`, erro: false });
     }
   }, []);
 
