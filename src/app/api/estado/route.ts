@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { tickRadar } from "@/lib/clima-monitor";
 import {
   montarEstado,
@@ -6,6 +6,8 @@ import {
   varrerSeVelho,
 } from "@/lib/estado";
 import { motoristaDaSessao } from "@/lib/motorista-sessao";
+import { garantirTabelasPortal } from "@/lib/portal-copadubo";
+import { tickSaidaPortal } from "@/lib/portal-saida";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +34,14 @@ export async function GET() {
     // provedor não roda a cada minuto. Custa uma comparação de horário na
     // maior parte das vezes; nunca joga erro nem atrasa a resposta da fila.
     await tickRadar().catch(() => null);
+    // Portal do motorista: as tabelas nascem na primeira abertura do app (o
+    // motorista não depende de ninguém rodar SQL para ver a tela) e a checagem
+    // de SAÍDA do ponto roda em segundo plano, no máximo a cada 3 minutos —
+    // necessária porque o cron deste projeto é diário.
+    after(async () => {
+      await garantirTabelasPortal().catch(() => null);
+      await tickSaidaPortal().catch(() => null);
+    });
     return NextResponse.json(estado, {
       headers: { "Cache-Control": "private, no-store" },
     });

@@ -33,6 +33,7 @@ import BannerCaminhao from "@/components/inicio/BannerCaminhao";
 import Servicos from "@/components/inicio/Servicos";
 import NavInferior, { type Aba } from "@/components/inicio/NavInferior";
 import PortalMotorista, { type EstadoPortalMotorista } from "@/components/inicio/PortalMotorista";
+import AcessoPortal from "@/components/inicio/AcessoPortal";
 import { garantirAssinaturaPush } from "@/lib/push-cliente";
 import ChatMotoristas, { CHAVE_CHAT_LIDO } from "@/components/chat/ChatMotoristas";
 import AlertaAdmin from "@/components/alerta/AlertaAdmin";
@@ -710,6 +711,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   // O estado do portal é lido ANTES de abrir a tela (o painel só aparece com
   // o que o servidor confirmou: nada de mostrar "sem cadastro" por engano).
   const [portalInicial, setPortalInicial] = useState<EstadoPortalMotorista | null>(null);
+  // Cartão visível da tela Início com o estado do portal (sem CPF/senha).
+  const [portalResumo, setPortalResumo] = useState<EstadoPortalMotorista | null>(null);
   const [pendente, setPendente] = useState<DadosCadastro | null>(null);
   const [ativando, setAtivando] = useState(false);
   const [assinada, setAssinada] = useState(false);
@@ -731,6 +734,25 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   );
   const motoristaRef = useRef<Motorista | null>(null);
   const [perfilPronto, setPerfilPronto] = useState(false);
+
+  // O cartão “Portal do motorista” da Início mostra se já está cadastrado.
+  // Uma leitura só, quando o perfil do aparelho fica pronto.
+  useEffect(() => {
+    if (!motoristaId) return;
+    let vivo = true;
+    const t = setTimeout(() => {
+      void fetch("/api/portal", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (vivo && d) setPortalResumo(d as EstadoPortalMotorista);
+        })
+        .catch(() => null);
+    }, 0);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [motoristaId]);
   const [entrando, setEntrando] = useState(false);
   const [erroEntrada, setErroEntrada] = useState("");
   const [totalMotoristas, setTotalMotoristas] = useState<number | null>(null);
@@ -1571,6 +1593,23 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               initial={reduzido ? false : { opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.08 }}
+              className="mt-4"
+            >
+              {/* Portal da Copadubo: cadastro do CPF/senha e status do ponto,
+                  visível na própria Início (antes só existia no menu ⋮). */}
+              <AcessoPortal
+                estado={portalResumo}
+                onAbrir={() => {
+                  setPortalAberto(true);
+                  if (portalResumo) setPortalInicial(portalResumo);
+                }}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={reduzido ? false : { opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.12 }}
               className="mt-4"
             >
               <Servicos onSemLink={semLink} />

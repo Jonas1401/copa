@@ -122,3 +122,35 @@ test("a saída entra no cron pelo SAIU da fila e é lida no portal do motorista"
   assert.match(f, /credita|credenciaisDoMotorista/, "a rotina não usa as credenciais do próprio motorista");
   assert.match(ler("src/app/api/cron/route.ts"), /verificarSaidasRecentes/, "o cron não chama a saída");
 });
+
+test("o portal aparece na própria tela Início (não só no menu ⋮)", () => {
+  const a = app();
+  assert.match(a, /import AcessoPortal/, "a Início não tem o cartão do portal");
+  assert.match(a, /<AcessoPortal/, "o cartão não é desenhado");
+  // Fica na aba Início, logo acima dos Serviços.
+  const inicio = a.slice(a.indexOf('{aba === "inicio" && ('));
+  const posCartao = inicio.indexOf("<AcessoPortal");
+  const posServicos = inicio.indexOf("<Servicos");
+  assert.ok(posCartao > 0, "o cartão do portal saiu da aba Início");
+  assert.ok(posCartao < posServicos, "o cartão do portal deve vir antes de Serviços");
+  // Estado sem segredo, buscado uma vez quando o perfil fica pronto.
+  assert.match(a, /fetch\("\/api\/portal", \{ cache: "no-store" \}\)/, "a Início não pergunta o estado do portal");
+  const c = ler("src/components/inicio/AcessoPortal.tsx");
+  assert.match(c, /Portal do motorista/, "o cartão perdeu o nome");
+  assert.match(c, /Cadastre seu CPF e a senha do portal/, "o cartão não explica o que fazer");
+  assert.match(c, /onClick=\{onAbrir\}/, "o cartão não abre a tela do portal");
+  // O cartão só usa o resumo público: nenhum valor de senha, CPF ou input de senha.
+  assert.ok(!/senhaFinal4|senhaCifrada|cpfMascarado\s*[:=]\s*acesso/.test(c), "o cartão lida com credencial");
+  assert.ok(!/type="password"/.test(c), "o cartão virou um formulário de senha (o cadastro é a tela própria)");
+});
+
+test("a checagem de saída roda com o app aberto (o cron deste projeto é diário)", () => {
+  const rota = ler("src/app/api/estado/route.ts");
+  assert.match(rota, /tickSaidaPortal/, "o /api/estado não roda o gancho da saída");
+  assert.match(rota, /after\(async \(\) => \{/, "a checagem precisa rodar em segundo plano, sem atrasar a fila");
+  assert.match(rota, /garantirTabelasPortal/, "as tabelas do portal não nascem na abertura do app");
+  const f = saidaFonte();
+  assert.match(f, /export async function tickSaidaPortal/, "sem o gancho do app aberto");
+  assert.match(f, /TICK_MIN_MS = 3 \* 60_000/, "o gancho pode rodar a cada 5 s (custo/lentidão)");
+  assert.match(f, /if \(modo === "desligado"\) return \{ rodou: false/, "o gancho roda mesmo com o modo desligado");
+});
