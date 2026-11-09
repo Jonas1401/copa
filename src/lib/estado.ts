@@ -1,3 +1,4 @@
+import { consultarPortalNaSaida, type EventoSaida } from "@/lib/portal-saida";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { comBanco, db } from "@/db";
 import { amostras, eventos, pontos } from "@/db/schema";
@@ -492,6 +493,7 @@ async function conferirPontos(fila: FilaEstado) {
         acao: "chamada" | "saiu" | "voltou" | "perto",
         codigoNaVez: string,
         saidaPorUltimo = false,
+        portal?: EventoSaida | null,
       ) => {
         // Na Vercel uma Promise sem await pode morrer assim que a resposta do
         // cron termina. Espera a entrega ao serviço de push antes de responder.
@@ -506,6 +508,7 @@ async function conferirPontos(fila: FilaEstado) {
             motoristaId: p.motoristaId ?? null,
             naFrente: naFrenteAviso,
             saidaPorUltimo,
+            portal,
           });
         } catch {
           // Nunca interrompe a atualização da fila por falha do serviço push.
@@ -556,17 +559,20 @@ async function conferirPontos(fila: FilaEstado) {
             .where(and(eq(pontos.id, p.id), ne(pontos.status, "SAIU")))
             .returning({ id: pontos.id });
           if (!alterado) return; // outro ciclo já notificou esta saída
+          // Confere o portal do próprio motorista antes de enviar um único aviso.
+          // Se não houver acesso ou a leitura falhar, não inventa destino.
+          const portal = p.motoristaId
+            ? await consultarPortalNaSaida(p.motoristaId, codigo).catch(() => null)
+            : null;
           await registrarEvento({
             codigo,
             tipo,
             livro: p.livro,
             numero: p.numero,
             acao: "saiu",
-            mensagem: saiuPorUltimo
-              ? `${codigo} virou Último Escalado · saiu para o trabalho`
-              : `${codigo} não está mais no quadro · saiu para o trabalho`,
+            mensagem: portal?.saiu ? portal.mensagem : `${codigo} não está mais no quadro · destino não confirmado`,
           });
-          await dispararPush("saiu", naVezAgora(), saiuPorUltimo);
+          await dispararPush("saiu", naVezAgora(), saiuPorUltimo, portal);
         }
         return;
       }

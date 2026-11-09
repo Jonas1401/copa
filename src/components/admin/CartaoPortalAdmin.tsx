@@ -181,10 +181,10 @@ export default function CartaoPortalAdmin() {
     }
     setAviso(
       novo === "motoristas"
-        ? "Ligado: quando o ponto sair, o motorista recebe a mensagem com o trabalho (ou a dispensa)."
+        ? "Teste manual habilitado para enviar um aviso adicional ao motorista."
         : novo === "somente_admin"
-          ? "Modo de teste: o app lê o portal e mostra aqui, mas nada vai para o celular."
-          : "Desligado: o app não lê o portal na saída do ponto.",
+          ? "Teste manual: o resultado aparece aqui, sem enviar aviso extra."
+          : "Teste manual desligado; a consulta automática continua ativa.",
     );
     await carregarSaida();
   }
@@ -467,7 +467,7 @@ export default function CartaoPortalAdmin() {
               Quando o ponto monitorado sai da tela, o app entra no portal com o CPF/senha do
               motorista, lê a <b>Tela de Ativos</b> e o <b>Status do Ponto</b> e manda a mensagem:
               para qual trabalho saiu (tipo, livro, posição) — ou que o ponto foi para a
-              <b> dispensa</b> (com o motivo). Aqui você testa antes de ligar para os motoristas.
+              <b> dispensa</b> (com o motivo), quando confirmado. A consulta automática faz parte do aviso normal; as opções abaixo controlam apenas os testes manuais.
             </p>
 
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -487,10 +487,10 @@ export default function CartaoPortalAdmin() {
             </div>
             <p className="mt-1 text-[11.5px] leading-snug text-gelo/55">
               {modo === "desligado"
-                ? "Nada é lido nem enviado na saída do ponto."
+                ? "Teste manual desligado. O aviso normal da fila continua funcionando."
                 : modo === "somente_admin"
-                  ? "O app lê o portal e registra aqui; NADA chega no celular do motorista."
-                  : "Ligado de verdade: o motorista recebe a mensagem (Web Push) na saída e na dispensa."}
+                  ? "Teste manual: a leitura é registrada aqui, sem enviar aviso extra."
+                  : "O teste manual pode enviar um aviso adicional ao motorista."}
             </p>
 
             <label className="mt-2 block">

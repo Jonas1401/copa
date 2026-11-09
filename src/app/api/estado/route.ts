@@ -8,7 +8,6 @@ import {
 import { motoristaDaSessao } from "@/lib/motorista-sessao";
 import { acessoPortalDoMotorista, garantirTabelasPortal, INTERVALO_LEITURA_MS, monitorarMotorista, ultimaLeituraPortal } from "@/lib/portal-copadubo";
 import { pontoEmDispensa } from "@/lib/portal-status-ponto";
-import { tickSaidaPortal } from "@/lib/portal-saida";
 
 export const dynamic = "force-dynamic";
 
@@ -65,11 +64,9 @@ export async function GET() {
     await tickRadar().catch(() => null);
     // Portal do motorista: as tabelas nascem na primeira abertura do app (o
     // motorista não depende de ninguém rodar SQL para ver a tela) e a checagem
-    // de SAÍDA do ponto roda em segundo plano, no máximo a cada 3 minutos —
-    // necessária porque o cron deste projeto é diário.
+    // de atualização do portal roda em segundo plano.
     after(async () => {
       await garantirTabelasPortal().catch(() => null);
-      await tickSaidaPortal().catch(() => null);
       if (motorista && portalAtivo && (!ultimaPortal || Date.now() - ultimaPortal.criadoEm.getTime() >= INTERVALO_LEITURA_MS)) {
         await atualizarPortal(motorista.id);
       }

@@ -366,11 +366,11 @@ test("saída em atendimento: mensagem diz o trabalho e onde o ponto está", () =
   assert.equal(evento.saiu, true);
   assert.equal(evento.dispensa, false);
   assert.equal(evento.codigo, "A032");
-  // O trabalho do dia vem da Tela de Ativos (Livro A) quando o ponto não está nela.
-  assert.equal(evento.tipoTrabalho, "TRUCK 4 EIXOS");
+  // O tipo do próximo motorista não confirma o trabalho deste ponto.
+  assert.equal(evento.tipoTrabalho, null);
   assert.equal(evento.livro, "A");
   assert.match(evento.mensagem, /saiu para o trabalho/i);
-  assert.match(evento.mensagem, /TRUCK 4 EIXOS/);
+  assert.doesNotMatch(evento.mensagem, /TRUCK 4 EIXOS/);
   assert.match(evento.mensagem, /Livro A/);
   // Diz também quem mandou e quem é o próximo da vez naquele livro.
   assert.equal(evento.ultimoEscalado, "A102");
