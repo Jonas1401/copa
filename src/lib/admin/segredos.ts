@@ -79,6 +79,24 @@ function decifrar(pacote: string, chave: Buffer) {
 
 const final4 = (v: string) => v.slice(-4);
 
+/**
+ * Cifra um texto para uma coluna própria (ex.: a senha do portal do motorista,
+ * guardada em `portal_motorista_acessos.senha_cifrada`).
+ *
+ * Usa a MESMA chave mestra do cofre de API Keys e o mesmo formato
+ * (IV · authTag · dados em base64), então uma troca de `SECRETS_MASTER_KEY`
+ * invalida os dois de uma vez — e o painel já sabe explicar isso. Este
+ * módulo só pode ser importado do servidor.
+ */
+export async function cifrarParaColuna(texto: string): Promise<string> {
+  return cifrar(texto, (await obterChaveMestra()).chave);
+}
+
+/** Abre um valor gravado por `cifrarParaColuna`. Lança se a chave mudou. */
+export async function decifrarDeColuna(pacote: string): Promise<string> {
+  return decifrar(pacote, (await obterChaveMestra()).chave);
+}
+
 /** Valor real de uma chave — uso EXCLUSIVO do servidor (integrações). */
 export async function obterSegredo(chave: string): Promise<string | null> {
   const [l] = await db.select().from(segredos).where(eq(segredos.chave, chave)).limit(1);

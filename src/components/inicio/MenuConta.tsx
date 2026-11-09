@@ -6,6 +6,7 @@ import {
   Bell,
   CheckCircle2,
   EllipsisVertical,
+  KeyRound,
   Pencil,
   ShieldCheck,
   X,
@@ -27,6 +28,7 @@ export default function MenuConta({
   totalMotoristas = null,
   onRenomear,
   onAtivarNotificacoes,
+  onAbrirPortal,
 }: {
   /** Nome atual do motorista (null = este aparelho ainda não tem perfil). */
   nome: string | null;
@@ -41,6 +43,11 @@ export default function MenuConta({
   onRenomear: (nome: string) => Promise<boolean>;
   /** Abre o painel de notificações já existente. */
   onAtivarNotificacoes: () => void;
+  /**
+   * Abre o cadastro do CPF/senha do portal da Copadubo (leitura do status do
+   * motorista). O formulário é uma tela própria (`PortalMotorista`).
+   */
+  onAbrirPortal?: () => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [trocandoNome, setTrocandoNome] = useState(false);
@@ -239,6 +246,25 @@ export default function MenuConta({
                     </span>
                   </span>
                 </button>
+                {onAbrirPortal && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      fechar();
+                      onAbrirPortal();
+                    }}
+                    className={item}
+                  >
+                    <KeyRound size={16} className="shrink-0 text-[#00B8BC]" />
+                    <span className="min-w-0">
+                      Portal do motorista
+                      <span className="mt-0.5 block truncate text-[11px] leading-tight font-medium text-gelo/50">
+                        Ler seu status com CPF e senha
+                      </span>
+                    </span>
+                  </button>
+                )}
                 <div className="my-1 h-px bg-white/[.08]" />
                 <Link
                   href="/admin"

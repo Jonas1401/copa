@@ -7,6 +7,7 @@ import CartaoNotificacoesAdmin from "@/components/admin/CartaoNotificacoesAdmin"
 import CartaoMotoristasAdmin from "@/components/admin/CartaoMotoristasAdmin";
 import CartaoFigurinhasAdmin from "@/components/admin/CartaoFigurinhasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
+import CartaoPortalAdmin from "@/components/admin/CartaoPortalAdmin";
 import CartaoDivulgacaoAdmin from "@/components/admin/CartaoDivulgacaoAdmin";
 import InternetEsimAdmin from "@/components/admin/InternetEsimAdmin";
 import {
@@ -838,6 +839,9 @@ export default function AdminApp({ url }: { url: string }) {
                 </div>
               )}
             </section>
+
+            {/* portal do motorista: quem cadastrou CPF/senha e o que a página mostra */}
+            <CartaoPortalAdmin />
 
             {/* situação do radar da previsão (monitoramento constante no servidor) */}
             <CartaoRadarPrevisaoAdmin />

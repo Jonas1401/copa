@@ -17,6 +17,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **figurinhas com imagem** em categorias (Caminhões, Motoristas, Porto e CopaLinks), grade de 4 por linha, publicadas pelo admin; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos por HTTP direto com Composio de reserva; mensagens dos motoristas continuam funcionando |
 | **Serviços** | links: login do aplicativo, tela de caminhões, cálculo de frete e contatos operacionais |
 | **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
+| **Portal do motorista** | o motorista digita no próprio celular (menu ⋮) o **CPF e a senha do `portal.copadubo.com.br`**; o servidor abre a página de status dele, transforma tudo em seções/linhas e avisa quando muda (ver abaixo) |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria, o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) e o cartão **Divulgação do app** (QR Code, mensagem pronta e artes da campanha) |
 
 ## Tecnologia
@@ -189,6 +190,99 @@ notificações ativadas no aparelho (botão **Ativar notificações**).
 Teste: `TEST_DATABASE_URL=... tsx --test tests/chat-push.test.ts` (banco
 `fila_push_test_*`, com serviço Push falso local); conteúdo da IA:
 `tsx --test tests/boas-vindas-conteudo.test.ts`.
+
+
+## Portal do motorista (`portal.copadubo.com.br`)
+
+O quadro da intranet continua sendo a fonte da fila (5 s). Em paralelo, o
+**portal do motorista** — a página `portal.copadubo.com.br/moto/status.php`,
+que só abre com login — passou a ser lido para o motorista ver e receber o que
+aparece na **página dele**.
+
+**Como o login funciona:** quem digita é o próprio motorista, uma única vez, no
+celular (`menu ⋮ → Portal do motorista`). CPF e senha são enviados por HTTPS,
+**cifrados com AES-256-GCM no banco** (mesma chave mestra do cofre de API Keys,
+`src/lib/admin/segredos.ts`) e só o servidor decifra, para abrir a página. O
+navegador nunca recebe de volta o CPF completo nem a senha — a tela e o `/admin`
+mostram `***.***.789-01` e `••••1234`. Nada vai para log, auditoria, aviso ou
+IA, e `Apagar meus dados` (DELETE `/api/portal`) remove CPF, senha e histórico.
+
+**Leitura genérica (não amarrada ao layout):** o leitor
+(`src/lib/portal-copadubo-parse.ts`) descobre sozinho o formulário de login pelo
+campo de senha, monta o POST com os nomes REAIS dos campos (incluindo `hidden`
+e o botão `Entrar`) e, depois de entrar, converte a página inteira em **seções e
+linhas**: títulos (`h1`–`h4`, `caption`, `legend`) viram seções; cada célula de
+tabela vira uma coluna da linha (`A184 · Aguardando chamada`); `div`, `p`, `li`
+e `br` quebram linha. Se a Copadubo mudar o layout, a leitura continua
+funcionando sem código novo — e o que já foi lido pode ser visto inteiro em
+`/admin → Portal do motorista → Ver o que foi lido`.
+
+**Aviso quando muda:** cada leitura (cron a cada ~5 min por motorista, com
+prazo curto e no máximo 3 motoristas por ciclo) compara as linhas com a leitura
+boa anterior. Linha nova → Web Push só para os aparelhos daquele motorista
+(tag própria, sem repetir). Falha só avisa quando acontece **duas vezes
+seguidas** (portal fora/piscando não vira enxurrada); login recusado avisa uma
+vez pedindo para cadastrar a senha de novo; captcha aparece no diagnóstico e
+**não** gera aviso falso. Cota: 6 avisos por hora e 20 por dia por motorista, e
+nunca dois com menos de 10 min.
+
+**Diagnóstico (`/admin`):** o cartão **Portal do motorista** lista quem
+cadastrou (CPF mascarado, 4 últimos da senha, ativo/pausado), a última leitura
+(quando, quantas linhas, em quantos ms), as linhas de interesse, o diagnóstico
+por tentativa (login recusado, captcha, portal fora, sem conteúdo) e a página
+inteira. **Ler agora** faz um login novo na hora e vai para a auditoria;
+**Remover acesso** apaga a senha daquele motorista do banco.
+
+Testes: `tests/portal-copadubo.test.ts` (parser + leitura com `fetch` simulado,
+senha nunca no resultado) e `tests/portal-tela.test.ts` (menu ⋮, tela, rotas,
+cron e cartão do `/admin`). O endereço do portal é trocável por
+`PORTAL_MOTORISTA_URL` (teste/homologação).
+
+
+## Saída do ponto: o trabalho para onde saiu (e a dispensa)
+
+Quando o ponto monitorado **sai da tela** (a fila marca `SAIU`, ou o portal
+mostra `EM ATENDIMENTO`), o app **entra no portal com o CPF/senha do próprio
+motorista** e lê duas telas na mesma sessão:
+
+1. **Status do Ponto** — `A032 · ADG-1J42 · EM DISPENSA`, “Desde hoje, 11:32 ·
+   há 9 min”, `MOTIVO 001 - OFICINA`;
+2. **Tela de Ativos** — o livro (`Livro A - Truck`), o **Último Ponto
+   Escalado**, a fila com `SEQ · PONTO · TIPO` (`1 · A109 · TRUCK 4 EIXOS`) e o
+   aviso “Seu ponto (A032) não está na fila deste livro no momento”.
+
+Com isso monta **uma** mensagem e manda por Web Push para os aparelhos daquele
+motorista (`src/lib/portal-saida.ts`):
+
+- **saiu para o trabalho** → “🚛 Seu ponto SAIU — trabalho em andamento · Seu
+  ponto A032 saiu para o trabalho. Trabalho: TRUCK 4 EIXOS · Livro A. Último
+  escalado: A102 · próximo da vez: A109. Em atendimento há 9 min.”
+- **foi para a dispensa** → “🟥 Seu ponto foi para a DISPENSA · Seu ponto A032
+  saiu para a DISPENSA (motivo 001 - OFICINA). Está nessa situação há 9 min.
+  Assim que voltar para a fila, eu aviso.”
+
+O tipo de trabalho vem da linha do próprio ponto; se ele já saiu do quadro, do
+tipo que o livro está escalando agora. O gancho automático é
+`verificarSaidasRecentes()` no `/api/cron` (só pontos com `SAIU` nos últimos
+minutos, no máximo 2 por ciclo, sem repetir o mesmo motorista em 30 min).
+
+### Teste no `/admin` (antes de ligar para os motoristas)
+
+`/admin → Portal do motorista → **Saída do ponto (teste)**` tem três modos
+(gravados em `configuracao.portal_saida_modo`):
+
+| Modo | O que acontece |
+| --- | --- |
+| `desligado` | nada é lido nem enviado na saída |
+| `somente_admin` (**padrão do teste**) | o portal é lido e o aviso aparece no painel, mas **nada chega no celular** |
+| `motoristas` | ligado de verdade (cron e botão do painel) |
+
+No cartão dá para **Simular mensagem** (cenários “saiu para o trabalho” e “foi
+para a dispensa”, com telas de exemplo, sem rede e sem enviar), **Ler o portal
+agora** (leitura real do motorista escolhido — só mostra, não envia) e ver os
+**últimos avisos registrados** em `portal_eventos` (título, mensagem, destino,
+diagnóstico). As telas lidas são configuráveis (`moto/fila.php` por padrão);
+tudo passa pela auditoria. O CPF/senha continuam cifrados e nunca aparecem.
 
 ## Tempo e orientações: memória da IA, sem avisos automáticos
 
