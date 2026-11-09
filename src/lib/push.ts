@@ -308,6 +308,7 @@ export async function notificarEvento(entrada: {
   acao: "chamada" | "saiu" | "voltou" | "perto";
   /** Motivo de saída confirmado na leitura completa do site. */
   saidaPorUltimo?: boolean;
+  portal?: { saiu: boolean; titulo: string; mensagem: string } | null;
   /** Quantos estão na frente (usado no aviso "perto da vez"). */
   naFrente?: number;
   tipo: string;
@@ -328,7 +329,7 @@ export async function notificarEvento(entrada: {
   const detalhe = `Seu ponto: ${entrada.codigo}\nNa Vez: ${entrada.codigoNaVez}`;
   const textos: Record<string, string> = {
     chamada: `${saudacao}Seu número está NA VEZ (número 1 do quadro). Aguarde a próxima chamada.\n${linha}\n${detalhe}`,
-    saiu: `${saudacao}Seu número saiu para o trabalho: ${entrada.saidaPorUltimo ? "agora aparece como Último Escalado" : "não aparece mais no quadro"}.\n${linha}\nSeu ponto: ${entrada.codigo}`,
+    saiu: entrada.portal?.saiu ? `${saudacao}${entrada.portal.mensagem}` : `${saudacao}Seu número ${entrada.codigo} ${entrada.saidaPorUltimo ? "agora aparece como Último Escalado" : "não aparece mais no quadro"}. O destino não foi confirmado no Portal do Motorista.\n${linha}`,
     voltou: `${saudacao}Seu ponto voltou para a fila.\n${linha}\n${detalhe}`,
     perto: `${saudacao}Seu ponto está chegando perto da vez: ${entrada.naFrente ?? "poucos"} na frente.\n${linha}\n${detalhe}`,
   };
@@ -348,7 +349,7 @@ export async function notificarEvento(entrada: {
 
   return enviarPush(
     {
-      title: "🚛 Monitor Ponto CopaLinks",
+      title: entrada.acao === "saiu" && entrada.portal?.saiu ? entrada.portal.titulo : "🚛 Monitor Ponto CopaLinks",
       body: textos[entrada.acao] ?? textos.chamada,
       tag,
       acao: entrada.acao,

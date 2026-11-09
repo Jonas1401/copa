@@ -120,7 +120,9 @@ test("a saída entra no cron pelo SAIU da fila e é lida no portal do motorista"
   assert.match(f, /pontos\.status.*SAIU|sql`\$\{pontos\.status\} = 'SAIU'`/, "a rotina não olha o status SAIU dos pontos");
   assert.match(f, /lerTelasDoMotorista/, "a rotina não lê as telas do portal");
   assert.match(f, /credita|credenciaisDoMotorista/, "a rotina não usa as credenciais do próprio motorista");
-  assert.match(ler("src/app/api/cron/route.ts"), /verificarSaidasRecentes/, "o cron não chama a saída");
+  const estado = ler("src/lib/estado.ts");
+  assert.match(estado, /consultarPortalNaSaida/, "a saída não consulta o portal antes do aviso");
+  assert.ok(estado.indexOf("await consultarPortalNaSaida") < estado.indexOf('await dispararPush("saiu"'));
 });
 
 test("o portal aparece na própria tela Início (não só no menu ⋮)", () => {
@@ -144,13 +146,11 @@ test("o portal aparece na própria tela Início (não só no menu ⋮)", () => {
   assert.ok(!/type="password"/.test(c), "o cartão virou um formulário de senha (o cadastro é a tela própria)");
 });
 
-test("a checagem de saída roda com o app aberto (o cron deste projeto é diário)", () => {
+test("a saída é conferida durante a varredura, sem um segundo aviso automático", () => {
   const rota = ler("src/app/api/estado/route.ts");
-  assert.match(rota, /tickSaidaPortal/, "o /api/estado não roda o gancho da saída");
-  assert.match(rota, /after\(async \(\) => \{/, "a checagem precisa rodar em segundo plano, sem atrasar a fila");
-  assert.match(rota, /garantirTabelasPortal/, "as tabelas do portal não nascem na abertura do app");
-  const f = saidaFonte();
-  assert.match(f, /export async function tickSaidaPortal/, "sem o gancho do app aberto");
-  assert.match(f, /TICK_MIN_MS = 3 \* 60_000/, "o gancho pode rodar a cada 5 s (custo/lentidão)");
-  assert.match(f, /if \(modo === "desligado"\) return \{ rodou: false/, "o gancho roda mesmo com o modo desligado");
+  assert.match(rota, /varrerSeVelho/);
+  assert.match(rota, /garantirTabelasPortal/);
+  assert.doesNotMatch(rota, /tickSaidaPortal/);
+  assert.doesNotMatch(ler("src/app/api/cron/route.ts"), /verificarSaidasRecentes/);
+  assert.match(ler("src/lib/push.ts"), /destino não foi confirmado/);
 });

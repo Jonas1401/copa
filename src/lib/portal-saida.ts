@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { comBanco, temBancoConfigurado } from "@/db";
 import { db } from "@/db";
-import { configuracao, portalEventos, portalMotoristaAcessos, pontos } from "@/db/schema";
+import { configuracao, portalEventos, portalMotoristaAcessos, portalLeituras, pontos } from "@/db/schema";
 import { enviarPush } from "@/lib/push";
 import { credenciaisDoMotorista, garantirTabelasPortal, lerTelasDoMotorista } from "@/lib/portal-copadubo";
 import {
@@ -36,10 +36,8 @@ import {
  *   ou, quando o portal mostra dispensa:
  *   “Seu ponto foi para a DISPENSA (001 - OFICINA). Fica de olho…”
  *
- * IMPORTANTE (teste): a função só ENVIA quando o modo está ligado em
- * `ADMIN_TESTE`. Ligado, cada leitura manual do administrador registra a
- * simulação em `portal_eventos` e aparece no cartão do `/admin`. Enquanto o
- * administrador não ligar, nada muda no comportamento atual do app.
+ * A saída automática consulta o portal antes do aviso da fila. O modo abaixo
+ * controla apenas os testes manuais e não desativa essa consulta automática.
  */
 
 export const CHAVE_MODO = "portal_saida_modo";
@@ -50,13 +48,13 @@ export type ModoSaida = "desligado" | "somente_admin" | "motoristas";
 
 /**
  * Quem recebe o aviso, por modo:
- *   desligado      → ninguém (nem lê o portal na saída);
+ *   desligado      → nenhum envio no teste manual;
  *   somente_admin  → só o painel (teste do administrador, NADA no celular);
  *   motoristas     → o celular do motorista (cron e botão do painel).
  */
-export function podeEnviarSaida(modo: ModoSaida, origem: "cron" | "admin"): boolean {
+export function podeEnviarSaida(modo: ModoSaida, _origem: "cron" | "admin"): boolean {
   if (modo === "motoristas") return true;
-  return modo === "somente_admin" && origem === "cron";
+  return false;
 }
 
 /** Tradução do estado do portal para o nome usado nos avisos. */
@@ -158,10 +156,10 @@ export function montarEventoSaida(
   const codigoDigitado = codigoMonitorado ? normalizarCodigoPortal(codigoMonitorado) : null;
   const codigo = status?.codigo ?? codigoDigitado;
   const achado = codigo ? posicaoNoPortal(livros, codigo) : null;
-  const livro = achado?.livro ?? (codigo ? livros.find((l) => l.livro === codigo[0]) ?? null : null) ?? livros[0] ?? null;
+  const livro = achado?.livro ?? (codigo ? livros.find((l) => l.livro === codigo[0]) ?? null : null) ?? null;
   // “Para qual trabalho saiu”: o TIPO da linha do próprio ponto; se ele já saiu
-  // do quadro, o tipo que o livro está escalando agora (primeira linha).
-  const tipoTrabalho = achado?.item.tipo || livro?.fila[0]?.tipo || livro?.ultimoTipo || null;
+  // do quadro, só usa o último escalado quando for o próprio ponto.
+  const tipoTrabalho = achado?.item.tipo || (livro?.ultimo === codigo ? livro.ultimoTipo : null) || null;
   const proximoDaVez = livro?.fila[0]?.codigo ?? null;
   const posicao = achado?.posicao ?? null;
   const turno = status?.turno ?? null;
@@ -244,6 +242,32 @@ export function montarEventoSaida(
     titulo,
     mensagem,
   };
+}
+
+/** Consulta ao detectar a saída, antes do aviso da fila. Nunca usa dados de outro ponto. */
+export async function consultarPortalNaSaida(motoristaId: number, codigo: string): Promise<EventoSaida | null> {
+  await garantirTabelasPortal();
+  const credenciais = await credenciaisDoMotorista(motoristaId);
+  if (!credenciais) return null;
+  const { caminhos } = await lerModoSaida();
+  const leitura = await lerTelasDoMotorista(credenciais, caminhos);
+  if (!leitura.ok) return null;
+  let status: StatusPortal | null = null;
+  let livros: LivroAtivosPortal[] = [];
+  let secoesStatus: SecaoPortal[] = [];
+  for (const tela of leitura.telas) {
+    const s = interpretarStatus(tela.secoes);
+    if (!status && s) { status = s; secoesStatus = tela.secoes; }
+    if (!livros.length) livros = interpretarAtivos(tela.secoes);
+  }
+  if (!status || status.codigo !== normalizarCodigoPortal(codigo)) return null;
+  // Alimenta o indicador DISPENSA da tela com a mesma leitura recém-confirmada.
+  await comBanco(() => db.insert(portalLeituras).values({
+    motoristaId, ok: 1, secoes: secoesStatus,
+    totalLinhas: secoesStatus.reduce((n, s) => n + s.linhas.length, 0),
+    diagnostico: "Consulta do portal ao detectar saída do quadro.",
+  }));
+  return montarEventoSaida(status, livros, codigo);
 }
 
 /** Nome do motorista para o título do aviso (sem expor CPF). */
