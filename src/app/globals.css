@@ -226,6 +226,10 @@ body {
 .led-verde {
   color: var(--color-verde);
 }
+.led-vermelho {
+  background: #ff4d4d;
+  box-shadow: 0 0 14px #ff4d4d99;
+}
 .led-ambar {
   color: var(--color-ambar);
 }

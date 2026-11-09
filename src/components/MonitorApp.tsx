@@ -182,7 +182,7 @@ function LinhaPonto({
     tipo !== p.tipo || livro !== p.livro || Number(numero) !== p.numero;
   const mini =
     "rounded-full border border-violeta/40 bg-black/35 px-3 py-1.5 font-display text-[14px] font-bold text-gelo outline-none";
-  const cor = p.status === "AGUARDANDO" ? "verde" : "ambar";
+  const cor = p.emDispensa ? "vermelho" : p.status === "AGUARDANDO" ? "verde" : "ambar";
   return (
     <li
       className={`rounded-[16px] border px-4 py-3 transition-colors ${
@@ -205,7 +205,7 @@ function LinhaPonto({
           <span className="tabular font-display text-[19px] font-extrabold text-ciano">
             {p.codigo}
           </span>
-          {p.status !== "SAIU" && (
+          {!p.emDispensa && p.status !== "SAIU" && (
             <span
               className={`tabular text-[13px] font-medium ${
                 p.status === "NA VEZ" ? "text-ambar" : "text-verde"
@@ -220,10 +220,10 @@ function LinhaPonto({
           <Led cor={cor} pulsante={p.status === "NA VEZ"} />
           <span
             className={`font-display text-[15px] font-bold tracking-[0.06em] ${
-              cor === "verde" ? "text-verde" : "text-ambar"
+              cor === "vermelho" ? "text-[#ff4d4d]" : cor === "verde" ? "text-verde" : "text-ambar"
             }`}
           >
-            {p.status}
+            {p.emDispensa ? "DISPENSA" : p.status}
           </span>
         </div>
       </button>
@@ -1315,7 +1315,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       ? "no quadro"
       : "sem ponto";
   const corStatus =
-    alvo?.status === "AGUARDANDO" ? "text-verde" : "text-ambar";
+    alvo?.emDispensa ? "text-[#ff4d4d]" : alvo?.status === "AGUARDANDO" ? "text-verde" : "text-ambar";
 
   const selecionarPonto = (i: number) => {
     setIdx(i);
@@ -1479,12 +1479,12 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                           alvo.status === "AGUARDANDO" ? "px-3 py-[7px]" : "px-4 py-3.5"
                         }`}
                       >
-                        <Led cor={alvo.status === "AGUARDANDO" ? "verde" : "ambar"} pulsante tamanho={18} />
+                        <Led cor={alvo.emDispensa ? "vermelho" : alvo.status === "AGUARDANDO" ? "verde" : "ambar"} pulsante tamanho={18} />
                         <span className="flex flex-col">
                           <span className={`font-display text-[20.5px] leading-[26px] font-bold ${corStatus}`}>
-                            {alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status}
+                            {alvo.emDispensa ? "DISPENSA" : alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status}
                           </span>
-                          {alvo.status === "AGUARDANDO" && (
+                          {!alvo.emDispensa && alvo.status === "AGUARDANDO" && (
                             <span className="tabular whitespace-nowrap text-[12px] leading-[14px] font-semibold text-gelo/75">
                               {alvo.vistoEm ? `${alvo.naFrente} na frente` : "Varrendo…"}
                             </span>
