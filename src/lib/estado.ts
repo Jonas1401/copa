@@ -59,6 +59,7 @@ export type PontoDTO = {
   posicao: number;
   naFrente: number;
   status: StatusPonto;
+  emDispensa?: boolean;
   detalhe: string;
   vistoEm: string | null;
   chamadoEm: string | null;
