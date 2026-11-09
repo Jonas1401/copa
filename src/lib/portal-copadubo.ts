@@ -8,6 +8,9 @@ import { enviarPush } from "@/lib/push";
 import {
   analisarPortal,
   cpfPlausivel,
+  interpretarAtivos,
+  interpretarStatus,
+  posicaoNoPortal,
   escolherFormularioLogin,
   extrairSecoes,
   hashConteudo,
@@ -15,7 +18,9 @@ import {
   linhasAlteradas,
   montarCorpoLogin,
   resolverUrl,
+  type LivroAtivosPortal,
   type SecaoPortal,
+  type StatusPortal,
 } from "@/lib/portal-copadubo-parse";
 
 /**
@@ -333,6 +338,111 @@ export async function lerPortalDoMotorista(
   };
 }
 
+export type TelaLida = { caminho: string; url: string; titulo: string; secoes: SecaoPortal[]; totalLinhas: number };
+
+export type TelasDoMotorista = {
+  ok: boolean;
+  loginRecusado: boolean;
+  captcha: boolean;
+  telas: TelaLida[];
+  diagnostico: string[];
+};
+
+/**
+ * Lê MAIS DE UMA tela do portal na mesma sessão (ex.: Status do Ponto e a
+ * Tela de Ativos/Fila). O primeiro caminho pode ser "" (a página inicial,
+ * que é a mesma do login); os demais são abertos com o cookie da sessão.
+ */
+export async function lerTelasDoMotorista(
+  credenciais: CredenciaisPortal,
+  caminhos: string[] = ["", "moto/fila.php"],
+  opcoes: { buscar?: typeof fetch } = {},
+): Promise<TelasDoMotorista> {
+  const buscar = opcoes.buscar ?? fetch;
+  const entrada = await entrarNoPortal(credenciais, opcoes);
+  if (!entrada.ok) {
+    return {
+      ok: false,
+      loginRecusado: entrada.leitura.loginRecusado,
+      captcha: entrada.leitura.captcha,
+      telas: [],
+      diagnostico: entrada.leitura.diagnostico,
+    };
+  }
+  const telas: TelaLida[] = [];
+  const diagnostico: string[] = ["Login aceito pelo portal."];
+  const primeira = analisarPortal(entrada.html);
+  telas.push({ caminho: caminhos[0] ?? "", url: entrada.url, titulo: primeira.titulo, secoes: primeira.secoes, totalLinhas: primeira.totalLinhas });
+
+  for (const caminho of caminhos.slice(1)) {
+    const alvo = urlPortal(caminho);
+    const r = await buscarSeguro(buscar, alvo, {
+      redirect: "follow",
+      headers: {
+        "user-agent": AGENTE,
+        accept: "text/html,*/*",
+        ...(entrada.cookies ? { cookie: entrada.cookies } : {}),
+      },
+      signal: AbortSignal.timeout(PRAZO_ENVIO_MS),
+    });
+    if (r instanceof Error) {
+      diagnostico.push(`${caminho}: sem resposta (${r.message.slice(0, 60)}).`);
+      continue;
+    }
+    if (r.status === 404) {
+      diagnostico.push(`${caminho}: não existe neste portal (404).`);
+      continue;
+    }
+    const html = await r.text();
+    if (escolherFormularioLogin(html)) {
+      diagnostico.push(`${caminho}: pediu login de novo.`);
+      continue;
+    }
+    const a = analisarPortal(html);
+    telas.push({ caminho, url: r.url, titulo: a.titulo, secoes: a.secoes, totalLinhas: a.totalLinhas });
+    diagnostico.push(`${caminho || "início"}: ${a.totalLinhas} linha(s).`);
+  }
+
+  return {
+    ok: telas.some((t) => t.totalLinhas > 0),
+    loginRecusado: false,
+    captcha: false,
+    telas,
+    diagnostico,
+  };
+}
+
+/** Status do ponto + quadros de ativos das telas lidas (o que a saída usa). */
+export function extrairStatusEAtivos(telas: TelaLida[]): {
+  status: StatusPortal | null;
+  livros: LivroAtivosPortal[];
+  telaStatus: TelaLida | null;
+  telaAtivos: TelaLida | null;
+} {
+  let status: StatusPortal | null = null;
+  let telaStatus: TelaLida | null = null;
+  let livros: LivroAtivosPortal[] = [];
+  let telaAtivos: TelaLida | null = null;
+
+  for (const tela of telas) {
+    if (!status) {
+      const s = interpretarStatus(tela.secoes);
+      if (s) {
+        status = s;
+        telaStatus = tela;
+      }
+    }
+    if (!telaAtivos) {
+      const l = interpretarAtivos(tela.secoes);
+      if (l.length) {
+        livros = l;
+        telaAtivos = tela;
+      }
+    }
+  }
+  return { status, livros, telaStatus, telaAtivos };
+}
+
 // ------------------------------------------------------------------ banco
 
 let tabelasProntas = false;
@@ -373,6 +483,24 @@ export async function garantirTabelasPortal() {
       );
       CREATE INDEX IF NOT EXISTS portal_leituras_motorista_idx ON portal_leituras (motorista_id, id DESC);
       CREATE INDEX IF NOT EXISTS portal_leituras_criado_idx ON portal_leituras (criado_em);
+      CREATE TABLE IF NOT EXISTS portal_eventos (
+        id SERIAL PRIMARY KEY,
+        motorista_id INTEGER NOT NULL,
+        tipo TEXT NOT NULL,
+        codigo TEXT,
+        turno TEXT,
+        motivo TEXT,
+        tipo_trabalho TEXT,
+        livro TEXT,
+        destino TEXT NOT NULL DEFAULT 'nenhum',
+        titulo TEXT NOT NULL,
+        mensagem TEXT NOT NULL,
+        diagnostico TEXT,
+        modo TEXT NOT NULL DEFAULT 'desligado',
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS portal_eventos_motorista_idx ON portal_eventos (motorista_id, id DESC);
+      CREATE INDEX IF NOT EXISTS portal_eventos_criado_idx ON portal_eventos (criado_em);
     `),
   );
   tabelasProntas = true;
@@ -518,7 +646,7 @@ export async function removerAcessoPortal(motoristaId: number) {
 }
 
 /** Abre as credenciais guardadas (uso exclusivo do servidor). */
-async function credenciaisGuardadas(motoristaId: number): Promise<CredenciaisPortal | null> {
+export async function credenciaisDoMotorista(motoristaId: number): Promise<CredenciaisPortal | null> {
   const acesso = await acessoPortalDoMotorista(motoristaId);
   if (!acesso || acesso.ativo !== 1) return null;
   try {
@@ -557,7 +685,7 @@ export async function monitorarMotorista(
   motoristaId: number,
   opcoes: { buscar?: typeof fetch; forcar?: boolean; avisar?: boolean } = {},
 ) {
-  const credenciais = await credenciaisGuardadas(motoristaId);
+  const credenciais = await credenciaisDoMotorista(motoristaId);
   if (!credenciais) return { rodou: false, motivo: "sem_acesso" as const };
 
   const anteriores = await leituraAnterior(motoristaId);

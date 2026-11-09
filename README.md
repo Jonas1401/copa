@@ -238,6 +238,52 @@ senha nunca no resultado) e `tests/portal-tela.test.ts` (menu ⋮, tela, rotas,
 cron e cartão do `/admin`). O endereço do portal é trocável por
 `PORTAL_MOTORISTA_URL` (teste/homologação).
 
+
+## Saída do ponto: o trabalho para onde saiu (e a dispensa)
+
+Quando o ponto monitorado **sai da tela** (a fila marca `SAIU`, ou o portal
+mostra `EM ATENDIMENTO`), o app **entra no portal com o CPF/senha do próprio
+motorista** e lê duas telas na mesma sessão:
+
+1. **Status do Ponto** — `A032 · ADG-1J42 · EM DISPENSA`, “Desde hoje, 11:32 ·
+   há 9 min”, `MOTIVO 001 - OFICINA`;
+2. **Tela de Ativos** — o livro (`Livro A - Truck`), o **Último Ponto
+   Escalado**, a fila com `SEQ · PONTO · TIPO` (`1 · A109 · TRUCK 4 EIXOS`) e o
+   aviso “Seu ponto (A032) não está na fila deste livro no momento”.
+
+Com isso monta **uma** mensagem e manda por Web Push para os aparelhos daquele
+motorista (`src/lib/portal-saida.ts`):
+
+- **saiu para o trabalho** → “🚛 Seu ponto SAIU — trabalho em andamento · Seu
+  ponto A032 saiu para o trabalho. Trabalho: TRUCK 4 EIXOS · Livro A. Último
+  escalado: A102 · próximo da vez: A109. Em atendimento há 9 min.”
+- **foi para a dispensa** → “🟥 Seu ponto foi para a DISPENSA · Seu ponto A032
+  saiu para a DISPENSA (motivo 001 - OFICINA). Está nessa situação há 9 min.
+  Assim que voltar para a fila, eu aviso.”
+
+O tipo de trabalho vem da linha do próprio ponto; se ele já saiu do quadro, do
+tipo que o livro está escalando agora. O gancho automático é
+`verificarSaidasRecentes()` no `/api/cron` (só pontos com `SAIU` nos últimos
+minutos, no máximo 2 por ciclo, sem repetir o mesmo motorista em 30 min).
+
+### Teste no `/admin` (antes de ligar para os motoristas)
+
+`/admin → Portal do motorista → **Saída do ponto (teste)**` tem três modos
+(gravados em `configuracao.portal_saida_modo`):
+
+| Modo | O que acontece |
+| --- | --- |
+| `desligado` | nada é lido nem enviado na saída |
+| `somente_admin` (**padrão do teste**) | o portal é lido e o aviso aparece no painel, mas **nada chega no celular** |
+| `motoristas` | ligado de verdade (cron e botão do painel) |
+
+No cartão dá para **Simular mensagem** (cenários “saiu para o trabalho” e “foi
+para a dispensa”, com telas de exemplo, sem rede e sem enviar), **Ler o portal
+agora** (leitura real do motorista escolhido — só mostra, não envia) e ver os
+**últimos avisos registrados** em `portal_eventos` (título, mensagem, destino,
+diagnóstico). As telas lidas são configuráveis (`moto/fila.php` por padrão);
+tudo passa pela auditoria. O CPF/senha continuam cifrados e nunca aparecem.
+
 ## Tempo e orientações: memória da IA, sem avisos automáticos
 
 A política do proprietário (`src/lib/politica-automacao.ts`) desativa a publicação

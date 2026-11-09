@@ -14,6 +14,10 @@ import {
   mascararCpf,
   montarCorpoLogin,
   todasAsLinhas,
+  fraseStatus,
+  interpretarAtivos,
+  interpretarStatus,
+  posicaoNoPortal,
 } from "../src/lib/portal-copadubo-parse";
 import { lerPortalDoMotorista } from "../src/lib/portal-copadubo";
 
@@ -258,4 +262,150 @@ test("página logada que só menciona 'senha' no menu não é confundida com log
   assert.equal(r.loginRecusado, false, "leu a página logada como se fosse recusa de senha");
   assert.equal(r.ok, true);
   assert.ok(r.secoes.some((s) => s.linhas.includes("A184 · Aguardando")));
+});
+
+/* ---------------------------------------------------------------------------
+ * Tela de STATUS DO PONTO e Tela de ATIVOS (prints de 09/11/2026)
+ * ------------------------------------------------------------------------- */
+
+/** Tela “Status do Ponto” como no print: A032, cartão ADG-1J42, EM DISPENSA. */
+const STATUS_PONTO = `<html><head><title>Copadubo</title></head><body>
+<div class="topo">COPADUBO</div>
+<h2>Status do Ponto</h2>
+<div class="cartao">
+  <b>A032</b> <span class="chip">ADG-1J42</span> <span class="selo">EM DISPENSA</span>
+  <div>Desde hoje, 11:32 há 9 min</div>
+  <div class="motivo"><span>MOTIVO</span> 001 - OFICINA</div>
+  <div>JONAS PAULO DE SOUZA</div>
+  <button>Sair da dispensa</button>
+</div>
+<nav>Ponto</nav><nav>Status</nav><nav>Ticket</nav><nav>Fila</nav>
+</body></html>`;
+
+test("status do ponto: turno, cartão, motivo e tempo desde a dispensa", () => {
+  const s = interpretarStatus(extrairSecoes(STATUS_PONTO).secoes);
+  assert.ok(s, "não reconheceu a tela de status");
+  assert.equal(s.codigo, "A032");
+  assert.equal(s.cartao, "ADG-1J42");
+  assert.equal(s.turno, "EM DISPENSA");
+  assert.equal(s.haMinutos, 9);
+  assert.match(s.desde ?? "", /11:32/);
+  assert.equal(s.motivo, "001 - OFICINA");
+  assert.equal(s.nome, "JONAS PAULO DE SOUZA");
+  assert.equal(fraseStatus(s), "A032 está EM DISPENSA · motivo 001 - OFICINA · há 9 min.");
+});
+
+test("status do ponto: saída para o trabalho (EM ATENDIMENTO) é reconhecida", () => {
+  const html = STATUS_PONTO.replace("EM DISPENSA", "EM ATENDIMENTO")
+    .replace('<div class="motivo"><span>MOTIVO</span> 001 - OFICINA</div>', "");
+  const s = interpretarStatus(extrairSecoes(html).secoes)!;
+  assert.equal(s.turno, "EM ATENDIMENTO");
+  assert.equal(s.motivo, null);
+  assert.match(fraseStatus(s), /saiu para o trabalho/);
+});
+
+test("tela de ativos (Fila): último escalado e a sequência do livro A", () => {
+  const html = `<html><body><h2>Tela de Ativos</h2>
+    <div>Livro A</div><div>Livro B</div><div>Livro M</div>
+    <p>Seu ponto (A032) não está na fila deste livro no momento.</p>
+    <h3>Livro A - Truck</h3>
+    <div>ÚLTIMO PONTO ESCALADO</div>
+    <div>A102</div>
+    <table>
+      <tr><th>SEQ</th><th>PONTO</th><th>TIPO</th></tr>
+      <tr><td>1</td><td>A109</td><td>TRUCK 4 EIXOS</td></tr>
+      <tr><td>2</td><td>A115</td><td>TRUCK 4 EIXOS</td></tr>
+      <tr><td>3</td><td>A122</td><td>TRUCK BA 2E</td></tr>
+    </table></body></html>`;
+  const livros = interpretarAtivos(extrairSecoes(html).secoes);
+  const a = livros.find((l) => l.livro === "A");
+  assert.ok(a, JSON.stringify(livros));
+  assert.equal(a.ultimo, "A102");
+  assert.equal(a.titulo, "Livro A - Truck");
+  assert.deepEqual(a.fila.map((f) => `${f.seq}:${f.codigo}:${f.tipo}`), [
+    "1:A109:TRUCK 4 EIXOS",
+    "2:A115:TRUCK 4 EIXOS",
+    "3:A122:TRUCK BA 2E",
+  ]);
+  assert.equal(a.pontoForaDaFila, true);
+
+  // Onde o ponto monitorado está (ou não).
+  assert.equal(posicaoNoPortal(livros, "A115")?.posicao, 2);
+  assert.equal(posicaoNoPortal(livros, "A032"), null);
+});
+
+test("tela de ativos: quadro sem tabela (linhas soltas) também é lido", () => {
+  const html = `<html><body><h3>Livro M - Truck</h3>
+    <p>Último Ponto Escalado</p><p>M28</p>
+    <p>1 · M69 · TRUCK 4 EIXOS</p>
+    <p>2 · M71 · CAVALO 6 EIXOS</p>
+  </body></html>`;
+  const m = interpretarAtivos(extrairSecoes(html).secoes).find((l) => l.livro === "M")!;
+  assert.equal(m.ultimo, "M28");
+  assert.equal(m.fila.length, 2);
+  assert.equal(posicaoNoPortal([m], "M71")?.posicao, 2);
+});
+
+/* ---------------------------------------------------------------------------
+ * SAÍDA DO PONTO: mensagem com o trabalho / dispensa
+ * ------------------------------------------------------------------------- */
+import { montarEventoSaida } from "../src/lib/portal-saida";
+
+test("saída em atendimento: mensagem diz o trabalho e onde o ponto está", () => {
+  const secoes = extrairSecoes(`<html><body>
+    <h2>Status do Ponto</h2>
+    <div>A032 · ADG-1J42 · EM ATENDIMENTO</div><div>Desde hoje, 11:32 · há 9 min</div>
+    <h2>Livro A - Truck</h2><div>Último Ponto Escalado</div><div>A102</div>
+    <table><tr><th>SEQ</th><th>PONTO</th><th>TIPO</th></tr>
+      <tr><td>1</td><td>A109</td><td>TRUCK 4 EIXOS</td></tr></table>
+  </body></html>`).secoes;
+  const status = interpretarStatus(secoes)!;
+  const livros = interpretarAtivos(secoes);
+  const evento = montarEventoSaida(status, livros);
+
+  assert.equal(evento.saiu, true);
+  assert.equal(evento.dispensa, false);
+  assert.equal(evento.codigo, "A032");
+  // O trabalho do dia vem da Tela de Ativos (Livro A) quando o ponto não está nela.
+  assert.equal(evento.tipoTrabalho, "TRUCK 4 EIXOS");
+  assert.equal(evento.livro, "A");
+  assert.match(evento.mensagem, /saiu para o trabalho/i);
+  assert.match(evento.mensagem, /TRUCK 4 EIXOS/);
+  assert.match(evento.mensagem, /Livro A/);
+  // Diz também quem mandou e quem é o próximo da vez naquele livro.
+  assert.equal(evento.ultimoEscalado, "A102");
+  assert.equal(evento.proximoDaVez, "A109");
+  assert.match(evento.mensagem, /próximo da vez: A109/);
+  assert.match(evento.titulo, /SAIU/i);
+});
+
+test("saída em dispensa: mensagem diz DISPENSA com o motivo e o tempo", () => {
+  const status = interpretarStatus(extrairSecoes(STATUS_PONTO).secoes)!;
+  const evento = montarEventoSaida(status, []);
+  assert.equal(evento.saiu, true, "dispensa conta como saída da fila");
+  assert.equal(evento.dispensa, true);
+  assert.equal(evento.motivo, "001 - OFICINA");
+  assert.match(evento.titulo, /DISPENSA/);
+  assert.match(evento.mensagem, /saiu para a DISPENSA/i);
+  assert.match(evento.mensagem, /001 - OFICINA/);
+  assert.match(evento.mensagem, /há 9 min/);
+});
+
+test("ponto ainda na fila não gera aviso de saída", () => {
+  const secoes = extrairSecoes(`<html><body>
+    <h2>Status do Ponto</h2><div>A032 · ADG-1J42 · AGUARDANDO</div>
+    <h2>Livro A - Truck</h2><div>Último Ponto Escalado</div><div>A102</div>
+    <p>1 · A032 · TRUCK 4 EIXOS</p></body></html>`).secoes;
+  const evento = montarEventoSaida(interpretarStatus(secoes), interpretarAtivos(secoes));
+  assert.equal(evento.saiu, false);
+  assert.equal(evento.posicao, 1);
+  assert.equal(evento.tipoTrabalho, "TRUCK 4 EIXOS");
+});
+
+test("o aviso da saída é montado sem depender de banco nem de rede", () => {
+  const fonte = readFileSync("src/lib/portal-saida.ts", "utf8");
+  // O modo de teste do administrador existe e trava o envio real.
+  assert.match(fonte, /somente_admin/);
+  assert.match(fonte, /Modo de teste do administrador/);
+  assert.ok(!/console\.(log|warn|error|info)/.test(fonte), "portal-saida não deve logar nada");
 });

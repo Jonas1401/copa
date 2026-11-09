@@ -5,6 +5,7 @@ import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 import { limparMotoristasInativos } from "@/lib/motorista-inatividade";
 import { monitorarTodos } from "@/lib/portal-copadubo";
+import { verificarSaidasRecentes } from "@/lib/portal-saida";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -36,14 +37,19 @@ export async function GET(req: Request) {
   // Portal do motorista: cada ciclo lê quem já passou do intervalo (5 min).
   // Um portal fora do ar nunca impede a fila nem os navios.
   const tarefaPortal = monitorarTodos().catch(() => null);
+  // Saída do ponto: quem saiu da tela agora é lido no portal do motorista
+  // (turno, trabalho e dispensa) — só roda se o administrador ligou o teste.
+  const tarefaSaida = verificarSaidasRecentes().catch(() => null);
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
     const navios = await tarefaNavios;
     const portal = await tarefaPortal;
+    const saidaNada = await tarefaSaida;
     return NextResponse.json({
       rodou: false, motivo: "Nenhum ponto cadastrado — monitoramento da fila em repouso.",
       ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
       ...(portal?.lidos ? { portal } : {}),
+      ...(saidaNada?.tentados ? { saida: { tentados: saidaNada.tentados } } : {}),
       ...(inativos.excluidos ? { inativos } : {}),
     });
   }
@@ -59,6 +65,7 @@ export async function GET(req: Request) {
   }
   const navios = await tarefaNavios;
   const portal = await tarefaPortal;
+  const saida = await tarefaSaida;
   return NextResponse.json({
     rodou: Boolean(leitura),
     ...(leitura ? {

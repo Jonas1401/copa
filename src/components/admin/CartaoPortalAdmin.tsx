@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, KeyRound, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  FlaskConical,
+  KeyRound,
+  LoaderCircle,
+  RefreshCw,
+  Send,
+  Trash2,
+} from "lucide-react";
 
 /**
  * PORTAL DO MOTORISTA (portal.copadubo.com.br) — exclusivo do ADMINISTRADOR.
@@ -39,6 +48,50 @@ type MotoristaPortal = {
   ativo: boolean;
   desde: string | null;
   ultima: Ultima | null;
+};
+
+/** Avisos de saída/dispensa registrados (o teste do administrador). */
+type EventoSaida = {
+  id: number;
+  motoristaId: number;
+  tipo: string;
+  codigo: string | null;
+  turno: string | null;
+  motivo: string | null;
+  tipoTrabalho: string | null;
+  livro: string | null;
+  destino: "teste" | "motorista" | "nenhum";
+  titulo: string;
+  mensagem: string;
+  diagnostico: string[];
+  modo: string;
+  quando: string;
+};
+
+type ModoSaida = "desligado" | "somente_admin" | "motoristas";
+
+type ResultadoSaida = {
+  rodou: boolean;
+  motivo?: string;
+  evento: {
+    saiu: boolean;
+    dispensa: boolean;
+    codigo: string | null;
+    tipoTrabalho: string | null;
+    livro: string | null;
+    posicao: number | null;
+    titulo: string;
+    mensagem: string;
+  } | null;
+  destino: "teste" | "motorista" | "nenhum";
+  push?: { enviadas: number; erro?: string };
+  diagnostico: string[];
+};
+
+const ROTULO_MODO: Record<ModoSaida, string> = {
+  desligado: "Desligado (nada acontece)",
+  somente_admin: "Só no painel (teste)",
+  motoristas: "Ligado para os motoristas",
 };
 
 type Painel = {
@@ -90,6 +143,99 @@ export default function CartaoPortalAdmin() {
   const [verPagina, setVerPagina] = useState<number | null>(null);
   const [confirmando, setConfirmando] = useState<number | null>(null);
 
+  // ------------------------------------------------ saída do ponto (teste)
+  const [modo, setModo] = useState<ModoSaida>("desligado");
+  const [caminhos, setCaminhos] = useState("");
+  const [eventos, setEventos] = useState<EventoSaida[]>([]);
+  const [resultado, setResultado] = useState<ResultadoSaida | null>(null);
+  const [motoristaTeste, setMotoristaTeste] = useState<number | "">("");
+  const [cenario, setCenario] = useState<"atendimento" | "dispensa">("atendimento");
+  const [rodandoSaida, setRodandoSaida] = useState<string | null>(null);
+
+  const carregarSaida = useCallback(async () => {
+    const r = await fetch("/api/admin/portal/saida", { cache: "no-store", headers: cabecalhoAdmin() });
+    if (!r.ok) return;
+    const d = await r.json().catch(() => ({}));
+    if (d?.modo) setModo(d.modo as ModoSaida);
+    if (Array.isArray(d?.caminhos)) setCaminhos(d.caminhos.join(", "));
+    if (Array.isArray(d?.eventos)) setEventos(d.eventos as EventoSaida[]);
+  }, []);
+
+  async function salvarModo(novo: ModoSaida) {
+    setModo(novo);
+    setRodandoSaida("modo");
+    const r = await fetch("/api/admin/portal/saida", {
+      method: "POST",
+      cache: "no-store",
+      headers: cabecalhoAdmin(),
+      body: JSON.stringify({
+        acao: "modo",
+        modo: novo,
+        caminhos: caminhos.split(/[,;]+/).map((c) => c.trim()).filter(Boolean),
+      }),
+    });
+    setRodandoSaida(null);
+    if (!r.ok) {
+      setAviso("Não foi possível mudar o modo agora.");
+      return;
+    }
+    setAviso(
+      novo === "motoristas"
+        ? "Ligado: quando o ponto sair, o motorista recebe a mensagem com o trabalho (ou a dispensa)."
+        : novo === "somente_admin"
+          ? "Modo de teste: o app lê o portal e mostra aqui, mas nada vai para o celular."
+          : "Desligado: o app não lê o portal na saída do ponto.",
+    );
+    await carregarSaida();
+  }
+
+  async function simular() {
+    setRodandoSaida("simular");
+    setResultado(null);
+    const r = await fetch("/api/admin/portal/saida", {
+      method: "POST",
+      cache: "no-store",
+      headers: cabecalhoAdmin(),
+      body: JSON.stringify({ acao: "simular", cenario }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setRodandoSaida(null);
+    if (!r.ok) {
+      setAviso(d?.erro ?? "Não foi possível simular.");
+      return;
+    }
+    setResultado({
+      rodou: true,
+      evento: d.evento,
+      destino: "nenhum",
+      diagnostico: [`Simulação com a tela de exemplo (${d.exemplo}). Nada foi enviado.`],
+    });
+  }
+
+  async function testarNoPortal() {
+    if (!motoristaTeste) {
+      setAviso("Escolha o motorista que tem CPF/senha cadastrados.");
+      return;
+    }
+    setRodandoSaida("teste");
+    setResultado(null);
+    const r = await fetch("/api/admin/portal/saida", {
+      method: "POST",
+      cache: "no-store",
+      headers: cabecalhoAdmin(),
+      body: JSON.stringify({ acao: "teste", motoristaId: motoristaTeste }),
+    });
+    const d = await r.json().catch(() => ({}));
+    setRodandoSaida(null);
+    if (!r.ok) {
+      setAviso(d?.erro ?? "Não foi possível testar agora.");
+      return;
+    }
+    setResultado(d.resultado as ResultadoSaida);
+    if (d.eventos) setEventos(d.eventos as EventoSaida[]);
+    setAviso("Leitura real feita no portal (nada é enviado no modo de teste).");
+  }
+
   const buscar = useCallback(async () => {
     setCarregando(true);
     try {
@@ -104,9 +250,13 @@ export default function CartaoPortalAdmin() {
   }, []);
 
   useEffect(() => {
-    if (!aberto || p) return;
-    void buscar();
-  }, [aberto, p, buscar]);
+    if (!aberto) return;
+    const t = setTimeout(() => {
+      if (!p) void buscar();
+      void carregarSaida();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [aberto, p, buscar, carregarSaida]);
 
   async function acao(motoristaId: number, o: "ler" | "remover") {
     setOcupado(motoristaId);
@@ -306,6 +456,155 @@ export default function CartaoPortalAdmin() {
                 </div>
               );
             })}
+          </div>
+
+          {/* ------------------------------- saída do ponto (teste) */}
+          <div className="mt-4 rounded-[16px] border border-ouro/30 bg-[#071A28]/80 p-3">
+            <h3 className="flex items-center gap-2 font-display text-[14px] font-bold tracking-[0.03em] text-ouro uppercase">
+              <FlaskConical size={16} /> Saída do ponto (teste)
+            </h3>
+            <p className="mt-1 text-[12.5px] leading-snug text-gelo/70">
+              Quando o ponto monitorado sai da tela, o app entra no portal com o CPF/senha do
+              motorista, lê a <b>Tela de Ativos</b> e o <b>Status do Ponto</b> e manda a mensagem:
+              para qual trabalho saiu (tipo, livro, posição) — ou que o ponto foi para a
+              <b> dispensa</b> (com o motivo). Aqui você testa antes de ligar para os motoristas.
+            </p>
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(Object.keys(ROTULO_MODO) as ModoSaida[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => void salvarModo(m)}
+                  disabled={rodandoSaida === "modo"}
+                  className={`rounded-full border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50 ${
+                    modo === m ? "border-ouro bg-ouro/15 text-ouro" : "border-[#183341]/80 text-gelo/80"
+                  }`}
+                >
+                  {ROTULO_MODO[m]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11.5px] leading-snug text-gelo/55">
+              {modo === "desligado"
+                ? "Nada é lido nem enviado na saída do ponto."
+                : modo === "somente_admin"
+                  ? "O app lê o portal e registra aqui; NADA chega no celular do motorista."
+                  : "Ligado de verdade: o motorista recebe a mensagem (Web Push) na saída e na dispensa."}
+            </p>
+
+            <label className="mt-2 block">
+              <span className="mb-1 block text-[11.5px] font-semibold text-gelo/60">
+                Telas do portal (uma por vírgula · vazio = a tela inicial)
+              </span>
+              <input
+                value={caminhos}
+                onChange={(e) => setCaminhos(e.target.value)}
+                onBlur={() => void salvarModo(modo)}
+                placeholder="moto/fila.php"
+                className="w-full rounded-[12px] border border-[#183341]/70 bg-[#071A28] px-3 py-2 text-[12.5px] text-white outline-none focus:border-ouro/60"
+              />
+            </label>
+
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <label className="min-w-[160px] flex-1">
+                <span className="mb-1 block text-[11.5px] font-semibold text-gelo/60">Motorista (teste real)</span>
+                <select
+                  value={motoristaTeste}
+                  onChange={(e) => setMotoristaTeste(e.target.value ? Number(e.target.value) : "")}
+                  className="w-full rounded-[12px] border border-[#183341]/70 bg-[#071A28] px-3 py-2 text-[12.5px] text-white outline-none focus:border-ouro/60"
+                >
+                  <option value="">Escolha…</option>
+                  {lista.map((m) => (
+                    <option key={m.motoristaId} value={m.motoristaId}>
+                      {m.nome} (CPF {m.cpfMascarado})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void testarNoPortal()}
+                disabled={rodandoSaida === "teste"}
+                className="flex items-center gap-1.5 rounded-full border border-ciano/60 px-3 py-2 text-[12px] font-semibold text-ciano disabled:opacity-50"
+              >
+                {rodandoSaida === "teste" ? <LoaderCircle size={13} className="animate-spin" /> : <Send size={13} />}
+                Ler o portal agora
+              </button>
+              <label className="min-w-[130px]">
+                <span className="mb-1 block text-[11.5px] font-semibold text-gelo/60">Simular</span>
+                <select
+                  value={cenario}
+                  onChange={(e) => setCenario(e.target.value as "atendimento" | "dispensa")}
+                  className="w-full rounded-[12px] border border-[#183341]/70 bg-[#071A28] px-3 py-2 text-[12.5px] text-white outline-none focus:border-ouro/60"
+                >
+                  <option value="atendimento">Saiu para o trabalho</option>
+                  <option value="dispensa">Foi para a dispensa</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void simular()}
+                disabled={rodandoSaida === "simular"}
+                className="flex items-center gap-1.5 rounded-full border border-[#183341]/80 px-3 py-2 text-[12px] font-semibold text-gelo disabled:opacity-50"
+              >
+                {rodandoSaida === "simular" ? <LoaderCircle size={13} className="animate-spin" /> : <FlaskConical size={13} />}
+                Simular mensagem
+              </button>
+            </div>
+
+            {resultado && (
+              <div className="mt-2 rounded-[14px] border border-[#183341]/60 bg-[#000D16]/60 p-2.5">
+                <p className="text-[12px] font-semibold text-gelo/60">Mensagem que o motorista recebe</p>
+                <p className="mt-0.5 font-display text-[13.5px] font-bold text-white">
+                  {resultado.evento?.titulo ?? "Sem leitura"}
+                </p>
+                <p className="mt-0.5 text-[12.5px] leading-snug text-gelo/85">
+                  {resultado.evento?.mensagem ?? resultado.motivo ?? "—"}
+                </p>
+                <p className="mt-1 text-[11.5px] text-gelo/50">
+                  {resultado.evento?.saiu
+                    ? resultado.evento.dispensa
+                      ? "Situação: DISPENSA"
+                      : "Situação: saiu para o trabalho"
+                    : "Situação: não saiu (aviso de saída não seria enviado)"}
+                  {resultado.evento?.tipoTrabalho ? ` · trabalho: ${resultado.evento.tipoTrabalho}` : ""}
+                  {resultado.evento?.livro ? ` · livro ${resultado.evento.livro}` : ""}
+                  {resultado.evento?.posicao ? ` · posição ${resultado.evento.posicao}` : ""}
+                  {" · destino: "}
+                  {resultado.destino === "motorista" ? "celular do motorista" : resultado.destino === "teste" ? "teste" : "nenhum"}
+                  {typeof resultado.push?.enviadas === "number" ? ` (${resultado.push.enviadas} aparelho(s))` : ""}
+                </p>
+                {resultado.diagnostico.length ? (
+                  <p className="mt-1 text-[11px] leading-snug text-gelo/45">{resultado.diagnostico.join(" · ")}</p>
+                ) : null}
+              </div>
+            )}
+
+            {eventos.length ? (
+              <div className="mt-2">
+                <p className="micro text-gelo/50">Últimos avisos registrados</p>
+                <ul className="mt-1 space-y-1">
+                  {eventos.slice(0, 6).map((e) => (
+                    <li key={e.id} className="rounded-[12px] border border-[#183341]/50 px-2.5 py-1.5">
+                      <div className="flex flex-wrap items-center gap-x-2 text-[11.5px] text-gelo/75">
+                        <span className="font-semibold text-white">{e.titulo}</span>
+                        <span className="text-gelo/50">{horaMin(e.quando)}</span>
+                        <span className="text-gelo/50">#{e.motoristaId}</span>
+                        <span
+                          className={
+                            e.destino === "motorista" ? "text-ciano" : e.destino === "teste" ? "text-ouro" : "text-gelo/50"
+                          }
+                        >
+                          {e.destino === "motorista" ? "enviado ao motorista" : e.destino === "teste" ? "só teste" : "não enviado"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[12px] leading-snug text-gelo/80">{e.mensagem}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
 
           <p className="mt-3 text-[11.5px] leading-snug text-gelo/45">

@@ -262,6 +262,25 @@ export const portalLeituras = pgTable("portal_leituras", {
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Avisos de SAÍDA do ponto lidos no portal (o trabalho para onde saiu e a
+// dispensa). Guarda o que foi enviado, para onde e o diagnóstico da leitura.
+export const portalEventos = pgTable("portal_eventos", {
+  id: serial("id").primaryKey(),
+  motoristaId: integer("motorista_id").notNull(),
+  tipo: text("tipo").notNull(), // saida | dispensa | movimento
+  codigo: text("codigo"),
+  turno: text("turno"),
+  motivo: text("motivo"),
+  tipoTrabalho: text("tipo_trabalho"),
+  livro: text("livro"),
+  destino: text("destino").default("nenhum").notNull(), // teste | motorista | nenhum
+  titulo: text("titulo").notNull(),
+  mensagem: text("mensagem").notNull(),
+  diagnostico: text("diagnostico"),
+  modo: text("modo").default("desligado").notNull(), // desligado | somente_admin | motoristas
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Último resultado do "Testar conexão" de cada integração.
 export const integracoesStatus = pgTable("integracoes_status", {
   id: text("id").primaryKey(), // composio | clima | whatsapp | ia | notificacoes | banco

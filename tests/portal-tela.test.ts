@@ -86,3 +86,39 @@ test("o cron lê o portal sem travar a fila nem os navios", () => {
   assert.match(cron, /monitorarTodos\(\)\.catch\(\(\) => null\)/, "uma falha do portal pode derrubar o cron");
   assert.match(cron, /tarefaPortal/, "o portal não roda junto do restante do ciclo");
 });
+
+/* ------------------------------------------------------------------ saída */
+
+const saidaFonte = () => ler("src/lib/portal-saida.ts");
+const rotaSaida = () => ler("src/app/api/admin/portal/saida/route.ts");
+
+test("o teste da saída fica na área do administrador e exige login", () => {
+  assert.ok(ler("src/app/api/admin/portal/saida/route.ts").includes('exigirAdmin()'), "a rota da saída não exige administrador");
+  assert.match(rotaSaida(), /auditar\(/, "ligar o modo / ler o portal não vai para a auditoria");
+  assert.match(cartao(), /Saída do ponto \(teste\)/, "o cartão do /admin não mostra o teste da saída");
+  assert.match(cartao(), /\/api\/admin\/portal\/saida/, "o cartão não fala com a rota da saída");
+  assert.match(cartao(), /Ler o portal agora/, "sem o botão de leitura real no painel");
+  assert.match(cartao(), /Simular mensagem/, "sem a simulação (nada é enviado)");
+  assert.match(cartao(), /Saiu para o trabalho/, "sem o cenário de saída para o trabalho");
+  assert.match(cartao(), /Foi para a dispensa/, "sem o cenário de dispensa");
+  assert.match(cartao(), /Mensagem que o motorista recebe/, "o painel não mostra a mensagem pronta");
+});
+
+test("o modo de teste nunca manda mensagem para o celular do motorista", () => {
+  const f = saidaFonte();
+  assert.match(f, /export function podeEnviarSaida/, "sem a regra de destino por modo");
+  assert.match(f, /modo === "motoristas"\) return true/, "o modo desligado/teste pode enviar");
+  assert.match(f, /opcoes\.origem === "admin" && modo === "somente_admin" \? "teste"/, "o painel marca como teste");
+  assert.match(f, /Modo de teste do administrador: este aviso não vai para o celular/, "sem o aviso de que nada foi enviado");
+  assert.match(rotaSaida(), /acao === "simular"/, "a simulação não existe na rota");
+  assert.match(rotaSaida(), /simulado: true/, "a simulação pode acabar enviando");
+});
+
+test("a saída entra no cron pelo SAIU da fila e é lida no portal do motorista", () => {
+  const f = saidaFonte();
+  assert.match(f, /export async function verificarSaidasRecentes/, "sem a rotina automática");
+  assert.match(f, /pontos\.status.*SAIU|sql`\$\{pontos\.status\} = 'SAIU'`/, "a rotina não olha o status SAIU dos pontos");
+  assert.match(f, /lerTelasDoMotorista/, "a rotina não lê as telas do portal");
+  assert.match(f, /credita|credenciaisDoMotorista/, "a rotina não usa as credenciais do próprio motorista");
+  assert.match(ler("src/app/api/cron/route.ts"), /verificarSaidasRecentes/, "o cron não chama a saída");
+});

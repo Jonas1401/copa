@@ -648,6 +648,29 @@ CREATE INDEX IF NOT EXISTS portal_leituras_motorista_idx
 CREATE INDEX IF NOT EXISTS portal_leituras_criado_idx
   ON public.portal_leituras (criado_em);
 
+-- Avisos de SAÍDA do ponto (trabalho para onde saiu / dispensa). O modo de
+-- teste fica em `configuracao` (portal_saida_modo).
+CREATE TABLE IF NOT EXISTS public.portal_eventos (
+  id SERIAL PRIMARY KEY,
+  motorista_id INTEGER NOT NULL,
+  tipo TEXT NOT NULL,
+  codigo TEXT,
+  turno TEXT,
+  motivo TEXT,
+  tipo_trabalho TEXT,
+  livro TEXT,
+  destino TEXT NOT NULL DEFAULT 'nenhum',
+  titulo TEXT NOT NULL,
+  mensagem TEXT NOT NULL,
+  diagnostico TEXT,
+  modo TEXT NOT NULL DEFAULT 'desligado',
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS portal_eventos_motorista_idx
+  ON public.portal_eventos (motorista_id, id DESC);
+CREATE INDEX IF NOT EXISTS portal_eventos_criado_idx
+  ON public.portal_eventos (criado_em);
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend
@@ -698,6 +721,7 @@ ALTER TABLE public.esim_api_errors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.esim_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_motorista_acessos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_leituras ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_eventos ENABLE ROW LEVEL SECURITY;
 
 -- Sem policy, RLS já bloqueia; o REVOKE é a segunda tranca para o PostgREST.
 -- Os papéis anon/authenticated só existem no Supabase — num PostgreSQL comum
@@ -720,7 +744,7 @@ END $$;
 
 COMMIT;
 
--- Conferência rápida: todas as tabelas do app devem aparecer abaixo (46).
+-- Conferência rápida: todas as tabelas do app devem aparecer abaixo (47).
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'

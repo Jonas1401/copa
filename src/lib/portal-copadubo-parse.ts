@@ -524,3 +524,286 @@ export function finalCpf(cpf: string): string {
   const d = limparCpf(cpf);
   return d.slice(-3) || "***";
 }
+
+/* ==========================================================================
+ * TELA DE STATUS DO PONTO (print do portal, 09/11/2026)
+ *
+ * “Status do Ponto”
+ *   A032   [ADG-1J42]                       ● EM DISPENSA
+ *   ⏱ Desde hoje, 11:32   há 9 min
+ *   MOTIVO
+ *   001 - OFICINA
+ *   👤 JONAS PAULO DE SOUZA
+ *   [ Sair da dispensa ]
+ *
+ * A leitura é por LINHAS (o texto já vem limpo do `extrairSecoes`), então
+ * continua valendo se o portal trocar o HTML por outro layout.
+ * ========================================================================== */
+
+export type TurnoPortal = "EM DISPENSA" | "EM ATENDIMENTO" | "DESCANSANDO" | "AGUARDANDO" | "FORA";
+
+export type StatusPortal = {
+  /** Código do ponto mostrado na tela (ex.: A032). */
+  codigo: string | null;
+  /** Cartão/veículo ao lado do ponto (ex.: ADG-1J42). */
+  cartao: string | null;
+  turno: TurnoPortal | null;
+  /** Texto exato do turno como o portal escreve (ex.: "EM DISPENSA"). */
+  turnoTexto: string | null;
+  /** Trecho do “Desde hoje, 11:32 · há 9 min”. */
+  desde: string | null;
+  /** Há quantos minutos está nesse estado (o portal já calcula). */
+  haMinutos: number | null;
+  /** Código + descrição do motivo da dispensa (ex.: "001 - OFICINA"). */
+  motivo: string | null;
+  /** O motorista mostrado na tela. */
+  nome: string | null;
+  /** É a tela de status do ponto (e não outra página do portal). */
+  ehTelaStatus: boolean;
+};
+
+/** Código de ponto no padrão do portal: uma letra de livro + 3 dígitos (A032). */
+const RE_CODIGO = /\b([ABM])\s?-?(\d{3})\b/i;
+
+/** Turnos que o portal escreve em maiúsculas no alto do cartão. */
+const TURNOS: { chave: TurnoPortal; re: RegExp }[] = [
+  { chave: "EM DISPENSA", re: /\bEM\s+DISPENSA\b/i },
+  { chave: "EM ATENDIMENTO", re: /\bEM\s+ATENDIMENTO\b/i },
+  { chave: "DESCANSANDO", re: /\bDESCANSANDO\b/i },
+  { chave: "AGUARDANDO", re: /\bAGUARDANDO\b/i },
+  { chave: "FORA", re: /\b(fora\s+de\s+servi[cç]o|sem\s+ponto)\b/i },
+];
+
+/** Ruídos que a leitura de seções deixa na frente dos valores. */
+const limparValor = (linha: string) =>
+  linha
+    .replace(/^[\s·|•\-–—]+/, "")
+    .replace(/\b(desde|motivo|ponto|semana|ticket)\b\s*[:·-]?\s*/gi, (m) => (m.trim().length === 0 ? m : ""))
+    .trim();
+
+/**
+ * Interpreta a tela de status a partir das linhas da página.
+ * Devolve `null`-safe: nada de exceção — campo que não veio fica `null`.
+ */
+export function interpretarStatus(secoes: SecaoPortal[]): StatusPortal | null {
+  const linhas = todasAsLinhas(secoes);
+  const texto = linhas.join(" · ");
+  const tituloPagina = secoes.map((s) => s.titulo).join(" ");
+  const ehTelaStatus = /status\s+do\s+ponto/i.test(`${tituloPagina} ${texto}`) || TURNOS.some((t) => t.re.test(texto));
+  if (!ehTelaStatus) return null;
+
+  // Código do ponto: a primeira ocorrência no texto (o cartão vem logo depois).
+  const codigoM = RE_CODIGO.exec(texto);
+  const codigo = codigoM ? `${codigoM[1].toUpperCase()}${codigoM[2]}` : null;
+
+  // Cartão/placa: 3 letras, hífen, 4 caracteres (ADG-1J42) ou placa Mercosul.
+  const cartaoM = /\b([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})\b/.exec(texto) ?? /\b([A-Z]{3}-?\d{4})\b/.exec(texto);
+  const cartao = cartaoM ? cartaoM[1].toUpperCase() : null;
+
+  let turno: TurnoPortal | null = null;
+  let turnoTexto: string | null = null;
+  for (const t of TURNOS) {
+    const m = texto.match(t.re);
+    if (m) {
+      turno = t.chave;
+      turnoTexto = m[0].toUpperCase();
+      break;
+    }
+  }
+
+  const desdeM = /(desde\s+(?:hoje|ontem|[^·]{0,24})[,]?\s*\d{1,2}[:h]\d{2})/i.exec(texto);
+  const desde = desdeM ? desdeM[1].replace(/\s+/g, " ").trim() : null;
+  const haM = /h[áa]\s+(\d{1,3})\s*min/i.exec(texto);
+  const haMinutos = haM ? Number(haM[1]) : null;
+
+  // MOTIVO: “MOTIVO · 001 - OFICINA” ou “001 - OFICINA” (código + descrição).
+  const motivoM = /motivo\s*[:·-]?\s*([0-9]{1,3}\s*[-–]\s*[^·]{2,60})/i.exec(texto) ?? /\b([0-9]{3}\s*[-–]\s*[A-ZÀ-Ú][^·]{1,50})/.exec(texto);
+  const motivo = motivoM ? motivoM[1].replace(/\s*[-–]\s*/, " - ").trim() : null;
+
+  // Nome do motorista: linha em MAIÚSCULAS com 2+ palavras (evita “EM DISPENSA”).
+  const nome =
+    linhas
+      .map((l) => l.trim())
+      .find(
+        (l) =>
+          /^[A-ZÀ-Ú][A-ZÀ-Ú' ]{6,60}$/.test(l) &&
+          l.split(/\s+/).length >= 2 &&
+          !TURNOS.some((t) => t.re.test(l)) &&
+          !/^(MOTIVO|DESDE|PONTO|STATUS)/.test(l),
+      ) ?? null;
+
+  return { codigo, cartao, turno, turnoTexto, desde, haMinutos, motivo, nome, ehTelaStatus: true };
+}
+
+/** Frase curta do status (a mesma que o motorista recebe no aviso). */
+export function fraseStatus(s: StatusPortal): string {
+  const ponto = s.codigo ?? "Seu ponto";
+  if (s.turno === "EM DISPENSA") {
+    const motivo = s.motivo ? ` · motivo ${s.motivo}` : "";
+    const tempo = s.haMinutos != null ? ` · há ${s.haMinutos} min` : "";
+    return `${ponto} está EM DISPENSA${motivo}${tempo}.`;
+  }
+  if (s.turno === "EM ATENDIMENTO") return `${ponto} está em atendimento (saiu para o trabalho).`;
+  if (s.turno === "DESCANSANDO") return `${ponto} está em descanso.`;
+  if (s.turno === "AGUARDANDO") return `${ponto} está aguardando.`;
+  if (s.turno === "FORA") return `${ponto} está fora de serviço.`;
+  return `${ponto}: sem situação na tela agora.`;
+}
+
+/* ==========================================================================
+ * TELA DE ATIVOS (“Fila”): Livro A/B/M com Último Ponto Escalado e a fila
+ *
+ *   Livro A - Truck
+ *   ÚLTIMO PONTO ESCALADO
+ *   A102
+ *   SEQ  PONTO  TIPO
+ *   1    A109   TRUCK 4 EIXOS
+ *   2    A115   TRUCK 4 EIXOS
+ *   ...
+ * ========================================================================== */
+
+export type ItemFilaPortal = { seq: number; codigo: string; tipo: string };
+
+export type LivroAtivosPortal = {
+  livro: "A" | "B" | "M";
+  /** Cabeçalho do quadro (ex.: "Livro A - Truck"). */
+  titulo: string;
+  ultimo: string | null;
+  /** Tipo do último escalado, quando o portal escreve (ex.: "TRUCK 4 EIXOS"). */
+  ultimoTipo: string | null;
+  fila: ItemFilaPortal[];
+  /** O aviso “Seu ponto (A032) não está na fila deste livro no momento.” */
+  pontoForaDaFila: boolean;
+};
+
+const RE_LIVRO_TITULO = /livro\s+([ABM])\s*[-–·]?\s*([A-Za-zÀ-Ú ]{0,30})/i;
+const RE_CODIGO_EXATO = /\b([ABM])\s?-?(\d{3})\b/i;
+/** Código do portal em forma comparável: letra + 3 dígitos (A32 → A032). */
+export function normalizarCodigoPortal(valor: string): string {
+  const m = /([ABM])\s?-?(\d{1,4})/i.exec(valor.replace(/\s|-/g, " "));
+  if (!m) return valor.replace(/[\s-]/g, "").toUpperCase();
+  return `${m[1].toUpperCase()}${m[2].padStart(3, "0")}`;
+}
+
+/**
+ * Interpreta um bloco como quadro de um livro (ou devolve null).
+ * `cabecalhoNasLinhas`: o nome do livro pode estar nas linhas (página sem
+ * títulos) — na seção normal ele tem de estar no TÍTULO, senão as abas
+ * “Livro A · Livro B · Livro M” da Tela de Ativos viram quadros vazios.
+ */
+function interpretarLivroDeLinhas(
+  tituloSecao: string,
+  linhas: string[],
+  cabecalhoNasLinhas = false,
+): LivroAtivosPortal | null {
+  const doTitulo = RE_LIVRO_TITULO.exec(tituloSecao);
+  const m = doTitulo ?? (cabecalhoNasLinhas ? RE_LIVRO_TITULO.exec(linhas.slice(0, 3).join(" ")) : null);
+  if (!m) return null;
+  const livro = m[1].toUpperCase() as "A" | "B" | "M";
+
+  // Tudo depois de “ÚLTIMO PONTO ESCALADO” até o começo da tabela.
+  const iUltimo = linhas.findIndex((l) => /[ÚU]ltimo\s+ponto\s+escalado/i.test(l));
+  const fila: ItemFilaPortal[] = [];
+  let ultimo: string | null = null;
+  let ultimoTipo: string | null = null;
+
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i].trim();
+    // “1 · A109 · TRUCK 4 EIXOS” (a leitura de tabela já junta as colunas).
+    const seqM = /^(\d{1,3})\s*[·|.\-–]\s*([A-Z]{1,3}\s?-?\d{1,4})\s*(?:[·|.\-–]\s*(.+))?$/i.exec(l);
+    if (seqM) {
+      fila.push({ seq: Number(seqM[1]), codigo: seqM[2].replace(/\s|-/g, "").toUpperCase(), tipo: (seqM[3] ?? "").trim() });
+      continue;
+    }
+    // “SEQ · PONTO · TIPO” é cabeçalho de tabela: ignora.
+    if (/^seq\b/i.test(l)) continue;
+    const codigoSozinho = /\b([ABM])\s?-?(\d{1,4})\b/i.exec(l);
+    if (!codigoSozinho) continue;
+    // Mantém o código como o portal escreve (A102, M28): só a comparação normaliza.
+    const codigo = `${codigoSozinho[1].toUpperCase()}${codigoSozinho[2]}`;
+    // O primeiro código depois do rótulo “Último Ponto Escalado” é o último.
+    if (iUltimo >= 0 && i > iUltimo && !ultimo) {
+      ultimo = codigo;
+      const seguinte = linhas[i + 1]?.trim();
+      if (
+        seguinte &&
+        !/^\d/.test(seguinte) &&
+        !RE_CODIGO_EXATO.test(seguinte) &&
+        /truck|cavalo|carreta|eixos|ba\s?2e|bitrem|rodotrem/i.test(seguinte)
+      ) {
+        ultimoTipo = seguinte;
+      }
+    }
+  }
+
+  if (!ultimo && !fila.length) return null;
+  return {
+    livro,
+    titulo: `Livro ${livro}${m[2]?.trim() ? ` - ${m[2].trim().replace(/\s+/g, " ")}` : ""}`,
+    ultimo,
+    ultimoTipo,
+    fila,
+    pontoForaDaFila: false,
+  };
+}
+
+/**
+ * Lê os quadros de ativos de uma página. Aceita o formato do app
+ * (`Livro A · Truck · …`) e o da “Tela de Ativos” do portal.
+ */
+export function interpretarAtivos(secoes: SecaoPortal[]): LivroAtivosPortal[] {
+  const livros: LivroAtivosPortal[] = [];
+  for (const s of secoes) {
+    // A seção só é um quadro se o TÍTULO fala de livro ou se ela traz a fila
+    // (“Último Ponto Escalado” / linhas “1 · A109 · …”).
+    const temFila = s.linhas.some((l) => /[ÚU]ltimo\s+ponto\s+escalado/i.test(l) || /^\d{1,3}\s*[·|.\-–]/.test(l.trim()));
+    if (!RE_LIVRO_TITULO.test(s.titulo) && !temFila) continue;
+    const livro = interpretarLivroDeLinhas(s.titulo, s.linhas, !RE_LIVRO_TITULO.test(s.titulo));
+    if (livro) livros.push(livro);
+  }
+  // Um único bloco “Página” com os três livros juntos (tabela larga).
+  if (!livros.length) {
+    const todas = todasAsLinhas(secoes);
+    let atual: { titulo: string; linhas: string[] } | null = null;
+    for (const l of todas) {
+      if (RE_LIVRO_TITULO.test(l)) {
+        if (atual) {
+          const lv = interpretarLivroDeLinhas(atual.titulo, atual.linhas, true);
+          if (lv) livros.push(lv);
+        }
+        atual = { titulo: l, linhas: [] };
+        continue;
+      }
+      atual?.linhas.push(l);
+    }
+    if (atual) {
+      const lv = interpretarLivroDeLinhas(atual.titulo, atual.linhas, true);
+      if (lv) livros.push(lv);
+    }
+  }
+
+  // “Seu ponto (A032) não está na fila deste livro no momento.” → marca o livro
+  // do código, mesmo que a mensagem tenha ficado em outra seção da página.
+  for (const s of secoes) {
+    for (const linha of s.linhas) {
+      const m = /seu\s+ponto\s*\(?([ABM])\s?-?\d{1,4}\)?\s*n[ãa]o\s+est[áa]\s+na\s+fila/i.exec(linha);
+      if (!m) continue;
+      const alvo = livros.find((l) => l.livro === m[1].toUpperCase());
+      if (alvo) alvo.pontoForaDaFila = true;
+    }
+  }
+  return livros;
+}
+
+/** Onde o código está em cada quadro (1 = na vez; null = fora da fila). */
+export function posicaoNoPortal(
+  livros: LivroAtivosPortal[],
+  codigo: string,
+): { livro: LivroAtivosPortal; posicao: number; item: ItemFilaPortal } | null {
+  const alvo = normalizarCodigoPortal(codigo);
+  for (const livro of livros) {
+    const i = livro.fila.findIndex((f) => normalizarCodigoPortal(f.codigo) === alvo);
+    if (i >= 0) return { livro, posicao: i + 1, item: livro.fila[i] };
+  }
+  return null;
+}
