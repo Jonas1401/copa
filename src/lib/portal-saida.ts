@@ -441,3 +441,36 @@ export async function verificarSaidasRecentes(janelaMin = 4, limite = 2) {
   }
   return { motoristas: ids.length, tentados: resultados.length, resultados };
 }
+
+export const CHAVE_TICK = "portal_saida_ultimo_tick";
+/** Intervalo mínimo entre duas rodadas do gancho que roda com o app aberto. */
+export const TICK_MIN_MS = 3 * 60_000;
+
+/**
+ * Gancho que roda junto do `/api/estado` (o app aberto chama a cada 5 s).
+ *
+ * Existe porque o cron do projeto é DIÁRIO: sem isto, o aviso de saída só
+ * sairia no dia seguinte. Aqui a checagem é no máximo a cada 3 minutos por
+ * instância, em segundo plano (`after()`), e continua sem custo quando o modo
+ * está desligado.
+ */
+export async function tickSaidaPortal(agora = Date.now()) {
+  if (!temBancoConfigurado) return { rodou: false, motivo: "sem_banco" as const };
+  const { modo } = await lerModoSaida();
+  if (modo === "desligado") return { rodou: false, motivo: "desligado" as const };
+
+  const [ultimo] = await comBanco(() =>
+    db.select().from(configuracao).where(eq(configuracao.chave, CHAVE_TICK)).limit(1),
+  );
+  const desde = Number(ultimo?.valor ?? 0);
+  if (Number.isFinite(desde) && agora - desde < TICK_MIN_MS) return { rodou: false, motivo: "aguardando" as const };
+
+  await comBanco(() =>
+    db
+      .insert(configuracao)
+      .values({ chave: CHAVE_TICK, valor: String(agora) })
+      .onConflictDoUpdate({ target: configuracao.chave, set: { valor: String(agora) } }),
+  );
+  const r = await verificarSaidasRecentes(4, 2);
+  return { rodou: true, modo, ...r };
+}
