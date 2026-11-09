@@ -22,6 +22,8 @@
   --fundo-verde-escuro: #003D35;
   --amarelo-atencao: #FFB82E;
   --azul-informativo: #129DFF;
+  /* vermelho usado apenas no fim da barra de descarga (verde → vermelho) */
+  --vermelho-final: #EF4444;
   /* texto e ícones */
   --texto-principal: #EAF4F7;
   --texto-secundario: #8FA8AC;
@@ -61,6 +63,7 @@
   --color-laranja: #FFB82E;
   --color-azulclaro: #129DFF;
   --color-info: #129DFF;
+  --color-vermelho: #EF4444;
   /* assistente / destaques antigos entram no ciano do tema (sem violeta) */
   --color-violeta: #00B8BC;
   /* texto */
@@ -300,9 +303,6 @@ body {
 /* --- barras de progresso: trilho escuro, preenchimento por status ------ */
 .progresso-trilho {
   background-color: #062330;
-}
-.progresso-verde {
-  background-color: #00C853;
 }
 .progresso-ciano {
   background-color: #00B8BC;

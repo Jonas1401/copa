@@ -110,9 +110,20 @@ function CartaoAtracado({ navio }: { navio: AtracadoEspelho }) {
             </span>
           </div>
           <div className="progresso-trilho h-2.5 w-full overflow-hidden rounded-full">
+            {/* A descarga começa verde (navio cheio), passa pelo amarelo e
+                 termina vermelha quando está finalizando — degradê de verde
+                 para vermelho revelado à medida que o preenchimento avança. */}
             <div
-              className="progresso-verde h-2.5 rounded-full transition-[width] duration-500"
-              style={{ width: `${navio.descarregado}%` }}
+              className="h-2.5 rounded-full transition-[width] duration-500"
+              style={{
+                width: `${navio.descarregado}%`,
+                background: `linear-gradient(
+                  90deg,
+                  var(--color-verde) 0%,
+                  var(--color-ouro) 40%,
+                  var(--color-vermelho) 100%
+                )`,
+              }}
             />
           </div>
         </div>
