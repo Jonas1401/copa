@@ -4,6 +4,7 @@ import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 import { limparMotoristasInativos } from "@/lib/motorista-inatividade";
+import { monitorarTodos } from "@/lib/portal-copadubo";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -32,12 +33,17 @@ export async function GET(req: Request) {
   // O monitor de navios é independente de pontos cadastrados e de falhas da
   // fila. As leituras HTTP diretas/Composio acontecem em paralelo no cron.
   const tarefaNavios = verificarNaviosFertilizantes().catch(() => null);
+  // Portal do motorista: cada ciclo lê quem já passou do intervalo (5 min).
+  // Um portal fora do ar nunca impede a fila nem os navios.
+  const tarefaPortal = monitorarTodos().catch(() => null);
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
     const navios = await tarefaNavios;
+    const portal = await tarefaPortal;
     return NextResponse.json({
       rodou: false, motivo: "Nenhum ponto cadastrado — monitoramento da fila em repouso.",
       ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
+      ...(portal?.lidos ? { portal } : {}),
       ...(inativos.excluidos ? { inativos } : {}),
     });
   }
@@ -52,6 +58,7 @@ export async function GET(req: Request) {
     testes = await enviarTestesDoCiclo();
   }
   const navios = await tarefaNavios;
+  const portal = await tarefaPortal;
   return NextResponse.json({
     rodou: Boolean(leitura),
     ...(leitura ? {
@@ -59,6 +66,7 @@ export async function GET(req: Request) {
     } : { motivo: "Falha temporária na leitura da fila." }),
     quando: new Date().toISOString(),
     ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
+    ...(portal?.lidos ? { portal } : {}),
     ...(inativos.excluidos ? { inativos } : {}),
   });
 }

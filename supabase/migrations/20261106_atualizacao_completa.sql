@@ -606,6 +606,48 @@ CREATE TABLE IF NOT EXISTS public.esim_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+
+/* ============================ 12.1 PORTAL DO MOTORISTA (07/11/2026) ====== */
+-- O motorista cadastra no app o PRÓPRIO CPF e a senha do
+-- portal.copadubo.com.br. `cpf` e `senha_cifrada` são AES-256-GCM (mesma
+-- chave mestra do cofre de API Keys): quem lê a tabela não lê o segredo.
+CREATE TABLE IF NOT EXISTS public.portal_motorista_acessos (
+  motorista_id INTEGER PRIMARY KEY,
+  cpf TEXT NOT NULL,
+  cpf_final TEXT NOT NULL,
+  senha_cifrada TEXT NOT NULL,
+  senha_final4 TEXT NOT NULL,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  aceito_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Uma linha por leitura da página de status (seções/linhas, o que mudou e o
+-- diagnóstico da tentativa). Histórico de 7 dias.
+CREATE TABLE IF NOT EXISTS public.portal_leituras (
+  id SERIAL PRIMARY KEY,
+  motorista_id INTEGER NOT NULL,
+  ok INTEGER NOT NULL DEFAULT 0,
+  login_recusado INTEGER NOT NULL DEFAULT 0,
+  captcha INTEGER NOT NULL DEFAULT 0,
+  status_http INTEGER,
+  titulo TEXT,
+  total_linhas INTEGER NOT NULL DEFAULT 0,
+  secoes JSONB,
+  sinais JSONB,
+  hash TEXT,
+  novas JSONB,
+  removidas JSONB,
+  diagnostico TEXT,
+  ms INTEGER NOT NULL DEFAULT 0,
+  avisado INTEGER NOT NULL DEFAULT 0,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS portal_leituras_motorista_idx
+  ON public.portal_leituras (motorista_id, id DESC);
+CREATE INDEX IF NOT EXISTS portal_leituras_criado_idx
+  ON public.portal_leituras (criado_em);
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend
@@ -654,6 +696,8 @@ ALTER TABLE public.esim_topups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.esim_webhook_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.esim_api_errors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.esim_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_motorista_acessos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_leituras ENABLE ROW LEVEL SECURITY;
 
 -- Sem policy, RLS já bloqueia; o REVOKE é a segunda tranca para o PostgREST.
 -- Os papéis anon/authenticated só existem no Supabase — num PostgreSQL comum
@@ -676,7 +720,7 @@ END $$;
 
 COMMIT;
 
--- Conferência rápida: todas as tabelas do app devem aparecer abaixo (44).
+-- Conferência rápida: todas as tabelas do app devem aparecer abaixo (46).
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'

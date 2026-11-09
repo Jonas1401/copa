@@ -32,6 +32,7 @@ import Cabecalho from "@/components/inicio/Cabecalho";
 import BannerCaminhao from "@/components/inicio/BannerCaminhao";
 import Servicos from "@/components/inicio/Servicos";
 import NavInferior, { type Aba } from "@/components/inicio/NavInferior";
+import PortalMotorista, { type EstadoPortalMotorista } from "@/components/inicio/PortalMotorista";
 import { garantirAssinaturaPush } from "@/lib/push-cliente";
 import ChatMotoristas, { CHAVE_CHAT_LIDO } from "@/components/chat/ChatMotoristas";
 import AlertaAdmin from "@/components/alerta/AlertaAdmin";
@@ -705,6 +706,10 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const [painelNotif, setPainelNotif] = useState<
     null | "geral" | "pedir" | "negado" | "ativado" | "suporte"
   >(null);
+  const [portalAberto, setPortalAberto] = useState(false);
+  // O estado do portal é lido ANTES de abrir a tela (o painel só aparece com
+  // o que o servidor confirmou: nada de mostrar "sem cadastro" por engano).
+  const [portalInicial, setPortalInicial] = useState<EstadoPortalMotorista | null>(null);
   const [pendente, setPendente] = useState<DadosCadastro | null>(null);
   const [ativando, setAtivando] = useState(false);
   const [assinada, setAssinada] = useState(false);
@@ -1357,6 +1362,14 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 totalMotoristas={totalMotoristas}
                 onRenomear={renomear}
                 onAtivarNotificacoes={() => setPainelNotif("geral")}
+                onAbrirPortal={() => {
+                  setPortalInicial(null);
+                  setPortalAberto(true);
+                  void fetch("/api/portal", { cache: "no-store" })
+                    .then((r) => (r.ok ? r.json() : null))
+                    .then((d) => d && setPortalInicial(d))
+                    .catch(() => null);
+                }}
               />
             </BannerCaminhao>
 
@@ -1777,6 +1790,18 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
 
       {/* Alerta individual do administrador: só fecha ativando as notificações. */}
       {motorista && <AlertaAdmin motoristaId={motorista.id} onAtivada={() => setAssinada(true)} />}
+
+      {/* Portal da Copadubo: o motorista digita o próprio CPF/senha e o
+          servidor lê a página dele (nada de credencial fica no aparelho). */}
+      {portalAberto && motorista && (
+        <PortalMotorista
+          inicial={portalInicial}
+          onFechar={() => {
+            setPortalAberto(false);
+            setPortalInicial(null);
+          }}
+        />
+      )}
 
       {painelNotif && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-abismo/80 p-3 backdrop-blur-md sm:items-center">

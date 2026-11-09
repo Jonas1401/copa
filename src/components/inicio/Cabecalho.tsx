@@ -61,6 +61,7 @@ export default function Cabecalho({
   totalMotoristas = null,
   onRenomear,
   onAtivarNotificacoes,
+  onAbrirPortal,
 }: {
   onCompartilhar: () => void;
   /** Nome do motorista neste aparelho (null = ainda sem perfil). */
@@ -74,6 +75,8 @@ export default function Cabecalho({
   totalMotoristas?: number | null;
   onRenomear: (nome: string) => Promise<boolean>;
   onAtivarNotificacoes: () => void;
+  /** Abre o cadastro do CPF/senha do portal da Copadubo (menu ⋮). */
+  onAbrirPortal?: () => void;
   /** Abre a antiga aba "Sobre" (agora acessível pelo menu ⋮). */
 }) {
   return (
@@ -85,6 +88,7 @@ export default function Cabecalho({
         totalMotoristas={totalMotoristas}
         onRenomear={onRenomear}
         onAtivarNotificacoes={onAtivarNotificacoes}
+        onAbrirPortal={onAbrirPortal}
       />
 
       {/* controles discretos no canto: ícones pequenos, quase sem "caixa",

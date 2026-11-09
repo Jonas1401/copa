@@ -224,6 +224,44 @@ export const segredos = pgTable("segredos", {
   atualizadoPor: integer("atualizado_por"),
 });
 
+// ------------------------------------------------------------------ portal
+// Portal do motorista (portal.copadubo.com.br): cada motorista cadastra o
+// PRÓPRIO CPF e a senha DENTRO do app. Os dois ficam cifrados com AES-256-GCM
+// (mesma chave mestra do cofre de API Keys). Só o servidor decifra, e só para
+// abrir a página de status e ler o que aparece nela.
+export const portalMotoristaAcessos = pgTable("portal_motorista_acessos", {
+  motoristaId: integer("motorista_id").primaryKey(),
+  cpf: text("cpf").notNull(), // cifrado
+  cpfFinal: text("cpf_final").notNull(), // 5 últimos dígitos, só para mascarar
+  senhaCifrada: text("senha_cifrada").notNull(),
+  senhaFinal4: text("senha_final4").notNull(),
+  ativo: integer("ativo").default(1).notNull(),
+  aceitoEm: timestamp("aceito_em", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Uma linha por leitura do portal: o que a página mostrou (seções/linhas),
+// o que mudou em relação à anterior e o diagnóstico da tentativa.
+export const portalLeituras = pgTable("portal_leituras", {
+  id: serial("id").primaryKey(),
+  motoristaId: integer("motorista_id").notNull(),
+  ok: integer("ok").default(0).notNull(),
+  loginRecusado: integer("login_recusado").default(0).notNull(),
+  captcha: integer("captcha").default(0).notNull(),
+  statusHttp: integer("status_http"),
+  titulo: text("titulo"),
+  totalLinhas: integer("total_linhas").default(0).notNull(),
+  secoes: jsonb("secoes"),
+  sinais: jsonb("sinais"),
+  hash: text("hash"),
+  novas: jsonb("novas"),
+  removidas: jsonb("removidas"),
+  diagnostico: text("diagnostico"),
+  ms: integer("ms").default(0).notNull(),
+  avisado: integer("avisado").default(0).notNull(),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Último resultado do "Testar conexão" de cada integração.
 export const integracoesStatus = pgTable("integracoes_status", {
   id: text("id").primaryKey(), // composio | clima | whatsapp | ia | notificacoes | banco
