@@ -33,8 +33,8 @@ export async function GET(req: Request) {
   // O monitor de navios é independente de pontos cadastrados e de falhas da
   // fila. As leituras HTTP diretas/Composio acontecem em paralelo no cron.
   const tarefaNavios = verificarNaviosFertilizantes().catch(() => null);
-  // Portal do motorista: cada ciclo lê quem já passou do intervalo (5 min).
-  // Um portal fora do ar nunca impede a fila nem os navios.
+  // Portal do motorista: releitura de quem tem ponto fora do quadro e já passou
+  // do intervalo (10 min). Um portal fora do ar nunca impede a fila nem os navios.
   const tarefaPortal = monitorarTodos().catch(() => null);
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
@@ -51,7 +51,9 @@ export async function GET(req: Request) {
   let testes = { total: 0, enviados: 0 };
   let leitura: Awaited<ReturnType<typeof varrer>> | null = null;
   try {
-    leitura = await varrer({ forcarRede: true });
+    // `consultarPortal`: o ponto que saiu do quadro é conferido no Portal do
+    // Motorista (ATIVO / ESCALADO / EM DISPENSA) antes do aviso de saída.
+    leitura = await varrer({ forcarRede: true, consultarPortal: true });
   } catch {
     // Uma falha da fila não pode impedir a publicação dos avisos de navios.
   } finally {

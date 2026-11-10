@@ -85,8 +85,12 @@ type ResultadoSaida = {
   } | null;
   destino: "teste" | "motorista" | "nenhum";
   push?: { enviadas: number; erro?: string };
+  /** Texto final do aviso (título + corpo), como chega no celular — só na simulação. */
+  aviso?: { titulo: string; mensagem: string } | null;
   diagnostico: string[];
 };
+
+type CenarioSaida = "escalado" | "dispensa" | "ativo" | "ativo_fora";
 
 const ROTULO_MODO: Record<ModoSaida, string> = {
   desligado: "Desligado (nada acontece)",
@@ -149,7 +153,8 @@ export default function CartaoPortalAdmin() {
   const [eventos, setEventos] = useState<EventoSaida[]>([]);
   const [resultado, setResultado] = useState<ResultadoSaida | null>(null);
   const [motoristaTeste, setMotoristaTeste] = useState<number | "">("");
-  const [cenario, setCenario] = useState<"atendimento" | "dispensa">("atendimento");
+  const [cenario, setCenario] = useState<CenarioSaida>("escalado");
+  const [verDetalhe, setVerDetalhe] = useState<number | null>(null);
   const [rodandoSaida, setRodandoSaida] = useState<string | null>(null);
 
   const carregarSaida = useCallback(async () => {
@@ -207,8 +212,12 @@ export default function CartaoPortalAdmin() {
     setResultado({
       rodou: true,
       evento: d.evento,
+      aviso: d.aviso ?? null,
       destino: "nenhum",
-      diagnostico: [`Simulação com a tela de exemplo (${d.exemplo}). Nada foi enviado.`],
+      diagnostico: [
+        `Simulação com a tela de exemplo (${d.exemplo}). Nada foi enviado.`,
+        ...(d.decisao ? [`Decisão: ${d.decisao}`] : []),
+      ],
     });
   }
 
@@ -233,7 +242,11 @@ export default function CartaoPortalAdmin() {
     }
     setResultado(d.resultado as ResultadoSaida);
     if (d.eventos) setEventos(d.eventos as EventoSaida[]);
-    setAviso("Leitura real feita no portal (nada é enviado no modo de teste).");
+    setAviso(
+      (d.resultado as ResultadoSaida)?.rodou
+        ? "Leitura real feita no portal (nada é enviado no modo de teste)."
+        : "A leitura não rodou: esse motorista está sem CPF/senha ou com o acesso pausado.",
+    );
   }
 
   const buscar = useCallback(async () => {
@@ -340,7 +353,8 @@ export default function CartaoPortalAdmin() {
               Atualizar
             </button>
             <span className="text-[12px] text-gelo/55">
-              Reler o portal de cada motorista é um login novo — o servidor faz isso a cada 5 min.
+              Cada leitura é um login novo na conta do motorista: o servidor só entra quando um
+              ponto dele sai do quadro (e, em dispensa, a cada 10 min).
             </span>
           </div>
 
@@ -464,10 +478,11 @@ export default function CartaoPortalAdmin() {
               <FlaskConical size={16} /> Saída do ponto (teste)
             </h3>
             <p className="mt-1 text-[12.5px] leading-snug text-gelo/70">
-              Quando o ponto monitorado sai da tela, o app entra no portal com o CPF/senha do
-              motorista, lê a <b>Tela de Ativos</b> e o <b>Status do Ponto</b> e manda a mensagem:
-              para qual trabalho saiu (tipo, livro, posição) — ou que o ponto foi para a
-              <b> dispensa</b> (com o motivo), quando confirmado. A consulta automática faz parte do aviso normal; as opções abaixo controlam apenas os testes manuais.
+              Quando o ponto monitorado sai do quadro, o app entra no portal com o CPF/senha do
+              motorista, lê o <b>Status do Ponto</b> e manda um aviso só: <b>ESCALADO</b> (com as
+              linhas da escala que o portal mostrar), <b>EM DISPENSA</b> (com o motivo) ou, se o
+              portal ainda disser <b>ATIVO</b>, o aviso do quadro dizendo isso. A consulta automática
+              faz parte do aviso normal; as opções abaixo controlam apenas os testes manuais.
             </p>
 
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -495,13 +510,14 @@ export default function CartaoPortalAdmin() {
 
             <label className="mt-2 block">
               <span className="mb-1 block text-[11.5px] font-semibold text-gelo/60">
-                Telas do portal (uma por vírgula · vazio = a tela inicial)
+                Telas extras do portal (opcional · uma por vírgula). Vazio = o leitor abre o
+                Status e as abas que o próprio menu do portal informa.
               </span>
               <input
                 value={caminhos}
                 onChange={(e) => setCaminhos(e.target.value)}
                 onBlur={() => void salvarModo(modo)}
-                placeholder="moto/fila.php"
+                placeholder="deixe vazio"
                 className="w-full rounded-[12px] border border-[#183341]/70 bg-[#071A28] px-3 py-2 text-[12.5px] text-white outline-none focus:border-ouro/60"
               />
             </label>
@@ -535,11 +551,13 @@ export default function CartaoPortalAdmin() {
                 <span className="mb-1 block text-[11.5px] font-semibold text-gelo/60">Simular</span>
                 <select
                   value={cenario}
-                  onChange={(e) => setCenario(e.target.value as "atendimento" | "dispensa")}
+                  onChange={(e) => setCenario(e.target.value as CenarioSaida)}
                   className="w-full rounded-[12px] border border-[#183341]/70 bg-[#071A28] px-3 py-2 text-[12.5px] text-white outline-none focus:border-ouro/60"
                 >
-                  <option value="atendimento">Saiu para o trabalho</option>
+                  <option value="escalado">Saiu para o trabalho (ESCALADO)</option>
                   <option value="dispensa">Foi para a dispensa</option>
+                  <option value="ativo">Portal ainda ATIVO · é o Último Escalado</option>
+                  <option value="ativo_fora">Portal continua ATIVO · sumiu do quadro</option>
                 </select>
               </label>
               <button
@@ -557,17 +575,17 @@ export default function CartaoPortalAdmin() {
               <div className="mt-2 rounded-[14px] border border-[#183341]/60 bg-[#000D16]/60 p-2.5">
                 <p className="text-[12px] font-semibold text-gelo/60">Mensagem que o motorista recebe</p>
                 <p className="mt-0.5 font-display text-[13.5px] font-bold text-white">
-                  {resultado.evento?.titulo ?? "Sem leitura"}
+                  {resultado.aviso?.titulo ?? resultado.evento?.titulo ?? "Sem leitura"}
                 </p>
-                <p className="mt-0.5 text-[12.5px] leading-snug text-gelo/85">
-                  {resultado.evento?.mensagem ?? resultado.motivo ?? "—"}
+                <p className="mt-0.5 text-[12.5px] leading-snug whitespace-pre-line text-gelo/85">
+                  {resultado.aviso?.mensagem ?? resultado.evento?.mensagem ?? resultado.motivo ?? "—"}
                 </p>
                 <p className="mt-1 text-[11.5px] text-gelo/50">
                   {resultado.evento?.saiu
                     ? resultado.evento.dispensa
                       ? "Situação: DISPENSA"
                       : "Situação: saiu para o trabalho"
-                    : "Situação: não saiu (aviso de saída não seria enviado)"}
+                    : "Situação no portal: não consta como saído (quando o número sai do quadro, vai o aviso do quadro)"}
                   {resultado.evento?.tipoTrabalho ? ` · trabalho: ${resultado.evento.tipoTrabalho}` : ""}
                   {resultado.evento?.livro ? ` · livro ${resultado.evento.livro}` : ""}
                   {resultado.evento?.posicao ? ` · posição ${resultado.evento.posicao}` : ""}
@@ -599,7 +617,27 @@ export default function CartaoPortalAdmin() {
                           {e.destino === "motorista" ? "enviado ao motorista" : e.destino === "teste" ? "só teste" : "não enviado"}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-[12px] leading-snug text-gelo/80">{e.mensagem}</p>
+                      <p className="mt-0.5 text-[12px] leading-snug whitespace-pre-line text-gelo/80">{e.mensagem}</p>
+                      {e.diagnostico?.length ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setVerDetalhe(verDetalhe === e.id ? null : e.id)}
+                            className="mt-1 text-[11px] font-semibold text-ciano/80 underline-offset-2 hover:underline"
+                          >
+                            {verDetalhe === e.id ? "Ocultar o que o leitor viu" : "Ver o que o leitor viu no portal"}
+                          </button>
+                          {verDetalhe === e.id ? (
+                            <ul className="mt-1 space-y-0.5 rounded-[10px] bg-[#000D16]/60 p-2">
+                              {e.diagnostico.map((linha, i) => (
+                                <li key={i} className="text-[11px] leading-snug text-gelo/60">
+                                  {linha}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

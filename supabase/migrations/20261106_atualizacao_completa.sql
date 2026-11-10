@@ -671,6 +671,30 @@ CREATE INDEX IF NOT EXISTS portal_eventos_motorista_idx
 CREATE INDEX IF NOT EXISTS portal_eventos_criado_idx
   ON public.portal_eventos (criado_em);
 
+-- Avisos de saída ESPERANDO a consulta ao portal (10/11/2026). Quando o ponto
+-- some do quadro, a saída entra aqui; o app entra no portal com a conta do
+-- motorista, lê a situação do ponto (ATIVO / ESCALADO / EM DISPENSA) e só
+-- então envia o aviso. Uma linha por ponto, apagada assim que o aviso sai.
+CREATE TABLE IF NOT EXISTS public.portal_saidas_pendentes (
+  id SERIAL PRIMARY KEY,
+  ponto_id INTEGER NOT NULL,
+  motorista_id INTEGER NOT NULL,
+  codigo TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  livro TEXT NOT NULL,
+  numero INTEGER NOT NULL,
+  codigo_na_vez TEXT NOT NULL,
+  saida_por_ultimo INTEGER NOT NULL DEFAULT 0,
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  proxima_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  em_andamento_ate TIMESTAMPTZ,
+  ultimo_status TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT portal_saida_pendente_ponto UNIQUE (ponto_id)
+);
+CREATE INDEX IF NOT EXISTS portal_saidas_pendentes_proxima_idx
+  ON public.portal_saidas_pendentes (proxima_em);
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend
@@ -722,6 +746,7 @@ ALTER TABLE public.esim_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_motorista_acessos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_leituras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_eventos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_saidas_pendentes ENABLE ROW LEVEL SECURITY;
 
 -- Sem policy, RLS já bloqueia; o REVOKE é a segunda tranca para o PostgREST.
 -- Os papéis anon/authenticated só existem no Supabase — num PostgreSQL comum
@@ -744,7 +769,7 @@ END $$;
 
 COMMIT;
 
--- Conferência rápida: todas as tabelas do app devem aparecer abaixo (47).
+-- Conferência rápida: todas as tabelas do app devem aparecer abaixo (48).
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'

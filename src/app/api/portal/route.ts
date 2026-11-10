@@ -86,10 +86,10 @@ export async function POST(req: Request) {
       mensagem: leitura?.loginRecusado
         ? "Guardei seus dados, mas o portal recusou o CPF/senha. Confira e cadastre de novo."
         : leitura?.captcha
-          ? "Guardei seus dados. O portal pediu captcha neste acesso — vou continuar tentando."
+          ? "Guardei seus dados, mas o portal pediu captcha neste acesso — a leitura automática não passa por ele."
           : leitura?.ok
             ? "Pronto! O portal abriu com os seus dados e eu já li o que aparece nele."
-            : "Guardei seus dados. A primeira leitura não veio completa — vou tentar de novo em instantes.",
+            : "Guardei seus dados, mas a primeira leitura não veio completa. Toque em “Ler agora” para tentar de novo; o motivo aparece em “Última leitura”.",
     },
     { headers: CAB },
   );
@@ -115,6 +115,14 @@ export async function PUT() {
   if (!acesso) {
     return NextResponse.json({ erro: "Cadastre o CPF e a senha do portal primeiro." }, { status: 404, headers: CAB });
   }
+  if (acesso.ativo !== 1) {
+    // Pausado depois de duas recusas seguidas: insistir com a mesma senha
+    // poderia bloquear a conta do motorista no portal.
+    return NextResponse.json(
+      { erro: "A leitura está pausada porque o portal recusou o CPF/senha. Toque em “Trocar CPF/senha” e cadastre de novo." },
+      { status: 409, headers: CAB },
+    );
+  }
   if (!podeLer(m.id)) {
     return NextResponse.json(
       { erro: "Você já testou o portal várias vezes nesta hora. Tente de novo mais tarde." },
@@ -123,5 +131,6 @@ export async function PUT() {
   }
   const r = await monitorarMotorista(m.id, { avisar: false });
   const ultima = await ultimaLeituraPortal(m.id);
-  return NextResponse.json({ ...r, estado: acessoPublico(acesso, ultima) }, { headers: CAB });
+  // O acesso é relido: esta leitura pode ter sido a segunda recusa (pausa).
+  return NextResponse.json({ ...r, estado: acessoPublico(await acessoPortalDoMotorista(m.id), ultima) }, { headers: CAB });
 }

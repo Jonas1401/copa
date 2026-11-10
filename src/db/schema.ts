@@ -281,6 +281,31 @@ export const portalEventos = pgTable("portal_eventos", {
   criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Avisos de saída ESPERANDO a consulta ao portal. Quando o ponto some do
+// quadro, a saída entra aqui; a varredura entra no portal com a conta do
+// motorista, lê a situação do ponto (ATIVO / ESCALADO / EM DISPENSA) e só
+// então envia o aviso. Uma linha por ponto: registro durável, para o aviso
+// não se perder se a função da hospedagem for encerrada no meio da consulta.
+export const portalSaidasPendentes = pgTable("portal_saidas_pendentes", {
+  id: serial("id").primaryKey(),
+  pontoId: integer("ponto_id").notNull(),
+  motoristaId: integer("motorista_id").notNull(),
+  codigo: text("codigo").notNull(),
+  tipo: text("tipo").notNull(),
+  livro: text("livro").notNull(),
+  numero: integer("numero").notNull(),
+  codigoNaVez: text("codigo_na_vez").notNull(), // "último escalado" do quadro na hora da saída
+  saidaPorUltimo: integer("saida_por_ultimo").default(0).notNull(), // 1 = o ponto É o último escalado
+  tentativas: integer("tentativas").default(0).notNull(),
+  proximaEm: timestamp("proxima_em", { withTimezone: true }).defaultNow().notNull(),
+  emAndamentoAte: timestamp("em_andamento_ate", { withTimezone: true }),
+  ultimoStatus: text("ultimo_status"),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  unique("portal_saida_pendente_ponto").on(t.pontoId),
+  index("portal_saidas_pendentes_proxima_idx").on(t.proximaEm),
+]);
+
 // Último resultado do "Testar conexão" de cada integração.
 export const integracoesStatus = pgTable("integracoes_status", {
   id: text("id").primaryKey(), // composio | clima | whatsapp | ia | notificacoes | banco

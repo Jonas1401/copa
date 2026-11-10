@@ -1,6 +1,7 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { monitorDevices, monitorDeliveries, monitorMessages, motoristas, pontos, subscriptions } from "@/db/schema";
+import { apagarDadosPortalDoMotorista } from "@/lib/portal-copadubo";
 
 /** Conta inativa: mais de 15 dias sem abrir o app e sem número na fila. */
 export const DIAS_INATIVIDADE = 15;
@@ -24,6 +25,9 @@ export function contaInativaParaExcluir(opts: {
 
 /** Remove o cadastro e os números/aparelhos ligados a ele. O chat antigo fica. */
 export async function excluirCadastroMotorista(motoristaId: number) {
+  // Primeiro o mais sensível: CPF/senha do Portal do Motorista e o que foi lido
+  // lá. Se isto falhar, o cadastro não é apagado pela metade (tenta de novo).
+  await apagarDadosPortalDoMotorista(motoristaId);
   const devices = await db
     .select({ id: monitorDevices.id })
     .from(monitorDevices)

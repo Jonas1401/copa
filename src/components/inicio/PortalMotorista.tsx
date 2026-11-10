@@ -120,12 +120,15 @@ export default function PortalMotorista({
       setAviso({ texto: dados?.erro ?? "A leitura falhou.", erro: true });
       return;
     }
+    const motivo = Array.isArray(dados?.diagnostico) ? String(dados.diagnostico[dados.diagnostico.length - 1] ?? "") : "";
     setAviso({
-      texto: dados?.loginRecusado
-        ? "O portal recusou o CPF/senha. Cadastre a senha de novo."
-        : dados?.ok
-          ? `Portal lido agora: ${dados?.linhas ?? 0} linha(s).`
-          : "O portal não devolveu conteúdo nesta leitura.",
+      texto: dados?.pausado
+        ? "O portal recusou o CPF/senha de novo. Pausei a leitura para não bloquear a sua conta: cadastre a senha novamente."
+        : dados?.loginRecusado
+          ? "O portal recusou o CPF/senha. Cadastre a senha de novo."
+          : dados?.ok
+            ? `Portal lido agora: ${dados?.linhas ?? 0} linha(s).`
+            : motivo || "O portal não devolveu conteúdo nesta leitura.",
       erro: !dados?.ok,
     });
     await carregar();
@@ -151,6 +154,8 @@ export default function PortalMotorista({
   const cadastrado = Boolean(estado?.cadastrado);
   const mostrarFormulario = !cadastrado || editando;
   const l = estado?.leitura ?? null;
+  // Motivo da última leitura que falhou (texto do servidor, sem dado sensível).
+  const motivoFalha = l && !l.ok ? (l.diagnostico ?? "").split("\n").filter(Boolean).pop() ?? "" : "";
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-abismo/80 p-3 backdrop-blur-md sm:items-center">
@@ -178,9 +183,10 @@ export default function PortalMotorista({
         </div>
 
         <p className="mt-3 text-[13.5px] leading-snug text-gelo/80">
-          Digite aqui o <b>seu CPF e a senha do portal</b> uma única vez. O aplicativo
-          entra no portal por você e avisa no celular quando algo mudar na sua página
-          (chamada, fila, status).
+          Digite aqui o <b>seu CPF e a senha do portal</b> uma única vez. Quando o seu
+          ponto sair do quadro, o aplicativo entra no portal por você, confere se ele
+          foi <b>ESCALADO</b>, está <b>EM DISPENSA</b> ou continua <b>ATIVO</b> e manda
+          um aviso só, já com essa informação.
         </p>
 
         <div className="mt-3 flex items-start gap-2 rounded-[16px] border border-[#183341]/60 bg-[#071A28]/70 p-3">
@@ -271,8 +277,9 @@ export default function PortalMotorista({
                 </span>
               </div>
               <p className="mt-1 text-[12px] text-gelo/55">
-                Cadastrado em {quando(estado?.desde ?? null)}. O servidor relê o portal
-                a cada 5 minutos (e o app avisa quando muda).
+                {estado?.ativo
+                  ? `Cadastrado em ${quando(estado?.desde ?? null)}. O app só entra na sua conta quando o seu ponto sai do quadro; se o ponto estiver em dispensa, relê a cada 10 minutos (por até 6 horas) para saber quando ela termina.`
+                  : "Pausado: o portal recusou o CPF/senha duas vezes seguidas. Para não bloquear a sua conta, o app parou de tentar. Toque em “Trocar CPF/senha” e cadastre de novo."}
               </p>
             </div>
 
@@ -290,7 +297,7 @@ export default function PortalMotorista({
                       ? "O portal pediu captcha; a leitura automática está parada."
                       : l.ok
                         ? `${l.totalLinhas} linha(s) na página${l.titulo ? ` · ${l.titulo}` : ""}`
-                        : "A última leitura não trouxe conteúdo."}
+                        : motivoFalha || "A última leitura não trouxe conteúdo."}
               </p>
               {l?.sinais?.length ? (
                 <ul className="mt-2 space-y-1">
@@ -308,7 +315,7 @@ export default function PortalMotorista({
               <button
                 type="button"
                 onClick={() => void lerAgora()}
-                disabled={ocupado}
+                disabled={ocupado || !estado?.ativo}
                 className="pill flex min-h-11 items-center gap-2 px-4 py-2.5 text-[13px] font-semibold text-gelo disabled:opacity-50"
               >
                 {ocupado ? <LoaderCircle size={15} className="animate-spin" /> : <RefreshCw size={15} />}
@@ -349,8 +356,8 @@ export default function PortalMotorista({
 
         <p className="mt-3 text-[11px] leading-snug text-gelo/45">
           O portal é da Copadubo; o CopaLinks apenas abre a sua página com os seus
-          dados e mostra o que aparece nela. Se a Copadubo mudar o site, a leitura é
-          refeita sozinha — você não precisa atualizar nada.
+          dados e mostra o que aparece nela — nunca toca em botão nenhum (não entra
+          nem sai de dispensa por você). Cada leitura é um login na sua conta.
         </p>
       </div>
     </div>
