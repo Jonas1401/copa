@@ -111,3 +111,13 @@ test("nada foi removido: áudio, emojis, anexos, IA, notificações e apagar con
     assert.ok(s.includes(recurso), `o chat perdeu: ${recurso}`);
   }
 });
+
+test("as fotos do chat aparecem inteiras, no mesmo estilo do assistente", () => {
+  const s = ler();
+  const imagem = s.slice(s.indexOf(') : temImagem && mensagem.mediaUrl ? ('), s.indexOf(') : temArquivo && mensagem.mediaUrl ? ('));
+  assert.ok(imagem.includes('className="block max-h-72 w-full object-contain"'), "a foto deve manter a proporção sem corte");
+  assert.doesNotMatch(imagem, /h-\[220px\]|sm:h-\[270px\]|object-cover/, "a foto não deve usar uma caixa de altura fixa ou ser cortada");
+  assert.ok(imagem.includes('href={mensagem.mediaUrl} target="_blank"'), "continua permitindo abrir a foto");
+  assert.ok(imagem.includes('mensagem.mediaNome'), "preserva o nome do arquivo");
+  assert.ok(imagem.includes('colado.current && lista.current'), "mantém o fim da conversa visível ao carregar fotos, sem interromper a leitura de mensagens antigas");
+});
