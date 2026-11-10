@@ -1114,9 +1114,17 @@ export default function ChatMotoristas({
                           <>
                             <div>
                               <a href={mensagem.mediaUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[14px] border border-white/10 bg-black/20">
-                                <span className="relative block h-[220px] w-full sm:h-[270px]">
-                                  <NextImage src={mensagem.mediaUrl} alt={mensagem.mediaNome || "Imagem enviada ao chat"} fill sizes="(max-width: 640px) 80vw, 640px" unoptimized className="object-contain" />
-                                </span>
+                                {/* A altura acompanha a foto, como no assistente, sem cortar a imagem. */}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={mensagem.mediaUrl}
+                                  alt={mensagem.mediaNome || "Imagem enviada ao chat"}
+                                  loading="lazy"
+                                  className="block max-h-72 w-full object-contain"
+                                  onLoad={() => {
+                                    if (colado.current && lista.current) lista.current.scrollTop = lista.current.scrollHeight;
+                                  }}
+                                />
                               </a>
                               {mensagem.mediaNome && <p className="mt-1 truncate text-[11px] text-gelo/60">{mensagem.mediaNome}</p>}
                             </div>
