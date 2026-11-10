@@ -125,25 +125,10 @@ test("a saída entra no cron pelo SAIU da fila e é lida no portal do motorista"
   assert.ok(estado.indexOf("await consultarPortalNaSaida") < estado.indexOf('await dispararPush("saiu"'));
 });
 
-test("o portal aparece na própria tela Início (não só no menu ⋮)", () => {
+test("o portal não mostra um cartão na tela Início e continua acessível pelo menu ⋮", () => {
   const a = app();
-  assert.match(a, /import AcessoPortal/, "a Início não tem o cartão do portal");
-  assert.match(a, /<AcessoPortal/, "o cartão não é desenhado");
-  // Fica na aba Início, logo acima dos Serviços.
-  const inicio = a.slice(a.indexOf('{aba === "inicio" && ('));
-  const posCartao = inicio.indexOf("<AcessoPortal");
-  const posServicos = inicio.indexOf("<Servicos");
-  assert.ok(posCartao > 0, "o cartão do portal saiu da aba Início");
-  assert.ok(posCartao < posServicos, "o cartão do portal deve vir antes de Serviços");
-  // Estado sem segredo, buscado uma vez quando o perfil fica pronto.
-  assert.match(a, /fetch\("\/api\/portal", \{ cache: "no-store" \}\)/, "a Início não pergunta o estado do portal");
-  const c = ler("src/components/inicio/AcessoPortal.tsx");
-  assert.match(c, /Portal do motorista/, "o cartão perdeu o nome");
-  assert.match(c, /Cadastre seu CPF e a senha do portal/, "o cartão não explica o que fazer");
-  assert.match(c, /onClick=\{onAbrir\}/, "o cartão não abre a tela do portal");
-  // O cartão só usa o resumo público: nenhum valor de senha, CPF ou input de senha.
-  assert.ok(!/senhaFinal4|senhaCifrada|cpfMascarado\s*[:=]\s*acesso/.test(c), "o cartão lida com credencial");
-  assert.ok(!/type="password"/.test(c), "o cartão virou um formulário de senha (o cadastro é a tela própria)");
+  assert.doesNotMatch(a, /import AcessoPortal|<AcessoPortal|portalResumo/, "o cartão do portal continua na Início");
+  assert.match(menu(), /Portal do motorista/, "o acesso pelo menu ⋮ deve continuar disponível");
 });
 
 test("a saída é conferida durante a varredura, sem um segundo aviso automático", () => {
