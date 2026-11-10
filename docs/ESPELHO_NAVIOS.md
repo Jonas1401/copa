@@ -61,7 +61,8 @@ contêineres, milho e derivados de petróleo ficam de fora das duas telas.
 
 Todos os componentes usam os tokens de `src/app/globals.css` (Dark Navy):
 `#000D16` no fundo, `#071A28` nos cartões, `#002F3B` nos painéis, ciano nos
-filtros ativos e links, verde no progresso de descarga, amarelo para
+filtros ativos e links, degradê verde→vermelho no progresso de descarga
+(a cor da barra e do rótulo acompanha o percentual descarregado), amarelo para
 "A CONFIRMAR" e azul para "PREVISTA". `tests/tema-dark-navy.test.ts` varre as
 telas e garante que nenhuma cor fora da paleta entre na interface.
 

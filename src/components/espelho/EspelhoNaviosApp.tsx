@@ -23,8 +23,9 @@ import type {
  * CÓPIA do "COPALINKS — Navios Atracados" (berth-buddy-bot.lovable.app),
  * dentro do próprio CopaLinks. Mesmo conteúdo, mesma ordem e os mesmos
  * rótulos da referência, com o tema Dark Navy do aplicativo: fundo sólido,
- * cartões azul-marinho, ciano nos filtros ativos, verde no progresso de
- * descarga, amarelo para "a confirmar" e azul para "prevista".
+ * cartões azul-marinho, ciano nos filtros ativos, degradê verde→vermelho no
+ * progresso de descarga (a cor acompanha o percentual descarregado), amarelo
+ * para "a confirmar" e azul para "prevista".
  *
  * Funcionalidades: monitoramento das DUAS fontes (APPA + SINPRAPAR),
  * somente navios de fertilizantes, saldos por operadora, percentual de
@@ -69,8 +70,21 @@ function TituloGrupo({ children, extra }: { children: ReactNode; extra?: string 
   );
 }
 
+/**
+ * Cor do progresso de descarga: degradê contínuo que parte do verde
+ * (matiz 145, o #00C853 do tema) com 0% descarregado e chega ao vermelho
+ * puro (matiz 0) com 100%, passando por amarelo e laranja no caminho —
+ * assim a barra e o rótulo mudam de cor conforme a descarga avança.
+ */
+function corDescarga(pct: number): string {
+  const p = Math.max(0, Math.min(100, pct));
+  const matiz = 145 * (1 - p / 100);
+  return `hsl(${matiz.toFixed(1)} 100% 42%)`;
+}
+
 function CartaoAtracado({ navio }: { navio: AtracadoEspelho }) {
   const total = navio.operadoras.length;
+  const cor = navio.descarregado === null ? undefined : corDescarga(navio.descarregado);
   return (
     <article className="cartao-monitor rounded-[22px] p-4">
       {/* berço, quantidade de operadoras e navio — na mesma ordem da referência */}
@@ -105,14 +119,17 @@ function CartaoAtracado({ navio }: { navio: AtracadoEspelho }) {
         <div className="mt-3.5">
           <div className="mb-1.5 flex items-center justify-between gap-2 text-[12px]">
             <span className="text-aco">Descarga</span>
-            <span className="tabular font-display font-extrabold text-verde">
+            <span
+              className="tabular font-display font-extrabold transition-colors duration-500"
+              style={{ color: cor }}
+            >
               {navio.descarregado}% descarregado
             </span>
           </div>
           <div className="progresso-trilho h-2.5 w-full overflow-hidden rounded-full">
             <div
-              className="progresso-verde h-2.5 rounded-full transition-[width] duration-500"
-              style={{ width: `${navio.descarregado}%` }}
+              className="h-2.5 rounded-full transition-[width,background-color] duration-500"
+              style={{ width: `${navio.descarregado}%`, backgroundColor: cor }}
             />
           </div>
         </div>

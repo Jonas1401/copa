@@ -20,6 +20,7 @@ const PALETA = [
   "#8FA8AC", // texto secundário
   "#506A75", // ícones e elementos discretos
   "#062330", // fundo das barras de progresso
+  "#FF4D4D", // vermelho de status do LED (offline/erro)
 ] as const;
 
 function arquivos(dir: string): string[] {
@@ -78,6 +79,9 @@ test("fundo sólido quase preto azul-marinho, sem degradê chamativo", () => {
   assert.ok(css.includes(".progresso-verde") && css.includes("background-color: #00C853"), "progresso positivo sem o verde");
 });
 
+// Exceção aprovada: a barra de descarga do espelho de navios pinta um degradê
+// dinâmico verde→vermelho em HSL (corDescarga em EspelhoNaviosApp.tsx), cuja
+// cor varia com o percentual descarregado — não é um hex fixo da paleta.
 test("nenhuma cor fora da paleta nas telas (nem cobalto, violeta ou WhatsApp antigos)", () => {
   const permitidas = new Set([...PALETA.map((c) => c.toLowerCase()), "#000", "#ffffff", "#fff"]);
   // #000 = máscara/sombra sobre foto; #ffffff/#fff = módulo claro do QR Code e
