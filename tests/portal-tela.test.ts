@@ -139,3 +139,29 @@ test("a saída é conferida durante a varredura, sem um segundo aviso automátic
   assert.doesNotMatch(ler("src/app/api/cron/route.ts"), /verificarSaidasRecentes/);
   assert.match(ler("src/lib/push.ts"), /destino não foi confirmado/);
 });
+
+test("o botão “Salvar e ler o portal” é o amarelo do tema, com texto escuro", () => {
+  const t = tela();
+  const botao = t.match(/onClick=\{\(\) => void salvar\(\)\}[\s\S]{0,200}?className="([^"]+)"/);
+  assert.ok(botao, "não achei o botão que salva o CPF e a senha do portal");
+  const classes = botao[1].split(/\s+/);
+  // .ouro é o botão amarelo do app (globals.css). Não trocar por `pill bg-…`:
+  // a .pill tem fundo escuro próprio e fica fora das camadas do Tailwind, então
+  // vence qualquer `bg-…`; com texto escuro por cima, o rótulo sumia.
+  assert.ok(classes.includes("ouro"), "o botão de salvar deixou de usar o amarelo do tema (.ouro)");
+  assert.ok(!classes.includes("pill"), "o botão de salvar voltou a usar a .pill (fundo escuro)");
+  assert.match(t, /"Salvar e ler o portal"/, "o rótulo do botão mudou");
+  const css = ler("src/app/globals.css");
+  const ouro = css.slice(css.indexOf(".ouro {"), css.indexOf(".ouro:hover"));
+  assert.match(ouro, /background: #FFB82E;/, ".ouro deixou de ser o amarelo da paleta");
+  assert.match(ouro, /color: #000D16;/, ".ouro deixou de ter texto escuro (contraste)");
+});
+
+test("o rodapé da tela conta o que o app faz no portal: escolhe o ponto e mais nada", () => {
+  const t = tela();
+  // Desde que o leitor escolhe o ponto em “Trocar Ponto”, a tela não pode mais
+  // dizer que o app "nunca toca em botão nenhum".
+  assert.doesNotMatch(t, /nunca\s+toca\s+em\s+botão\s+nenhum/, "a tela ainda diz que o app não toca em botão nenhum");
+  assert.match(t, /escolher\s+o\s+seu\s+ponto\s+em\s+“Trocar\s+Ponto”/, "a tela não conta que o app escolhe o ponto em “Trocar Ponto”");
+  assert.match(t, /nunca\s+entra\s+nem\s+sai\s+de\s+dispensa\s+por\s+você/, "a tela deixou de dizer que o app não mexe na dispensa");
+});
