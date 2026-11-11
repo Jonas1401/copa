@@ -63,6 +63,8 @@ test("saída do ponto: um login no portal e um aviso só, com o que o portal mos
   process.env.CRON_SECRET = "segredo-isolado-do-cron";
   process.env.SECRETS_MASTER_KEY = "chave-mestra-so-para-este-teste-0123456789";
   process.env.COMPOSIO_API_KEY = "";
+  // Este teste cobre a fila lida do quadro público antigo (hoje a fonte padrão é a aba “Fila” do portal).
+  process.env.FONTE_FILA = "quadro";
   // Este teste cobre a saída decidida pelo QUADRO (`PORTAL_FONTE_SAIDA=quadro`):
   // o quadro percebe a saída e o portal é consultado uma vez para dizer o que
   // houve. No padrão, quem decide é o Status do portal, lido de minuto em

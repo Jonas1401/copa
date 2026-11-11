@@ -8,7 +8,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 
 | Área | O que faz |
 |---|---|
-| **Início** | ponto monitorado ao vivo, último escalado e contadores das 6 tabelas (TRUCK e CAVALO/C nos Livros A, B e M) |
+| **Início** | ponto monitorado ao vivo, último escalado e contadores da fila (TRUCK e CAVALO/C), lidos na aba **Fila** do Portal do Motorista — Livro A por padrão; os Livros B e M entram com `PORTAL_FILA_LIVROS` |
 | **Cadastrar ponto** | tipo + livro + número, com ativação de notificações |
 | **Notificações** | Web Push (VAPID) quando o ponto é chamado, sai da tabela ou chega perto da vez |
 | **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; sem boletins ou alertas automáticos no chat; leituras disponíveis para a IA responder perguntas |
@@ -46,6 +46,14 @@ no aparelho podem ser vinculados na primeira abertura após a atualização.
 O mesmo número pode ser monitorado por motoristas diferentes. Os totais e o
 "último escalado" do quadro oficial continuam compartilhados; os números
 individuais de outros motoristas não são enviados pela API pessoal.
+
+> **De onde vem a fila (desde 11/11/2026):** da aba **“Fila”** do Portal do
+> Motorista — ver [A fila vem da aba “Fila” do portal](#a-fila-vem-da-aba-fila-do-portal).
+> O quadro público da intranet foi desligado pela Copadubo em 10/11/2026. Nessa
+> tela não há linha vermelha: o **SEQ 1** de cada quadro é quem está **NA VEZ**
+> e o “Último ponto escalado” vem escrito no topo do quadro. O que os três
+> parágrafos abaixo dizem sobre linhas vermelhas, “seis quadros”, cache de 4 s e
+> Composio vale só com `FONTE_FILA=quadro` (o quadro antigo, se ele voltar).
 
 **Ordem da fila:** “Último Escalado” é o último ponto **já chamado** e não
 ocupa posição na fila atual. A primeira linha destacada em vermelho no quadro
@@ -194,9 +202,10 @@ Teste: `TEST_DATABASE_URL=... tsx --test tests/chat-push.test.ts` (banco
 
 ## Portal do motorista (`portal.copadubo.com.br`)
 
-O quadro da intranet continua sendo a fonte da **fila** (5 s): a posição, quem
-está na vez e o aviso de que a vez está chegando. Quem diz que o ponto **saiu
-para o trabalho** é o **Portal do Motorista** — que só abre com login: o app
+A **fila** — a posição, quem está na vez e o aviso de que a vez está chegando —
+vem da aba **“Fila”** do portal, lida com a sessão de um motorista (ver
+[A fila vem da aba “Fila” do portal](#a-fila-vem-da-aba-fila-do-portal)). Quem diz que o ponto **saiu
+para o trabalho** é o **Status do Ponto** do mesmo portal — que só abre com login: o app
 olha o **Status do Ponto** na conta de cada motorista **de minuto em minuto** e
 avisa a troca de situação — **ESCALADO**, **EM DISPENSA** ou de volta a
 **ATIVO** — com as informações que o Status mostra. Motorista que não cadastrou
@@ -316,6 +325,83 @@ do banco.
 O endereço do portal é trocável por `PORTAL_MOTORISTA_URL` (teste/homologação).
 Em produção deixe **vazia**: o padrão é `https://portal.copadubo.com.br`. Se for
 preenchida, é só a base do site — sem `/moto/status.php` no fim.
+
+
+## A fila vem da aba “Fila” do portal
+
+Em 10/11/2026 a Copadubo desligou o quadro público
+(`intranet.copadubo.com.br/ponto/…`): a página passou a dizer que “a tela de
+ativos mudou de endereço” e fica no Portal do Motorista. A fila do app passou a
+ser a aba **“Fila”** do portal (a **Tela de Ativos**), que só abre com login.
+
+**Como é lida.** Não há login a mais nem conta do app: a leitura pega carona na
+olhada do Status (`src/lib/portal-monitor.ts`, `atualizarFilaDoPortal`). Quando
+a conta de um motorista acabou de abrir e a fila guardada já tem um ciclo, a
+**mesma sessão** abre a aba “Fila” — **um pedido a mais por ciclo, para o app
+inteiro** (não um por motorista; a reserva em `portal_fila.proxima_leitura_em`
+é atômica). Com o intervalo padrão de 1 minuto, a leitura automática abre a aba
+no máximo uma vez a cada 45 s — com o despertador de 1 minuto, cerca de 1.440
+aberturas por dia. Depois de uma tentativa que não serviu, outra conta pode
+tentar 20 s depois. Fora do ciclo, a aba só é aberta quando o motorista salva o
+acesso ou toca em ler o portal, e no “Ler agora” do `/admin`. Se o portal
+estiver lento e a conta levar mais de 12 s para abrir (25 s no “Ler agora”), a
+aba fica para a próxima leitura — a abertura da aba pode levar até 14 s e não
+pode estourar o tempo da função. É preciso **pelo menos um motorista com o
+acesso ao portal cadastrado**; sem nenhum, não há de onde ler e o card mostra
+“sem leitura da fila”.
+
+**O que fica guardado** (`portal_fila`, uma linha por livro): os pontos de cada
+quadro, na ordem, e o último escalado — a fila geral, igual para todos — e o
+número do motorista cuja conta abriu a tela (só para o `/admin`; some quando ele
+apaga os dados do portal). Nada da conta de quem abriu: o aviso “Seu ponto (…)”
+da tela não é guardado nem vai para o diagnóstico. Ao navegador vão só as
+contagens e o último escalado, como antes.
+
+**Livros.** O padrão é ler só o **Livro A** (Truck e Carreta).
+`PORTAL_FILA_LIVROS=A,B,M` acrescenta os outros — cada livro a mais é uma página
+a mais por ciclo. Ponto de um livro que não é lido aparece com “sem leitura da
+fila”: sem posição e sem aviso de vez (o aviso de saída, que vem do Status,
+continua).
+
+**O que o card mostra** (`src/lib/fila-card.ts`): “Pontos no quadro TRUCK” e
+“Pontos no quadro CAVALO/C” com a contagem e, embaixo, o último escalado de cada
+quadro; “Último escalado” é o do quadro do ponto mostrado. Quadro sem leitura
+mostra “—”, nunca um número antigo.
+
+**Leitura rígida** (`src/lib/portal-fila-parse.ts`). O HTML de verdade da aba
+nunca foi visto — só a tela. Um quadro só vale se o SEQ vai de 1 a N sem pular,
+todos os pontos são do livro do quadro, nenhum se repete, o “Total” bate com as
+linhas e não sobra no quadro um código de ponto que não entrou em tabela
+nenhuma. Página cortada, quadro pela metade ou tela diferente do esperado: a
+leitura é **recusada**, com o motivo, e continua valendo a última fila boa.
+Dois casos merecem nota:
+
+- **quadro que não aparece na tela** (o portal pode não desenhar a fila sem
+  pontos): vale como fila vazia só com a página inteira, o outro quadro do livro
+  lido e nenhum ponto escrito fora das tabelas;
+- **fila grande que “sumiu”**: um quadro que tinha mais de 8 pontos há menos de
+  10 minutos e agora vem vazio não é aceito (`motivoDaFilaSumida`). Se a fila
+  esvaziou mesmo, a leitura passa a valer depois desses 10 minutos.
+
+**ONLINE / OFFLINE.** Uma fila lida vale por `max(3 min, 2,5 × o intervalo do
+Status)`. Depois disso o selo vira OFFLINE, os últimos números continuam na
+tela com a idade da leitura e **nenhum ponto é conferido** — fila velha nunca
+muda a situação de um ponto. O que o quadro antigo deixou gravado não é
+reaproveitado.
+
+**Onde ver o que aconteceu.** `/admin → Portal do motorista → “Fila do app”`:
+o que cada livro trouxe, a hora, a conta que leu e, se a última tentativa não
+serviu, o motivo e as primeiras linhas da tela. “Ler agora” num motorista lê a
+aba na hora, sem esperar o ciclo.
+
+**Volta ao quadro antigo.** `FONTE_FILA=quadro` religa a leitura do quadro
+público (direta e, de reserva, pelo Composio). Só serve se ele voltar a existir.
+A leitura da aba “Fila” depende da rodada do Status: com
+`PORTAL_FONTE_SAIDA=quadro` essa rodada não existe e a aba não é lida.
+
+Testes: `tests/portal-fila.test.ts` (a leitura da tela, sem rede e sem banco),
+`tests/fila-card.test.ts` (o card) e `tests/portal-fila-cron.test.ts` (o ciclo
+inteiro, com PostgreSQL local).
 
 
 ## Saída do ponto: quem decide é o Status do portal
@@ -734,6 +820,8 @@ no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | sim, para Monitor WhatsApp nativo | JSON privado de conta de serviço Firebase, só na Vercel; nunca no Android/GitHub |
 | `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel (e do CPF/senha/sessão do Portal do Motorista) |
 | `PORTAL_FONTE_SAIDA` | não | quem decide a saída do ponto: vazio/`portal` = o Status do Portal do Motorista (padrão); `quadro` = o quadro da intranet, com uma consulta ao portal na saída |
+| `FONTE_FILA` | não | de onde vem a fila: vazio/`portal` = a aba “Fila” do Portal do Motorista (padrão); `quadro` = o quadro público antigo, desligado pela Copadubo em 10/11/2026 |
+| `PORTAL_FILA_LIVROS` | não | livros lidos na aba “Fila” (padrão `A`); ex.: `A,B,M` — cada livro a mais é uma página a mais por ciclo |
 | `PORTAL_INTERVALO_MIN` | não | de quantos em quantos minutos o Status de cada motorista é lido (1 a 60; padrão 1) |
 | `PORTAL_MOTORISTA_URL` | não | base do portal, só para teste/homologação; em produção fica vazia |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |

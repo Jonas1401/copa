@@ -46,6 +46,8 @@ test("um ponto por vez: o cron escolhe cada ponto em “Trocar Ponto”, lê o S
   process.env.CRON_SECRET = "segredo-isolado-do-cron";
   process.env.SECRETS_MASTER_KEY = "chave-mestra-so-para-este-teste-0123456789";
   process.env.COMPOSIO_API_KEY = "";
+  // Este teste cobre a fila lida do quadro público antigo (hoje a fonte padrão é a aba “Fila” do portal).
+  process.env.FONTE_FILA = "quadro";
   delete process.env.PORTAL_FONTE_SAIDA;
   delete process.env.PORTAL_INTERVALO_MIN;
 

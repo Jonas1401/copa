@@ -80,7 +80,9 @@ export async function POST(req: Request) {
   // Do cadastro já nasce a varredura: confere o número em todas as tabelas.
   // Se o site não respondeu de primeira, tenta mais uma vez na hora.
   let leitura = await varrer();
-  if (leitura.origem !== "intranet") {
+  // Quadro antigo (`FONTE_FILA=quadro`): sem a leitura direta, tenta de novo.
+  // Com a fila do portal não há o que repetir: ela é lida na conta de um motorista.
+  if (leitura.origem === "composio" || (leitura.origem === "offline" && leitura.livros === undefined)) {
     await new Promise((r) => setTimeout(r, 700));
     leitura = await varrer({ forcarRede: true });
   }

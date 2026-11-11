@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { comBanco, temBancoConfigurado } from "@/db";
 import { db } from "@/db";
-import { motoristas, pontos, portalEventos, portalLeituras, portalMotoristaAcessos, portalSaidasPendentes, portalSituacoes } from "@/db/schema";
+import { motoristas, pontos, portalEventos, portalFila, portalLeituras, portalMotoristaAcessos, portalSaidasPendentes, portalSituacoes } from "@/db/schema";
 import { cifrarParaColuna, decifrarDeColuna } from "@/lib/admin/segredos";
 import { enviarPush } from "@/lib/push";
 import { SessaoPortal, type PedidoPortal, type RespostaPortal } from "@/lib/portal-sessao";
@@ -20,6 +20,7 @@ import {
   linhasAlteradas,
   linhasDeInteresse,
   destinoProibido,
+  enderecoDeAcao,
   extrairEscolhaDePonto,
   montarCorpoEscolha,
   montarCorpoLogin,
@@ -34,6 +35,16 @@ import {
   type SecaoPortal,
   type StatusPortal,
 } from "@/lib/portal-copadubo-parse";
+import {
+  amostraDaTela,
+  extrairLinksDeLivro,
+  interpretarFilaDoPortal,
+  quadrosDoLivro,
+  resumoDoLivro,
+  type FilaDoPortal,
+  type LivroDaFila,
+  type LivroLido,
+} from "@/lib/portal-fila-parse";
 
 /**
  * Monitoramento do PORTAL DO MOTORISTA da Copadubo (`portal.copadubo.com.br`).
@@ -60,7 +71,10 @@ import {
  *     de pontos da conta + “Confirmar”): o portal mostra o Status de um ponto
  *     por vez, e só é escolhido um ponto que o motorista cadastrou no app;
  *   - o conteúdo lido é do PRÓPRIO motorista e só ele (e o administrador,
- *     para diagnóstico) vê;
+ *     para diagnóstico) vê. A exceção é a aba “Fila” (a Tela de Ativos): é a
+ *     fila geral, igual para todos, e alimenta o card, a posição e os avisos
+ *     de vez de todos os motoristas (`lerFilaNaSessaoGuardada`). Dela só se
+ *     guarda a fila — nada da conta de quem abriu a tela;
  *   - a sessão aberta no portal fica guardada CIFRADA (como a senha) para a
  *     leitura de minuto em minuto ser um pedido só; o login só se repete
  *     quando o portal encerra a sessão — e, se ele a encerrar a toda hora, no
@@ -388,6 +402,8 @@ export type SessaoGuardada = {
   cookies: Record<string, string>;
   /** Endereço em que a tela de Status foi encontrada (a leitura vai direto a ele). */
   statusUrl: string | null;
+  /** Endereço da aba “Fila” (a Tela de Ativos), como o menu do portal informou. */
+  filaUrl?: string | null;
   /** Momento (ms) dos últimos logins ENVIADOS (o último é a referência do freio). */
   logins: number[];
   /**
@@ -405,7 +421,10 @@ export const LOGINS_SEGUIDOS = 2;
 /** Depois deles, um login automático a cada 10 min (uma ficha do freio volta nesse tempo). */
 const INTERVALO_FREIO_LOGINS_MS = 10 * 60_000;
 
-export const sessaoVazia = (): SessaoGuardada => ({ cookies: {}, statusUrl: null, logins: [], falhouEm: null, fichas: LOGINS_SEGUIDOS });
+export const sessaoVazia = (): SessaoGuardada => ({ cookies: {}, statusUrl: null, filaUrl: null, logins: [], falhouEm: null, fichas: LOGINS_SEGUIDOS });
+
+/** O link do menu é o da aba “Fila” (a Tela de Ativos). */
+export const ehAbaDaFila = (texto: string) => /^(filas?|ativos|tela de ativos)$/i.test(texto.trim());
 
 /** Fichas do freio disponíveis agora: cabem `LOGINS_SEGUIDOS`; volta uma a cada `intervaloMs`. */
 function fichasDoFreio(sessao: SessaoGuardada, intervaloMs: number, agora: number): number {
@@ -840,6 +859,10 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
       (alvos.length ? doStatus.find((t) => mostraSituacao(t.secoes, alvos[0])) : undefined)?.url ??
       doStatus.find((t) => mostraAlgum(t.secoes))?.url ??
       null;
+    // O menu de qualquer tela aberta diz onde fica a aba “Fila”: a leitura da
+    // fila vai direto a ela, sem um pedido a mais só para achar o endereço.
+    const abaDaFila = abas.find((a) => ehAbaDaFila(a.texto));
+    if (abaDaFila) guardada.filaUrl = abaDaFila.url;
   }
 
   return { ok: telas.some((t) => t.totalLinhas > 0), loginRecusado: false, captcha: false, telas, diagnostico, falha: null, fezLogin };
@@ -1090,12 +1113,22 @@ export async function garantirTabelasPortal() {
         lido_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS portal_situacoes_motorista_idx ON portal_situacoes (motorista_id);
+      CREATE TABLE IF NOT EXISTS portal_fila (
+        livro TEXT PRIMARY KEY,
+        dados JSONB,
+        lido_em TIMESTAMP WITH TIME ZONE,
+        motorista_id INTEGER,
+        tentativa_em TIMESTAMP WITH TIME ZONE,
+        erro TEXT,
+        diagnostico TEXT,
+        proxima_leitura_em TIMESTAMP WITH TIME ZONE
+      );
       DO $$
       DECLARE t text;
       BEGIN
         -- Sem policy, o RLS fecha estas tabelas para a API pública do Supabase;
         -- o servidor (dono das tabelas) continua lendo e gravando normalmente.
-        FOREACH t IN ARRAY ARRAY['portal_motorista_acessos', 'portal_leituras', 'portal_eventos', 'portal_saidas_pendentes', 'portal_situacoes'] LOOP
+        FOREACH t IN ARRAY ARRAY['portal_motorista_acessos', 'portal_leituras', 'portal_eventos', 'portal_saidas_pendentes', 'portal_situacoes', 'portal_fila'] LOOP
           BEGIN
             EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
           EXCEPTION WHEN OTHERS THEN NULL;
@@ -1248,7 +1281,16 @@ export async function removerAcessoPortal(motoristaId: number) {
   await comBanco(() => db.delete(portalLeituras).where(eq(portalLeituras.motoristaId, motoristaId)));
   // Sem acesso, a situação lida no portal deixa de valer para os pontos dele.
   await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
+  await esquecerMotoristaNaFila(motoristaId);
   return apagados.length > 0;
+}
+
+/**
+ * A fila geral (aba “Fila”) fica guardada para todos; quando o motorista tira
+ * o acesso, sai só a anotação de que foi a conta DELE que abriu a tela.
+ */
+async function esquecerMotoristaNaFila(motoristaId: number) {
+  await comBanco(() => db.update(portalFila).set({ motoristaId: null }).where(eq(portalFila.motoristaId, motoristaId)));
 }
 
 /**
@@ -1263,6 +1305,7 @@ export async function apagarDadosPortalDoMotorista(motoristaId: number) {
   await comBanco(() => db.delete(portalLeituras).where(eq(portalLeituras.motoristaId, motoristaId)));
   await comBanco(() => db.delete(portalEventos).where(eq(portalEventos.motoristaId, motoristaId)));
   await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
+  await esquecerMotoristaNaFila(motoristaId);
 }
 
 /** Abre as credenciais guardadas (uso exclusivo do servidor). */
@@ -1529,7 +1572,7 @@ export const MAX_LEITURAS_GUARDADAS = 300;
 async function abrirSessaoGuardada(cifrada: string | null): Promise<SessaoGuardada> {
   if (!cifrada) return sessaoVazia();
   try {
-    const bruto = JSON.parse(await decifrarDeColuna(cifrada)) as { c?: unknown; u?: unknown; l?: unknown; f?: unknown; t?: unknown };
+    const bruto = JSON.parse(await decifrarDeColuna(cifrada)) as { c?: unknown; u?: unknown; a?: unknown; l?: unknown; f?: unknown; t?: unknown };
     const cookies: Record<string, string> = {};
     if (bruto.c && typeof bruto.c === "object") {
       for (const [nome, valor] of Object.entries(bruto.c as Record<string, unknown>)) {
@@ -1540,6 +1583,7 @@ async function abrirSessaoGuardada(cifrada: string | null): Promise<SessaoGuarda
     return {
       cookies,
       statusUrl: typeof bruto.u === "string" && bruto.u ? bruto.u : null,
+      filaUrl: typeof bruto.a === "string" && bruto.a && bruto.a.length <= 500 ? bruto.a : null,
       logins: Array.isArray(bruto.l)
         ? bruto.l.filter((t): t is number => typeof t === "number" && t <= agora && agora - t < 3_600_000)
         : [],
@@ -1562,7 +1606,9 @@ async function guardarSessao(motoristaId: number, sessao: SessaoGuardada, senhaC
   const vazia = !Object.keys(sessao.cookies).length && !sessao.statusUrl && !sessao.logins.length;
   const cifrada = vazia
     ? null
-    : await cifrarParaColuna(JSON.stringify({ c: sessao.cookies, u: sessao.statusUrl, l: sessao.logins, f: sessao.falhouEm, t: sessao.fichas }));
+    : await cifrarParaColuna(
+        JSON.stringify({ c: sessao.cookies, u: sessao.statusUrl, a: sessao.filaUrl ?? null, l: sessao.logins, f: sessao.falhouEm, t: sessao.fichas }),
+      );
   await comBanco(() =>
     db
       .update(portalMotoristaAcessos)
@@ -1713,6 +1759,166 @@ export function lerTelasNaSessaoGuardada(
         esperaEntreLoginsMs: ESPERA_ENTRE_LOGINS_MS[opcoes.origem ?? "periodica"],
       }),
     );
+  return opcoes.jaNaFila ? ler() : umPorVez(motoristaId, ler);
+}
+
+/* ------------------------------------------------------------ aba “Fila” */
+
+/** Prazo da leitura da fila (a tela e, se preciso, a aba de outro livro). */
+const PRAZO_FILA_MS = 14_000;
+
+export type FilaLidaNoPortal = {
+  /** A aba “Fila” abriu com a sessão guardada. */
+  abriu: boolean;
+  /** Livros que vieram com os dois quadros completos (Truck e Carreta). */
+  livros: Partial<Record<LivroDaFila, LivroLido>>;
+  /** Livros pedidos que não vieram, com o motivo. */
+  falhas: Partial<Record<LivroDaFila, string>>;
+  diagnostico: string[];
+  /** Pedidos feitos ao portal nesta leitura. */
+  pedidos: number;
+};
+
+/** Caminho + parâmetros de um endereço do portal, para o diagnóstico das abas de livro. */
+function caminhoComParametros(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.pathname.replace(/^\/+/, "") || "início"}${u.search}`.slice(0, 80);
+  } catch {
+    return "?";
+  }
+}
+
+/** Por que a resposta não serve como tela (null = serve). */
+function problemaDaResposta(r: RespostaPortal): string | null {
+  if (!r.ok) return `sem resposta do portal (${(r.erro ?? "falha de rede").slice(0, 80)})`;
+  if (r.status === 404) return "a tela não existe neste endereço (404)";
+  if (r.status >= 400) return `o portal respondeu ${r.status}`;
+  if (formularioDeEntrada(r.html)) return "o portal pediu o login de novo (a próxima leitura do Status entra outra vez)";
+  return null;
+}
+
+/** Só navegação dentro do portal: nada que tenha cara de ação é pedido. */
+function podeAbrir(visita: SessaoPortal, url: string): boolean {
+  if (!visita.mesmoSite(url)) return false;
+  try {
+    const u = new URL(url);
+    return !enderecoDeAcao(`${u.pathname}${u.search}`) && !destinoProibido(`${u.pathname}${u.search}`);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A leitura da aba “Fila” com uma sessão já aberta (a parte de rede, sem
+ * banco). `sessao` é usada e atualizada: cookies e o endereço da aba.
+ */
+export async function lerFilaComSessao(
+  sessao: SessaoGuardada,
+  opcoes: { buscar?: typeof fetch; livros: LivroDaFila[] },
+): Promise<FilaLidaNoPortal> {
+  const diagnostico: string[] = [];
+  const livros: FilaLidaNoPortal["livros"] = {};
+  const falhas: FilaLidaNoPortal["falhas"] = {};
+  let visita: SessaoPortal | null = null;
+  const semLeitura = (motivo: string, abriu = false): FilaLidaNoPortal => {
+    for (const livro of opcoes.livros) falhas[livro] ??= motivo;
+    diagnostico.push(`Fila: ${motivo}.`);
+    return { abriu, livros, falhas, diagnostico, pedidos: visita?.pedidos ?? 0 };
+  };
+
+  if (!Object.keys(sessao.cookies).length) return semLeitura("sem sessão aberta no portal nesta conta");
+  visita = new SessaoPortal(opcoes.buscar ?? fetch, urlPortal(""), { cookies: sessao.cookies, prazoTotalMs: PRAZO_FILA_MS });
+
+  // 1) O endereço da aba: o que o menu do portal informou. Sem ele, abre a
+  //    tela de Status (ou a área do motorista) só para ler o menu.
+  let url = sessao.filaUrl && podeAbrir(visita, sessao.filaUrl) ? sessao.filaUrl : null;
+  if (!url) {
+    const partida = sessao.statusUrl && visita.mesmoSite(sessao.statusUrl) ? sessao.statusUrl : urlPortal(CAMINHO_AREA);
+    const r = await visita.pedir(partida);
+    const problema = problemaDaResposta(r);
+    if (problema) return semLeitura(problema);
+    const abas = extrairLinksMenu(r.html, r.url);
+    const aba = abas.find((a) => ehAbaDaFila(a.texto) && podeAbrir(visita as SessaoPortal, a.url));
+    if (!aba) {
+      return semLeitura(
+        `não achei a aba “Fila” no menu do portal (em ${caminhoDe(r.url)}: ${abas.length ? abas.map((a) => a.texto).join(", ") : "nenhuma aba reconhecida"})`,
+      );
+    }
+    url = aba.url;
+    sessao.filaUrl = url;
+  }
+
+  // 2) A tela.
+  const tela = await visita.pedir(url);
+  const problema = problemaDaResposta(tela);
+  if (problema) {
+    // Endereço que deixou de existir: a próxima leitura procura a aba de novo.
+    if (tela.ok && tela.status === 404) sessao.filaUrl = null;
+    return semLeitura(problema);
+  }
+  sessao.cookies = visita.exportarCookies();
+  const naTela = interpretarFilaDoPortal(tela.html);
+  const temQuadro = (fila: FilaDoPortal, livro: LivroDaFila) =>
+    fila.quadros.some((q) => q.livro === livro) || fila.recusados.some((r) => r.titulo.startsWith(`Livro ${livro} `));
+
+  for (const livro of opcoes.livros) {
+    let lido = quadrosDoLivro(naTela, livro);
+    let onde = caminhoDe(tela.url);
+    if ("motivo" in lido && !temQuadro(naTela, livro)) {
+      // A tela está em outro livro: a aba “Livro X” é um link da própria tela.
+      const link = extrairLinksDeLivro(tela.html, tela.url).find((l) => l.livro === livro);
+      if (link && podeAbrir(visita, link.url)) {
+        const outra = await visita.pedir(link.url, { referer: tela.url });
+        const falhou = problemaDaResposta(outra);
+        onde = caminhoComParametros(link.url);
+        lido = falhou ? { motivo: `aba “Livro ${livro}” (${onde}): ${falhou}` } : quadrosDoLivro(interpretarFilaDoPortal(outra.html), livro);
+      } else {
+        lido = { motivo: `${lido.motivo}, e a tela não tem um link “Livro ${livro}”` };
+      }
+    }
+    if ("motivo" in lido) {
+      falhas[livro] = lido.motivo;
+      diagnostico.push(`Fila do Livro ${livro}: ${lido.motivo}.`);
+    } else {
+      livros[livro] = lido;
+      diagnostico.push(`Fila do Livro ${livro} (${onde}): ${resumoDoLivro(livro, lido)}.`);
+    }
+  }
+
+  // Nada reconhecido: as primeiras linhas da tela dizem o que ela mostrou.
+  if (!Object.keys(livros).length) {
+    const amostra = amostraDaTela(tela.html);
+    diagnostico.push(
+      amostra.length
+        ? `Tela aberta (${caminhoDe(tela.url)}), primeiras linhas: ${amostra.join(" | ")}.`
+        : `Tela aberta (${caminhoDe(tela.url)}): veio sem texto${pareceMontadaPorScript(tela.html) ? " — parece ser montada por JavaScript" : ""}.`,
+    );
+  }
+  sessao.cookies = visita.exportarCookies();
+  return { abriu: true, livros, falhas, diagnostico, pedidos: visita.pedidos };
+}
+
+/**
+ * A aba “Fila” (a Tela de Ativos) na sessão guardada do motorista: um pedido
+ * (mais um por livro que não esteja na tela). NUNCA faz login: se o portal
+ * tiver encerrado a sessão, a leitura para aqui e a próxima olhada do Status
+ * entra de novo, com o freio de logins. Só abre a aba do menu e os links
+ * “Livro A / B / M” da própria tela — nada que tenha cara de ação.
+ *
+ * O que sai daqui é a fila geral (igual para todos os motoristas). `null` =
+ * o motorista não tem acesso ativo.
+ */
+export function lerFilaNaSessaoGuardada(
+  motoristaId: number,
+  opcoes: {
+    buscar?: typeof fetch;
+    livros: LivroDaFila[];
+    /** Quem chama já está dentro do `umPorVez` deste motorista. */
+    jaNaFila?: boolean;
+  },
+): Promise<FilaLidaNoPortal | null> {
+  const ler = () => comSessaoGuardada(motoristaId, (_credenciais, sessao) => lerFilaComSessao(sessao, opcoes));
   return opcoes.jaNaFila ? ler() : umPorVez(motoristaId, ler);
 }
 

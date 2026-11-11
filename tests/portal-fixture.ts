@@ -56,6 +56,29 @@ export type EscolhaFalsa = {
 /** Outra conta do portal de mentira: cada login só enxerga as próprias telas. */
 export type ContaFalsa = { senha: string; telas?: Record<string, string>; escolha?: EscolhaFalsa };
 
+/** Um quadro da “Tela de Ativos”: o último escalado e a fila, na ordem. */
+export type QuadroFalso = { ultimo: string | null; pontos: { codigo: string; tipo: string }[] };
+
+/**
+ * A aba “Fila” (a Tela de Ativos), igual para todas as contas: os quadros
+ * Truck e Carreta de cada livro. O teste pode trocar `livros` entre as leituras.
+ */
+export type FilaFalsa = {
+  livros: Partial<Record<"A" | "B" | "M", { truck: QuadroFalso; carreta: QuadroFalso }>>;
+  /** Livro mostrado quando o endereço não diz qual (padrão: A). */
+  padrao?: "A" | "B" | "M";
+  /** Como a tabela é montada — o HTML de verdade nunca foi visto (padrão: `tabela`). */
+  forma?: "tabela" | "linhas" | "celulas";
+  /** A tela não escreve “Total: N”. */
+  semTotal?: boolean;
+  /** A resposta chega pela metade: corta no meio da tabela da Carreta. */
+  cortada?: boolean;
+  /** O cartão deste quadro não é desenhado (como um portal que esconde a fila sem pontos). */
+  semCartao?: "truck" | "carreta";
+  /** Ponto que a tela cita em “Seu ponto (…) não está na fila deste livro no momento.” */
+  pontoDaConta?: string;
+};
+
 export type OpcoesPortalFalso = {
   cpf?: string;
   senha?: string;
@@ -63,6 +86,8 @@ export type OpcoesPortalFalso = {
   contas?: Record<string, ContaFalsa>;
   /** Como o portal responde ao login certo. */
   aposLogin?: "redireciona" | "pagina" | "meta" | "script";
+  /** A aba “Fila” como o portal de verdade mostra (tem precedência sobre `telas["moto/fila"]`). */
+  fila?: FilaFalsa;
   /** Telas da área logada, por caminho (`moto/`, `moto/status`, `moto/fila`…). */
   telas?: Record<string, string>;
   /** A conta principal mostra um ponto por vez (tela “Trocar Ponto”). */
@@ -71,6 +96,12 @@ export type OpcoesPortalFalso = {
   foraDoAr?: boolean;
   /** A tela de login traz captcha. */
   captcha?: boolean;
+  /**
+   * Quem chega com o cookie de uma sessão que o portal já encerrou recebe um
+   * cookie de visitante novo na mesma resposta (como um PHP que troca o
+   * identificador da sessão vencida).
+   */
+  trocaCookieDeSessaoEncerrada?: boolean;
 };
 
 /** Tela de login com a mesma estrutura do formulário real. */
@@ -194,6 +225,63 @@ ${fila.map((f, i) => `<tr><td>${i + 1}</td><td>${f.codigo}</td><td>${f.tipo}</td
 ${RODAPE_FALSO}</body></html>`;
 }
 
+/** Código de ponto inventado: letra do livro + três dígitos. */
+export const codigoFalso = (livro: string, numero: number) => `${livro}${String(numero).padStart(3, "0")}`;
+
+/** Quadro com os números dados, na ordem (o tipo de cada linha é só enfeite). */
+export function quadroFalso(livro: string, ultimo: number | null, numeros: number[], tipo = "CAVALO TRUCADO"): QuadroFalso {
+  return {
+    ultimo: ultimo === null ? null : codigoFalso(livro, ultimo),
+    pontos: numeros.map((n) => ({ codigo: codigoFalso(livro, n), tipo })),
+  };
+}
+
+/**
+ * A “Tela de Ativos” do portal, como nas telas enviadas pelo dono do app: as
+ * abas de livro, o aviso do ponto da conta e um cartão por quadro, com o
+ * último ponto escalado, a tabela SEQ / PONTO / TIPO e o “Total”.
+ */
+export function telaAtivos(fila: FilaFalsa, livro: "A" | "B" | "M"): string {
+  const forma = fila.forma ?? "tabela";
+  const linha = (i: number, p: { codigo: string; tipo: string }) =>
+    forma === "tabela"
+      ? `<tr><td>${i + 1}</td><td>${p.codigo}</td><td>${p.tipo}</td></tr>`
+      : forma === "linhas"
+        ? `<div class="linha"><span>${i + 1}</span> <span>${p.codigo}</span> <span>${p.tipo}</span></div>`
+        : `<div>${i + 1}</div><div>${p.codigo}</div><div>${p.tipo}</div>`;
+  const tabela = (q: QuadroFalso) =>
+    forma === "tabela"
+      ? `<table><thead><tr><th>SEQ</th><th>PONTO</th><th>TIPO</th></tr></thead><tbody>\n${q.pontos.map((p, i) => linha(i, p)).join("\n")}\n</tbody></table>`
+      : `<div class="tabela"><div class="cab">${forma === "linhas" ? "<span>SEQ</span> <span>PONTO</span> <span>TIPO</span>" : "<div>SEQ</div><div>PONTO</div><div>TIPO</div>"}</div>\n${q.pontos.map((p, i) => linha(i, p)).join("\n")}\n</div>`;
+  const cartao = (nome: string, q: QuadroFalso) => `<section class="cartao">
+<h2>Livro ${livro} - ${nome}</h2>
+<div class="ultimo"><span class="rotulo">ÚLTIMO PONTO ESCALADO</span><strong>${q.ultimo ?? "—"}</strong></div>
+${tabela(q)}
+${fila.semTotal ? "" : `<p class="total">Total: ${q.pontos.length}</p>`}
+</section>`;
+  const quadros = fila.livros[livro];
+  const corpo = quadros
+    ? [fila.semCartao === "truck" ? "" : cartao("Truck", quadros.truck), fila.semCartao === "carreta" ? "" : cartao("Carreta", quadros.carreta)]
+        .filter(Boolean)
+        .join("\n")
+    : `<p>Nenhum ponto ativo neste livro.</p>`;
+  const pagina = `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Fila</title></head><body>
+<h1>Tela de Ativos</h1>
+<div class="livros">${(["A", "B", "M"] as const)
+    .map((l) => `<a class="aba${l === livro ? " ativa" : ""}" href="/moto/fila?livro=${l}">Livro ${l}</a>`)
+    .join("")}</div>
+<div class="aviso">Seu ponto (${fila.pontoDaConta ?? "A777"}) não está na fila deste livro no momento.</div>
+${corpo}
+${MENU_FALSO}
+${RODAPE_FALSO}<script src="assets/app.js"></script></body></html>`;
+  if (!fila.cortada) return pagina;
+  // Resposta pela metade: para no meio da última linha da Carreta (sem o Total
+  // dela e sem o fim da página).
+  const ultimo = quadros?.carreta.pontos.at(-1)?.codigo;
+  const corte = ultimo ? pagina.lastIndexOf(ultimo) : -1;
+  return corte > 0 ? pagina.slice(0, corte) : pagina.slice(0, Math.floor(pagina.length / 2));
+}
+
 export const TELA_TICKET_FALSA = `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Ticket</title></head><body>
 ${MENU_FALSO}
 <h1>Ticket</h1><p>Nenhum ticket emitido hoje.</p>
@@ -218,6 +306,8 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
     telas: { ...telasPadrao(), ...(opcoes.telas ?? {}) } as Record<string, string>,
     /** A conta principal mostra um ponto por vez; o teste pode mudar os cartões entre as leituras. */
     escolha: opcoes.escolha,
+    /** A aba “Fila” (igual para todas as contas); o teste pode mudar a fila entre as leituras. */
+    fila: opcoes.fila,
     /** Demais contas, por CPF. */
     contas: Object.fromEntries(
       Object.entries(opcoes.contas ?? {}).map(([c, conta]) => [
@@ -334,6 +424,11 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
           return escolhido ? { status: 200, corpo: telaStatusDeUmPonto(escolhido) } : { status: 302, cabecalhos: { location: "/moto/" } };
         }
       }
+      if (caminho === "moto/fila" && estado.fila) {
+        const pedido = (url.searchParams.get("livro") ?? "").toUpperCase();
+        const livro = pedido === "A" || pedido === "B" || pedido === "M" ? pedido : (estado.fila.padrao ?? "A");
+        return { status: 200, corpo: telaAtivos(estado.fila, livro) };
+      }
       const tela = telasDe(dono)[caminho === "moto" ? "moto/" : caminho];
       return tela === undefined ? { status: 404, corpo: PAGINA_404 } : { status: 200, corpo: tela };
     }
@@ -358,8 +453,9 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
       const sessao = /PHPSESSID=([^;]+)/.exec(cookie)?.[1] ?? "";
       const r = responder(url, metodo, sessao, corpo);
       const cabecalhos = new Headers({ "content-type": "text/html; charset=UTF-8", ...(r.cabecalhos ?? {}) });
+      const sessaoEncerrada = Boolean(sessao) && !estado.sessoes.has(sessao) && !visitantes.has(sessao);
       if (r.cookie) cabecalhos.append("set-cookie", r.cookie);
-      else if (!sessao && !estado.foraDoAr) {
+      else if ((!sessao || (opcoes.trocaCookieDeSessaoEncerrada && sessaoEncerrada)) && !estado.foraDoAr) {
         // Todo visitante sem cookie ganha um — inclusive numa resposta 302.
         const visitante = `visitante${++serie}`;
         visitantes.add(visitante);
