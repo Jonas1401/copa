@@ -139,3 +139,20 @@ test("a saída é conferida durante a varredura, sem um segundo aviso automátic
   assert.doesNotMatch(ler("src/app/api/cron/route.ts"), /verificarSaidasRecentes/);
   assert.match(ler("src/lib/push.ts"), /destino não foi confirmado/);
 });
+
+test("o botão “Salvar e ler o portal” é o amarelo do tema, com texto escuro", () => {
+  const t = tela();
+  const botao = t.match(/onClick=\{\(\) => void salvar\(\)\}[\s\S]{0,200}?className="([^"]+)"/);
+  assert.ok(botao, "não achei o botão que salva o CPF e a senha do portal");
+  const classes = botao[1].split(/\s+/);
+  // .ouro é o botão amarelo do app (globals.css). Não trocar por `pill bg-…`:
+  // a .pill tem fundo escuro próprio e fica fora das camadas do Tailwind, então
+  // vence qualquer `bg-…`; com texto escuro por cima, o rótulo sumia.
+  assert.ok(classes.includes("ouro"), "o botão de salvar deixou de usar o amarelo do tema (.ouro)");
+  assert.ok(!classes.includes("pill"), "o botão de salvar voltou a usar a .pill (fundo escuro)");
+  assert.match(t, /"Salvar e ler o portal"/, "o rótulo do botão mudou");
+  const css = ler("src/app/globals.css");
+  const ouro = css.slice(css.indexOf(".ouro {"), css.indexOf(".ouro:hover"));
+  assert.match(ouro, /background: #FFB82E;/, ".ouro deixou de ser o amarelo da paleta");
+  assert.match(ouro, /color: #000D16;/, ".ouro deixou de ter texto escuro (contraste)");
+});

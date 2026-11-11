@@ -284,7 +284,7 @@ export default function PortalMotorista({
                 type="button"
                 onClick={() => void salvar()}
                 disabled={ocupado || !cpf.trim() || !senha.trim()}
-                className="pill flex min-h-11 flex-1 items-center justify-center gap-2 bg-ciano px-4 py-2.5 font-display text-[14px] font-bold text-fundo uppercase disabled:opacity-50"
+                className="ouro flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full px-4 py-2.5 font-display text-[14px] font-bold uppercase disabled:opacity-60"
               >
                 {ocupado ? <LoaderCircle size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
                 {ocupado ? "Conferindo no portal…" : "Salvar e ler o portal"}
