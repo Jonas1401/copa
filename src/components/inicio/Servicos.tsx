@@ -18,8 +18,7 @@ import {
   type IconeServico,
   type Servico,
 } from "@/lib/servicos";
-import { cartaoDoTicket, type CartaoDoTicket } from "@/lib/ticket-card";
-import { useResumoDoTicket } from "@/components/consulta/useResumoDoTicket";
+import type { CartaoDoTicket } from "@/lib/ticket-card";
 
 const ICONES: Record<IconeServico, typeof Lock> = {
   cadeado: Lock,
@@ -158,17 +157,19 @@ function CartaoServico({
 
 export default function Servicos({
   onSemLink,
-  logado = false,
+  ticket = null,
 }: {
   onSemLink: (s: Servico) => void;
-  /** Motorista com cadastro neste aparelho: o card “Saldo de Ganhos” mostra as viagens dele. */
-  logado?: boolean;
+  /**
+   * O que o card “Saldo de Ganhos” mostra para o motorista com cadastro neste
+   * aparelho: o que o servidor leu na aba “Ticket” do portal. Quem consulta é a
+   * tela inicial, UMA vez só: o mesmo resumo alimenta este card e o “Você vai
+   * receber” do cartão do número. null = visitante, ou ainda sem resposta.
+   */
+  ticket?: CartaoDoTicket | null;
 }) {
   // Como na referência: uma linha de cards e o "Ver todos" para revelar o resto.
   const [mostrarTodos, setMostrarTodos] = useState(false);
-  // Saldo de Ganhos: o que o servidor leu na aba “Ticket” do portal (só para quem está logado).
-  const { resumo, agora } = useResumoDoTicket(logado);
-  const ticket = logado && resumo ? cartaoDoTicket(resumo, agora) : null;
   const visiveis = mostrarTodos ? SERVICOS : SERVICOS.slice(0, 2);
   const temMais = SERVICOS.length > 2;
   return (

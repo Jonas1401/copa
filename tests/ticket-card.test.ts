@@ -6,6 +6,7 @@ import { SERVICOS } from "../src/lib/servicos";
 import {
   CABECALHO_DA_TELA,
   FALTA_PORCENTAGEM,
+  SEM_SALDO,
   VERSAO_DA_TELA,
   avisoDaPagina,
   cartaoDoTicket,
@@ -14,6 +15,7 @@ import {
   listaDePontos,
   resumoParaATela,
   rotuloDaSemana,
+  saldoDoInicio,
   textoDeViagens,
   type PontoDoResumo,
   type ResumoDoTicket,
@@ -293,7 +295,6 @@ test("o nome que aparece é “Saldo de Ganhos”: no card, na página, na aba d
 
 test("o card dos SERVIÇOS mostra os três números do motorista logado", () => {
   const servicos = ler("src/components/inicio/Servicos.tsx");
-  assert.match(servicos, /useResumoDoTicket\(logado\)/);
   assert.match(servicos, /ticket=\{s\.id === "consulta-ponto" \? ticket : undefined\}/, "só o card do Saldo de Ganhos recebe os números");
   for (const rotulo of [">Viagens<", ">Bruto<", ">Comissão<"]) assert.ok(servicos.includes(rotulo), `o card sem ${rotulo}`);
   // Dinheiro nunca é cortado com “…”: em card estreito o valor desce para a linha de baixo.
@@ -303,7 +304,14 @@ test("o card dos SERVIÇOS mostra os três números do motorista logado", () => 
   assert.match(numeros, /whitespace-nowrap/);
   // “Falta %” não é dinheiro: aparece na cor de aviso (âmbar), e não na cor da comissão.
   assert.match(numeros, /\$\{c\.faltaPorcentagem \? "text-ambar" : "text-ouro"\}`\}>\{c\.comissao\}</);
-  assert.match(ler("src/components/MonitorApp.tsx"), /<Servicos onSemLink=\{semLink\} logado=\{Boolean\(motorista\)\} \/>/);
+  // Quem consulta o servidor é a tela inicial, UMA vez só: o mesmo resumo vai para este card e para o
+  // “Você vai receber” do cartão do número (dois pedidos por minuto, não; dois números diferentes, nunca).
+  const inicio = ler("src/components/MonitorApp.tsx");
+  assert.ok(!/useResumoDoTicket/.test(servicos), "o card dos SERVIÇOS não consulta por conta própria");
+  assert.equal((inicio.match(/useResumoDoTicket\(/g) ?? []).length, 1);
+  assert.match(inicio, /const ticket = useResumoDoTicket\(motoristaId !== null, 60_000, motoristaId\);/);
+  assert.match(inicio, /const cartaoTicket = motorista && ticket\.resumo \? cartaoDoTicket\(ticket\.resumo, ticket\.agora\) : null;/);
+  assert.match(inicio, /<Servicos onSemLink=\{semLink\} ticket=\{cartaoTicket\} \/>/);
   // Visitante sem cadastro não consulta o servidor.
   const gancho = ler("src/components/consulta/useResumoDoTicket.ts");
   assert.match(gancho, /if \(!ativo\) return;/);
@@ -361,6 +369,90 @@ test("a tabela de viagens: o peso nunca encosta no valor, e em tela estreita nad
   // Na lista de pontos, o bruto e a comissão quebram como blocos inteiros: o valor nunca fica longe do rótulo.
   assert.match(tela, /<span className="inline-block">\s*Bruto <span className="font-bold text-white">\{brl\(p\.conta\.bruto\)\}<\/span> ·&nbsp;\s*<\/span>/);
   assert.match(tela, /<span className="inline-block">\s*Comissão\{varios \? ` \$\{num\(p\.porcentagem\)\}%` : ""\} <span className="font-bold text-ouro">\{brl\(p\.conta\.comissao\)\}<\/span>\s*<\/span>/);
+});
+
+/* --------------------------------- “Você vai receber”, no cartão do número */
+
+test("o cartão do início mostra a MESMA comissão do card dos SERVIÇOS — todos os pontos somados", () => {
+  const logado = { logado: true, carregado: true };
+  const emDia = saldoDoInicio(resumo(), AGORA, logado);
+  assert.deepEqual(emDia, { valor: brl(400.308156), temValor: true, nota: null, atencao: false, velho: false });
+  const card = cartaoDoTicket(resumo(), AGORA);
+  assert.equal(emDia.valor, card.modo === "numeros" ? card.comissao : "");
+
+  // Dois pontos, cada um com a sua porcentagem: o valor é a soma dos dois (não o do ponto que está na tela).
+  const dois = resumo({ porcentagem: null, totalPontos: 2, conta: { viagens: 5, bruto: 2790.94, comissao: 554.27, toneladas: 153.48 }, pontos: [ponto("A777", 3), ponto("B702", 2, { porcentagem: 22 })] });
+  assert.deepEqual(saldoDoInicio(dois, AGORA, logado), { valor: brl(554.27), temValor: true, nota: null, atencao: false, velho: false });
+  // A função nem recebe o ponto mostrado: o saldo não muda ao passar de um ponto para outro.
+  assert.equal(saldoDoInicio.length, 3);
+});
+
+test("no cartão do início, “R$ 0,00” só aparece quando o zero é de verdade", () => {
+  const logado = { logado: true, carregado: true };
+  // Semana lida, nenhuma viagem: zero de verdade.
+  const zero = saldoDoInicio(resumo({ conta: { viagens: 0, bruto: 0, comissao: 0, toneladas: 0 }, pontos: [ponto("A777", 0)] }), AGORA, logado);
+  assert.deepEqual(zero, { valor: brl(0), temValor: true, nota: null, atencao: false, velho: false });
+  assert.match(zero.valor, /^R\$\s0,00$/);
+
+  // Todo o resto é um traço — com o que falta escrito embaixo, nas palavras do card dos SERVIÇOS.
+  const traco = (r: ResumoDoTicket | null, situacao = logado) => {
+    const s = saldoDoInicio(r, AGORA, situacao);
+    assert.equal(s.valor, SEM_SALDO);
+    assert.equal(s.temValor, false);
+    assert.ok(!/\d/.test(s.valor), `“${s.valor}” parece dinheiro`);
+    // O que falta fazer é dito sem alarde (cinza); âmbar fica para o que deu errado.
+    assert.equal(s.atencao, false, `“${s.nota}” em cor de aviso`);
+    assert.equal(s.velho, false);
+    return s.nota;
+  };
+  const semLeitura = { semana: null, pontos: [ponto("A777", null)], completo: false, lidoEm: null, recente: false };
+  assert.equal(SEM_SALDO, "R$ —");
+  assert.equal(traco(resumo({ ligado: false, porcentagem: null, ...semLeitura, pontos: [] })), "Cadastre sua porcentagem");
+  assert.equal(traco(resumo({ temAcesso: false, ...semLeitura })), "Falta o acesso ao portal");
+  assert.equal(traco(resumo({ totalPontos: 0, ...semLeitura, pontos: [] })), "Cadastre o seu ponto");
+  assert.equal(traco(resumo(semLeitura)), "Lendo o portal…");
+  assert.equal(traco(resumo({ ...semLeitura, erro: "o portal pediu o login de novo" })), "Sem leitura do portal");
+  assert.equal(traco(resumo({ disponivel: false })), "Leitura do Ticket desligada");
+  // Visitante (sem cadastro neste aparelho, ou o servidor não reconheceu): nada de dinheiro, mesmo que sobre um resumo.
+  assert.equal(traco(null, { logado: false, carregado: false }), "Entre no app para ver o seu saldo");
+  assert.equal(traco(resumo(), { logado: false, carregado: true }), "Entre no app para ver o seu saldo");
+  // A primeira consulta ainda não voltou: o traço, sem texto piscando.
+  assert.equal(traco(null, { logado: true, carregado: false }), null);
+  // Voltou sem resposta (sem rede, servidor fora): diz isso, em cor de aviso.
+  assert.deepEqual(saldoDoInicio(null, AGORA, logado), { valor: SEM_SALDO, temValor: false, nota: "Não consegui carregar agora", atencao: true, velho: false });
+});
+
+test("no cartão do início, valor pela metade ou velho nunca passa por valor de agora", () => {
+  const logado = { logado: true, carregado: true };
+  // Falta a porcentagem de um ponto: “Falta %” no lugar do dinheiro, e de qual ponto.
+  assert.deepEqual(saldoDoInicio(faltandoUma(), AGORA, logado), { valor: "Falta %", temValor: false, nota: "Cadastre a % do B702", atencao: true, velho: false });
+  // Leitura antiga: o valor aparece com a hora dela.
+  assert.deepEqual(saldoDoInicio(resumo({ recente: false, lidoEm: "2026-11-11T12:10:00Z" }), AGORA, logado), {
+    valor: brl(400.308156),
+    temValor: true,
+    nota: "Lido 09:10",
+    atencao: true,
+    velho: true,
+  });
+  // Soma de parte dos pontos: o valor aparece, e a nota diz de quantos (não é aviso: os outros entram na próxima leitura).
+  const parcial = resumo({ totalPontos: 3, pontos: [ponto("A777", 4), ponto("B702", null), ponto("M703", null)], completo: false });
+  assert.deepEqual(saldoDoInicio(parcial, AGORA, logado), { valor: brl(400.308156), temValor: true, nota: "1 de 3 pontos", atencao: false, velho: false });
+});
+
+test("o saldo lido para um motorista nunca aparece para outro no mesmo aparelho", () => {
+  const gancho = ler("src/components/consulta/useResumoDoTicket.ts");
+  // O que a consulta deixou fica guardado junto com o dono; só vale para o motorista que está na tela.
+  assert.match(gancho, /export function useResumoDoTicket\(ativo: boolean, intervaloMs = 60_000, dono: number \| null = null\)/);
+  assert.match(gancho, /const meu = ativo && guardado\.dono === dono;/);
+  assert.match(gancho, /resumo: meu \? guardado\.resumo : null,/);
+  assert.match(gancho, /carregado: meu && guardado\.carregado,/);
+  // A resposta que chega depois da troca de motorista é descartada (antes e depois de ler o corpo).
+  assert.match(gancho, /const outro = \(\) => donoAtual\.current !== de;/);
+  assert.equal((gancho.match(/if \(outro\(\)\) return;/g) ?? []).length, 2);
+  // Motorista novo: consulta nova na hora (o dono está nas dependências do efeito).
+  assert.match(gancho, /\}, \[ativo, carregar, intervaloMs, dono\]\);/);
+  // A página do Saldo de Ganhos não muda de dono: continua chamando sem ele.
+  assert.match(ler("src/components/consulta/ConsultaPontoApp.tsx"), /useResumoDoTicket\(true\)/);
 });
 
 test("a rota /api/tickets é só do próprio motorista e nunca faz login no portal", () => {

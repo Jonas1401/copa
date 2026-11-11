@@ -194,6 +194,49 @@ export function cartaoDoTicket(resumo: ResumoDoTicket | null, agora: number): Ca
   };
 }
 
+/** O que o cartão do início mostra no lugar do dinheiro enquanto não há valor para mostrar. */
+export const SEM_SALDO = "R$ —";
+
+export type SaldoDoInicio = {
+  /** O valor grande: o dinheiro (“R$ 507,92”), “Falta %”, ou “R$ —” enquanto não há o que mostrar. */
+  valor: string;
+  /** O valor é dinheiro de verdade (não é “Falta %” nem o traço). */
+  temValor: boolean;
+  /** Linha miúda embaixo do valor: o que falta, a hora de uma leitura antiga, quantos pontos entraram. null = nada a dizer. */
+  nota: string | null;
+  /** A nota pede atenção (leitura antiga, falta a porcentagem de um ponto, não carregou). */
+  atencao: boolean;
+  /** A leitura não é de agora (a nota traz a hora dela). */
+  velho: boolean;
+};
+
+/**
+ * O “Você vai receber” do cartão do número, na tela inicial: a comissão do
+ * Saldo de Ganhos — a MESMA do card dos SERVIÇOS e da página, somando todos os
+ * pontos do motorista (não muda ao passar de um ponto para outro).
+ *
+ * “R$ 0,00” só aparece quando o zero é de verdade (semana lida, nenhuma
+ * viagem). Sem leitura, sem porcentagem ou sem cadastro, o valor é um traço e
+ * a linha miúda diz o que falta — com os mesmos textos do card dos SERVIÇOS.
+ *
+ * `logado`: há um cadastro neste aparelho e o servidor o reconheceu.
+ * `carregado`: a primeira consulta a `/api/tickets` já voltou (ou falhou).
+ */
+export function saldoDoInicio(
+  resumo: ResumoDoTicket | null,
+  agora: number,
+  { logado, carregado }: { logado: boolean; carregado: boolean },
+): SaldoDoInicio {
+  const semValor = (nota: string | null, atencao = false): SaldoDoInicio => ({ valor: SEM_SALDO, temValor: false, nota, atencao, velho: false });
+  if (!logado) return semValor("Entre no app para ver o seu saldo");
+  // Enquanto a primeira consulta não volta, nenhum texto pisca na tela.
+  if (!resumo) return carregado ? semValor("Não consegui carregar agora", true) : semValor(null);
+  if (!resumo.disponivel) return semValor("Leitura do Ticket desligada");
+  const c = cartaoDoTicket(resumo, agora);
+  if (c.modo === "texto") return semValor(c.texto);
+  return { valor: c.comissao, temValor: !c.faltaPorcentagem, nota: c.nota, atencao: c.velho || c.faltaPorcentagem, velho: c.velho };
+}
+
 export type AvisoDaPagina = { tom: "info" | "atencao"; texto: string; acao?: "portal" | "inicio" };
 
 /**
