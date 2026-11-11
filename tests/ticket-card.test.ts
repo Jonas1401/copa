@@ -4,10 +4,15 @@ import { test } from "node:test";
 import { brl } from "../src/lib/frete";
 import { SERVICOS } from "../src/lib/servicos";
 import {
+  CABECALHO_DA_TELA,
+  FALTA_PORCENTAGEM,
+  VERSAO_DA_TELA,
   avisoDaPagina,
   cartaoDoTicket,
   horaDaLeitura,
   hojeEmBrasiliaISO,
+  listaDePontos,
+  resumoParaATela,
   rotuloDaSemana,
   textoDeViagens,
   type PontoDoResumo,
@@ -27,6 +32,7 @@ const SEMANA = { inicio: "2026-11-09", fim: "2026-11-16" };
 
 const ponto = (codigo: string, viagens: number | null, extra: Partial<PontoDoResumo> = {}): PontoDoResumo => ({
   codigo,
+  porcentagem: 18,
   viagens: viagens === null ? null : Array.from({ length: viagens }, (_, i) => ({ quant: 30, valor: 20, servico: "FRETE ATE 5 KM", data: "2026-11-10", hora: `0${i}:00` })),
   conta: viagens === null ? null : { viagens, bruto: viagens * 600, comissao: viagens * 108, toneladas: viagens * 30 },
   lidoEm: viagens === null ? null : "2026-11-11T14:42:00Z",
@@ -39,6 +45,7 @@ const resumo = (extra: Partial<ResumoDoTicket> = {}): ResumoDoTicket => ({
   disponivel: true,
   ligado: true,
   porcentagem: 18,
+  semPorcentagem: [],
   temAcesso: true,
   totalPontos: 1,
   semana: SEMANA,
@@ -56,7 +63,7 @@ const resumo = (extra: Partial<ResumoDoTicket> = {}): ResumoDoTicket => ({
 
 test("com leitura em dia, o card mostra só três números: viagens, bruto e comissão", () => {
   const card = cartaoDoTicket(resumo(), AGORA);
-  assert.deepEqual(card, { modo: "numeros", viagens: "4", bruto: brl(2223.9342), comissao: brl(400.308156), nota: null, velho: false });
+  assert.deepEqual(card, { modo: "numeros", viagens: "4", bruto: brl(2223.9342), comissao: brl(400.308156), faltaPorcentagem: false, nota: null, velho: false });
   // Dinheiro no formato do app (o mesmo da calculadora de frete).
   assert.match(card.modo === "numeros" ? card.bruto : "", /^R\$\s2\.223,93$/);
   assert.match(card.modo === "numeros" ? card.comissao : "", /^R\$\s400,31$/);
@@ -64,7 +71,7 @@ test("com leitura em dia, o card mostra só três números: viagens, bruto e com
 
 test("semana sem viagem é zero de verdade (não “sem leitura”)", () => {
   const card = cartaoDoTicket(resumo({ conta: { viagens: 0, bruto: 0, comissao: 0, toneladas: 0 }, pontos: [ponto("A777", 0)] }), AGORA);
-  assert.deepEqual(card, { modo: "numeros", viagens: "0", bruto: brl(0), comissao: brl(0), nota: null, velho: false });
+  assert.deepEqual(card, { modo: "numeros", viagens: "0", bruto: brl(0), comissao: brl(0), faltaPorcentagem: false, nota: null, velho: false });
 });
 
 test("sem leitura, o card diz em poucas palavras o que falta — nunca um número", () => {
@@ -97,6 +104,104 @@ test("soma parcial (nem todos os pontos lidos na semana) é dita no card", () =>
   const parcial = resumo({ totalPontos: 3, pontos: [ponto("A777", 4), ponto("B702", null), ponto("M703", null)], completo: false });
   const card = cartaoDoTicket(parcial, AGORA);
   assert.deepEqual(card.modo === "numeros" && [card.nota, card.velho], ["1 de 3 pontos", false]);
+});
+
+/* ------------------------------------------- uma porcentagem para cada ponto */
+
+/** Dois pontos lidos; o B702 ainda sem a porcentagem dele: o saldo soma viagens e bruto, e a comissão fica em branco. */
+const faltandoUma = (extra: Partial<ResumoDoTicket> = {}) =>
+  resumo({
+    porcentagem: null,
+    semPorcentagem: ["B702"],
+    totalPontos: 2,
+    conta: { viagens: 5, bruto: 2790.94, comissao: null, toneladas: 153.48 },
+    pontos: [ponto("A777", 3), ponto("B702", 2, { porcentagem: null, conta: { viagens: 2, bruto: 1084.32, comissao: null, toneladas: 61.42 } })],
+    ...extra,
+  });
+
+test("falta a porcentagem de um ponto: o card mostra viagens e bruto, e “Falta %” no lugar da comissão", () => {
+  const card = cartaoDoTicket(faltandoUma(), AGORA);
+  assert.deepEqual(card, { modo: "numeros", viagens: "5", bruto: brl(2790.94), comissao: "Falta %", faltaPorcentagem: true, nota: "Cadastre a % do B702", velho: false });
+  assert.equal(FALTA_PORCENTAGEM, "Falta %");
+  // Nunca um valor em dinheiro (nem R$ 0,00) no lugar da comissão que não foi somada.
+  assert.ok(card.modo === "numeros" && !/R\$|\d/.test(card.comissao), JSON.stringify(card));
+
+  // Dois ou mais pontos sem porcentagem: a nota conta quantos.
+  const duas = cartaoDoTicket(faltandoUma({ semPorcentagem: ["B702", "M703"], totalPontos: 3 }), AGORA);
+  assert.deepEqual(duas.modo === "numeros" && [duas.comissao, duas.nota], ["Falta %", "Cadastre a % de 2 pontos"]);
+
+  // Leitura antiga: a nota é a hora dela (o “Falta %” continua no lugar da comissão).
+  const velha = cartaoDoTicket(faltandoUma({ recente: false, lidoEm: "2026-11-11T12:10:00Z" }), AGORA);
+  assert.deepEqual(velha.modo === "numeros" && [velha.comissao, velha.faltaPorcentagem, velha.nota, velha.velho], ["Falta %", true, "Lido 09:10", true]);
+
+  // Soma parcial E porcentagem faltando (o ponto recém-cadastrado: sem leitura e sem porcentagem): o card
+  // diz que a soma não é de todos — o “Falta %” já está no lugar da comissão, e a página diz de qual ponto.
+  const parcial = cartaoDoTicket(faltandoUma({ totalPontos: 3, completo: false, pontos: [ponto("A777", 3), ponto("B702", 2, { porcentagem: null }), ponto("M703", null)] }), AGORA);
+  assert.deepEqual(parcial.modo === "numeros" && [parcial.comissao, parcial.faltaPorcentagem, parcial.nota], ["Falta %", true, "2 de 3 pontos"]);
+
+  // Pontos com porcentagens DIFERENTES e todas cadastradas: a comissão aparece, sem nota.
+  const cadaUmComASua = cartaoDoTicket(
+    resumo({ porcentagem: null, totalPontos: 2, conta: { viagens: 5, bruto: 2790.94, comissao: 554.27, toneladas: 153.48 }, pontos: [ponto("A777", 3), ponto("B702", 2, { porcentagem: 22 })] }),
+    AGORA,
+  );
+  assert.deepEqual(cadaUmComASua, { modo: "numeros", viagens: "5", bruto: brl(2790.94), comissao: brl(554.27), faltaPorcentagem: false, nota: null, velho: false });
+});
+
+test("falta a porcentagem de um ponto: o aviso da página diz de qual — sem peso nem valor", () => {
+  const aviso = avisoDaPagina(faltandoUma(), AGORA);
+  assert.equal(aviso?.tom, "atencao");
+  assert.equal(aviso?.texto, "Falta a porcentagem do B702. A comissão aparece quando todos os pontos tiverem a sua.");
+  assert.match(avisoDaPagina(faltandoUma({ semPorcentagem: ["B702", "M703", "A705"] }), AGORA)?.texto ?? "", /^Falta a porcentagem do B702, do M703 e do A705\./);
+  assert.ok(!/R\$|2\.790|1\.084|153,48/.test(aviso?.texto ?? ""));
+  // Falta a porcentagem E falta ler um ponto: o aviso diz as duas coisas (o saldo ainda não é o de todos os pontos).
+  const asDuas = avisoDaPagina(
+    faltandoUma({ semPorcentagem: ["M703"], totalPontos: 3, completo: false, pontos: [ponto("A777", 3), ponto("B702", 2), ponto("M703", null, { porcentagem: null })] }),
+    AGORA,
+  );
+  assert.equal(asDuas?.tom, "atencao");
+  assert.equal(
+    asDuas?.texto,
+    "Falta a porcentagem do M703. A comissão aparece quando todos os pontos tiverem a sua. A soma é de 2 de 3 pontos. Falta ler: M703 — entra nas próximas leituras.",
+  );
+  // Só falta ler (as porcentagens estão todas): um ponto “entra”, dois “entram” nas próximas leituras.
+  const doisSemLer = avisoDaPagina(resumo({ totalPontos: 3, pontos: [ponto("A777", 4), ponto("B702", null), ponto("M703", null)], completo: false }), AGORA);
+  assert.deepEqual([doisSemLer?.tom, doisSemLer?.texto], ["info", "A soma é de 1 de 3 pontos. Falta ler: B702, M703 — entram nas próximas leituras."]);
+  // Antes disso vêm os avisos de leitura (sem leitura, leitura antiga): a porcentagem que falta aparece no próprio bloco dela.
+  assert.match(avisoDaPagina(faltandoUma({ recente: false, lidoEm: "2026-11-11T12:10:00Z" }), AGORA)?.texto ?? "", /são da leitura de 09:10/);
+  assert.equal(listaDePontos([]), "");
+  assert.equal(listaDePontos(["A063"]), "do A063");
+  assert.equal(listaDePontos(["A063", "B702"]), "do A063 e do B702");
+  assert.equal(listaDePontos(["A063", "B702", "M703"]), "do A063, do B702 e do M703");
+});
+
+test("tela aberta antes da porcentagem por ponto (sem recarregar) nunca recebe uma comissão em branco", () => {
+  // A tela de agora se apresenta; recebe o resumo como ele é.
+  const falta = faltandoUma();
+  assert.equal(resumoParaATela(falta, VERSAO_DA_TELA), falta);
+  assert.equal(resumoParaATela(falta, "3"), falta, "uma tela mais nova também sabe");
+  // A tela antiga escreveria a comissão em branco como R$ 0,00: para ela, é como quem ainda não cadastrou a porcentagem.
+  for (const antiga of [null, "", "1", "abc"]) {
+    const visto = resumoParaATela(falta, antiga);
+    assert.equal(visto.ligado, false, `tela “${antiga}”`);
+    assert.equal(cartaoDoTicket(visto, AGORA).modo, "texto");
+    assert.deepEqual(cartaoDoTicket(visto, AGORA), { modo: "texto", texto: "Cadastre sua porcentagem" });
+  }
+  // Com todas as porcentagens cadastradas, a tela antiga recebe tudo como sempre (os números são números).
+  const emDia = resumo();
+  assert.equal(resumoParaATela(emDia, null), emDia);
+  const desligado = resumo({ ligado: false, semPorcentagem: ["A777"] });
+  assert.equal(resumoParaATela(desligado, null), desligado);
+  assert.equal(CABECALHO_DA_TELA, "x-saldo-de-ganhos");
+  // As duas telas (card e página) mandam o cabeçalho em todo pedido; a rota usa só ele para decidir.
+  const gancho = ler("src/components/consulta/useResumoDoTicket.ts");
+  assert.match(gancho, /headers: \{ \[CABECALHO_DA_TELA\]: VERSAO_DA_TELA \}/);
+  const tela = ler("src/components/consulta/ConsultaPontoApp.tsx");
+  assert.match(tela, /headers: \{ \[CABECALHO_DA_TELA\]: VERSAO_DA_TELA, /);
+  assert.equal((tela.match(/fetch\(/g) ?? []).length, 1, "a página fala com a API num lugar só");
+  const rota = ler("src/app/api/tickets/route.ts");
+  assert.match(rota, /resumoParaATela\(resumo, req\.headers\.get\(CABECALHO_DA_TELA\)\)/);
+  // GET, POST e PUT devolvem o resumo passando por ela.
+  assert.equal((rota.match(/paraATela\(req, /g) ?? []).length, 3);
 });
 
 test("a hora da leitura é a de Brasília, e o rótulo da semana é dia/mês", () => {
@@ -196,11 +301,13 @@ test("o card dos SERVIÇOS mostra os três números do motorista logado", () => 
   assert.ok(!/\btruncate\b|line-clamp|text-ellipsis|overflow-hidden/.test(numeros), "os números do card não podem ser cortados");
   assert.match(numeros, /flex-wrap/);
   assert.match(numeros, /whitespace-nowrap/);
+  // “Falta %” não é dinheiro: aparece na cor de aviso (âmbar), e não na cor da comissão.
+  assert.match(numeros, /\$\{c\.faltaPorcentagem \? "text-ambar" : "text-ouro"\}`\}>\{c\.comissao\}</);
   assert.match(ler("src/components/MonitorApp.tsx"), /<Servicos onSemLink=\{semLink\} logado=\{Boolean\(motorista\)\} \/>/);
   // Visitante sem cadastro não consulta o servidor.
   const gancho = ler("src/components/consulta/useResumoDoTicket.ts");
   assert.match(gancho, /if \(!ativo\) return;/);
-  assert.match(gancho, /fetch\("\/api\/tickets", \{ cache: "no-store" \}\)/);
+  assert.match(gancho, /fetch\("\/api\/tickets", \{ cache: "no-store", headers: /);
   // Quem não ligou a consulta (ou não tem cadastro) não repete o pedido de minuto em minuto.
   assert.match(gancho, /semRepeticao\.current = r\.status === 401;/);
   assert.match(gancho, /semRepeticao\.current = !dados\.ligado;/);
@@ -214,8 +321,21 @@ test("a página: porcentagem, atualizar, desligar — e os três números", () =
   for (const trecho of ["Sua porcentagem", "Atualizar", "Desligar o Saldo de Ganhos", "Valor bruto", "Comissão", "textoDeViagens(resumo.conta.viagens)"]) {
     assert.ok(tela.includes(trecho), `a página sem “${trecho}”`);
   }
-  // As três ações da API, e nenhuma credencial do portal nesta tela.
-  assert.match(tela, /chamar\("POST", "salvar", \{ porcentagem: campo \}\)/);
+  // Mais de um ponto: uma porcentagem para CADA ponto (uma linha por ponto, “Cadastrar” / “Trocar”).
+  for (const trecho of ["Porcentagem de cada ponto", "Cadastrar", "Trocar", "Cada ponto tem a sua porcentagem. O saldo é um só"]) {
+    assert.ok(tela.includes(trecho), `a página sem “${trecho}”`);
+  }
+  assert.match(tela, /const varios = pontos\.length > 1;/);
+  // O ponto sem porcentagem abre sozinho para o motorista digitar.
+  assert.match(tela, /const primeiroSemPorcentagem = resumo\?\.semPorcentagem\[0\] \?\? null;/);
+  assert.match(tela, /pontos\.find\(\(p\) => p\.codigo === escolhido\) \?\? pontos\.find\(\(p\) => p\.codigo === primeiroSemPorcentagem\) \?\? null/);
+  // O que foi digitado vale só para o ponto em que foi digitado (a tela nunca leva o número de um ponto para outro).
+  assert.match(tela, /const texto = emEdicao && digitado\?\.codigo === emEdicao\.codigo \? digitado\.texto : null;/);
+  // A comissão do saldo nunca aparece pela metade: “Falta %” no lugar dela.
+  assert.match(tela, /resumo\.conta\.comissao === null \? FALTA_PORCENTAGEM : brl\(resumo\.conta\.comissao\)/);
+  // As três ações da API, e nenhuma credencial do portal nesta tela. A porcentagem vai com o código do ponto.
+  assert.match(tela, /chamar\("POST", "salvar", \{ porcentagens: \{ \[emEdicao\.codigo\]: campo \} \}\)/);
+  assert.ok(!/\{ porcentagem: campo \}/.test(tela), "a página ainda manda uma porcentagem só para tudo");
   assert.match(tela, /chamar\("PUT", "atualizar"\)/);
   assert.match(tela, /chamar\("DELETE", "desligar"\)/);
   assert.ok(!/senha|cpf/i.test(tela.replace(/o CPF e a senha do Portal do Motorista/g, "")), "a página da consulta não lida com CPF nem senha");
@@ -224,6 +344,23 @@ test("a página: porcentagem, atualizar, desligar — e os três números", () =
   assert.match(ler("src/components/MonitorApp.tsx"), /searchParams\.get\("portal"\) === "1"/);
   // Mesma largura e mesmo fundo das outras telas do app.
   assert.ok(tela.includes("largura-aparelho") && tela.includes("fundo-app") && tela.includes("bg-fundo"));
+});
+
+test("a tabela de viagens: o peso nunca encosta no valor, e em tela estreita nada é cortado", () => {
+  const tela = ler("src/components/consulta/ConsultaPontoApp.tsx");
+  const tabela = tela.slice(tela.indexOf("function ViagensDoPonto"), tela.indexOf("function EditorDaPorcentagem"));
+  assert.ok(tabela.length > 500, "não achei a tabela de viagens na página");
+  // Todo número tem um respiro à esquerda e não quebra no meio (antes, em 360 px, a tela mostrava “29,92017,29”).
+  const numeros = tabela.match(/<t[dh] className="[^"]*text-right[^"]*"/g) ?? [];
+  assert.equal(numeros.length, 8, "três colunas de número no cabeçalho, três em cada viagem e duas no total");
+  for (const celula of numeros) assert.match(celula, /\bpl-2\b/, `número sem respiro à esquerda: ${celula}`);
+  for (const celula of numeros.filter((c) => c.startsWith("<td"))) assert.match(celula, /whitespace-nowrap/, `número que pode quebrar no meio: ${celula}`);
+  // Com menos de 360 px a coluna Valor some (cabeçalho, viagem e total) e o valor por tonelada desce para baixo do peso.
+  assert.equal((tabela.match(/className="hidden [^"]*min-\[360px\]:table-cell"/g) ?? []).length, 3);
+  assert.match(tabela, /<span className="block">\{toneladas\(v\.quant\)\}<\/span>\s*<span className="block [^"]*min-\[360px\]:hidden">× \{num\(v\.valor\)\}<\/span>/);
+  // Na lista de pontos, o bruto e a comissão quebram como blocos inteiros: o valor nunca fica longe do rótulo.
+  assert.match(tela, /<span className="inline-block">\s*Bruto <span className="font-bold text-white">\{brl\(p\.conta\.bruto\)\}<\/span> ·&nbsp;\s*<\/span>/);
+  assert.match(tela, /<span className="inline-block">\s*Comissão\{varios \? ` \$\{num\(p\.porcentagem\)\}%` : ""\} <span className="font-bold text-ouro">\{brl\(p\.conta\.comissao\)\}<\/span>\s*<\/span>/);
 });
 
 test("a rota /api/tickets é só do próprio motorista e nunca faz login no portal", () => {
@@ -237,6 +374,10 @@ test("a rota /api/tickets é só do próprio motorista e nunca faz login no port
     assert.ok(!/corpo\?\.(motoristaId|id)\b|searchParams/.test(v), v.slice(0, 20));
   }
   assert.match(rota, /"Cache-Control": "private, no-store"/);
+  // A porcentagem só é salva para os pontos que ESTE motorista tem no app (a lista vem do banco, pelo id da sessão).
+  const post = verbos[1];
+  assert.match(post, /const codigos = await codigosDoMotorista\(m\.id\);\s+const pedido = porcentagensDoPedido\(await req\.json\(\)\.catch\(\(\) => \(\{\}\)\), codigos\);/);
+  assert.match(post, /if \("erro" in pedido\) return NextResponse\.json\(\{ erro: pedido\.erro \}, \{ status: 400, headers: CAB \}\);\s+await salvarPorcentagensDoTicket\(m\.id, pedido\.porPonto\);/);
   // Nada daqui entra no portal com CPF e senha: a leitura usa a sessão guardada.
   for (const proibido of ["monitorarMotorista", "lerPortalDoMotorista", "credenciaisDoMotorista", "salvarAcessoPortal"]) {
     assert.ok(!rota.includes(proibido), `a rota dos tickets não pode chamar ${proibido}`);

@@ -10,6 +10,10 @@ import { brl } from "@/lib/frete";
  *
  * Um número velho nunca aparece como se fosse de agora: leitura antiga leva a
  * hora dela; ponto sem leitura na semana entra como “parcial”.
+ *
+ * Cada ponto do motorista tem a SUA porcentagem; o saldo é um só e soma a
+ * comissão de todos. Enquanto algum ponto do app está sem porcentagem, a
+ * comissão do saldo não aparece (“Falta %”): dinheiro pela metade, não.
  */
 
 /** Uma viagem como fica guardada (o ponto é o da linha). */
@@ -19,13 +23,19 @@ export type ContaDoTicket = {
   viagens: number;
   /** Soma de Quant × Valor. */
   bruto: number;
-  /** Bruto × porcentagem. */
-  comissao: number;
+  /**
+   * Bruto × porcentagem. No saldo: a soma da comissão de cada ponto, com a
+   * porcentagem dele. null = falta a porcentagem (deste ponto; no saldo, de
+   * algum ponto do app).
+   */
+  comissao: number | null;
   toneladas: number;
 };
 
 export type PontoDoResumo = {
   codigo: string;
+  /** A porcentagem DESTE ponto (18.5 = 18,5 %); null = o motorista ainda não cadastrou. */
+  porcentagem: number | null;
   /** Viagens da semana (null = este ponto ainda não foi lido nesta semana). */
   viagens: ViagemGuardada[] | null;
   conta: ContaDoTicket | null;
@@ -39,17 +49,21 @@ export type PontoDoResumo = {
 export type ResumoDoTicket = {
   /** A leitura do Ticket existe neste servidor (banco configurado e `PORTAL_TICKET` ligado). */
   disponivel: boolean;
-  /** O motorista cadastrou a porcentagem. */
+  /** O motorista ligou o Saldo de Ganhos (cadastrou a porcentagem de pelo menos um ponto). */
   ligado: boolean;
+  /** A porcentagem, quando TODOS os pontos do app têm a mesma; null = cada ponto com a sua, ou falta a de algum. */
   porcentagem: number | null;
+  /** Pontos do app ainda sem porcentagem: enquanto houver algum, a comissão do saldo não é somada. */
+  semPorcentagem: string[];
   /** O motorista tem o CPF e a senha do portal cadastrados e a leitura não está pausada. */
   temAcesso: boolean;
   /** Pontos que o motorista cadastrou no app. */
   totalPontos: number;
   /** A semana que o portal mostrou como a de hoje na última leitura. */
   semana: { inicio: string; fim: string } | null;
-  /** A soma de todos os pontos lidos nesta semana. */
+  /** O saldo: a soma de todos os pontos lidos nesta semana. */
   conta: ContaDoTicket;
+  /** Os pontos do app, cada um com a porcentagem e as viagens dele (antes de ligar: só os códigos). */
   pontos: PontoDoResumo[];
   /** Todos os pontos do motorista têm leitura boa nesta semana. */
   completo: boolean;
@@ -92,13 +106,45 @@ export function horaDaLeitura(iso: string, agora: number): string {
 /** “Nenhuma viagem”, “1 viagem”, “4 viagens”. */
 export const textoDeViagens = (n: number) => (n === 0 ? "Nenhuma viagem" : `${n} ${n === 1 ? "viagem" : "viagens"}`);
 
+/** “do A063”, “do A063 e do B702”, “do A063, do B702 e do M703”. */
+export function listaDePontos(codigos: string[]): string {
+  const partes = codigos.map((c) => `do ${c}`);
+  if (partes.length <= 1) return partes[0] ?? "";
+  return `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
+}
+
+/** O que o card mostra no lugar da comissão enquanto falta a porcentagem de algum ponto. */
+export const FALTA_PORCENTAGEM = "Falta %";
+
+/**
+ * A tela de agora se apresenta com este cabeçalho em todo pedido a
+ * `/api/tickets`. Quem não manda é uma tela aberta ANTES da porcentagem por
+ * ponto (11/11/2026) e ainda não recarregada: ela não sabe mostrar “falta a
+ * porcentagem de um ponto” e escreveria a comissão como R$ 0,00.
+ */
+export const CABECALHO_DA_TELA = "x-saldo-de-ganhos";
+export const VERSAO_DA_TELA = "2";
+
+/**
+ * O resumo como a tela que pediu sabe mostrar. Para a tela antiga, enquanto
+ * falta a porcentagem de algum ponto, a resposta é a de quem ainda não
+ * cadastrou: o card pede a porcentagem e nenhum número de dinheiro aparece.
+ */
+export function resumoParaATela(resumo: ResumoDoTicket, versaoDaTela: string | null): ResumoDoTicket {
+  if (Number(versaoDaTela) >= Number(VERSAO_DA_TELA)) return resumo;
+  return resumo.ligado && resumo.semPorcentagem.length ? { ...resumo, ligado: false } : resumo;
+}
+
 export type CartaoDoTicket =
   | {
       modo: "numeros";
       viagens: string;
       bruto: string;
+      /** O valor em dinheiro — ou “Falta %”, enquanto algum ponto do app não tem porcentagem. */
       comissao: string;
-      /** Linha miúda: hora de uma leitura antiga, ou quantos pontos entraram na soma. */
+      /** A comissão não foi somada: falta a porcentagem de algum ponto. */
+      faltaPorcentagem: boolean;
+      /** Linha miúda: hora de uma leitura antiga, de qual ponto falta a porcentagem, ou quantos pontos entraram na soma. */
       nota: string | null;
       /** A leitura não é de agora (a nota traz a hora dela). */
       velho: boolean;
@@ -123,16 +169,26 @@ export function cartaoDoTicket(resumo: ResumoDoTicket | null, agora: number): Ca
     return { modo: "texto", texto: resumo.erro ? "Sem leitura do portal" : "Lendo o portal…" };
   }
   const velho = !resumo.recente;
+  // Sem a porcentagem de algum ponto, a comissão do saldo não existe — nunca um valor pela metade.
+  const comissao = resumo.conta.comissao;
+  const sem = resumo.semPorcentagem;
+  // A nota é uma só. Um número que não é de todos os pontos nunca aparece sem dizer isso: a soma
+  // parcial vem antes da porcentagem que falta (essa já está escrita no lugar da comissão).
   const nota = velho
     ? `Lido ${resumo.lidoEm ? horaDaLeitura(resumo.lidoEm, agora) : "—"}`
     : !resumo.completo
       ? `${lidos} de ${resumo.totalPontos} pontos`
-      : null;
+      : comissao === null
+        ? sem.length === 1
+          ? `Cadastre a % do ${sem[0]}`
+          : `Cadastre a % de ${sem.length} pontos`
+        : null;
   return {
     modo: "numeros",
     viagens: String(resumo.conta.viagens),
     bruto: brl(resumo.conta.bruto),
-    comissao: brl(resumo.conta.comissao),
+    comissao: comissao === null ? FALTA_PORCENTAGEM : brl(comissao),
+    faltaPorcentagem: comissao === null,
     nota,
     velho,
   };
@@ -171,13 +227,18 @@ export function avisoDaPagina(resumo: ResumoDoTicket, agora: number): AvisoDaPag
   if (hoje < resumo.semana.inicio || hoje > resumo.semana.fim) {
     return { tom: "atencao", texto: `Estes números são da semana ${rotuloDaSemana(resumo.semana)} (a última que eu li).` };
   }
+  // O que falta para o saldo ser o de todos os pontos: a porcentagem de algum, a leitura de algum —
+  // ou as duas coisas (o ponto recém-cadastrado costuma estar sem as duas): o aviso diz tudo de uma vez.
+  const partes: string[] = [];
+  if (resumo.semPorcentagem.length) {
+    partes.push(`Falta a porcentagem ${listaDePontos(resumo.semPorcentagem)}. A comissão aparece quando todos os pontos tiverem a sua.`);
+  }
   if (!resumo.completo) {
     const faltam = resumo.pontos.filter((p) => !p.viagens);
     const comErro = faltam.find((p) => p.erro);
-    return {
-      tom: "info",
-      texto: `A soma é de ${lidos} de ${resumo.totalPontos} pontos. Falta ler: ${faltam.map((p) => p.codigo).join(", ")}${comErro ? ` (${comErro.codigo}: ${comErro.erro})` : " — entram nas próximas leituras"}.`,
-    };
+    partes.push(
+      `A soma é de ${lidos} de ${resumo.totalPontos} pontos. Falta ler: ${faltam.map((p) => p.codigo).join(", ")}${comErro ? ` (${comErro.codigo}: ${comErro.erro})` : ` — ${faltam.length === 1 ? "entra" : "entram"} nas próximas leituras`}.`,
+    );
   }
-  return null;
+  return partes.length ? { tom: resumo.semPorcentagem.length ? "atencao" : "info", texto: partes.join(" ") } : null;
 }
