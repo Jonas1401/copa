@@ -245,7 +245,13 @@ test("o Status do portal decide a saída: uma olhada por minuto, um aviso por tr
     telasDe(CPF.alfa)["moto/status"] = status(cartao("A032", "ATIVO", ["Desde hoje, 07:00 · há 6 min"], "ALFA TESTE DA SILVA"));
     await adiantar();
     resumo = await executar();
-    assert.deepEqual(pedidosNovos().sort(), ["GET moto/status", "GET moto/status", "GET moto/status", "GET moto/status"], "um pedido por motorista com sessão");
+    // Um pedido por motorista com sessão. O Fox, cuja conta mostra OUTRO ponto, faz
+    // um a mais: procura a tela “Trocar Ponto” (aqui, a aba Ponto não tem a lista).
+    assert.deepEqual(
+      pedidosNovos().sort(),
+      ["GET moto/", "GET moto/status", "GET moto/status", "GET moto/status", "GET moto/status"],
+      "um pedido por motorista com sessão",
+    );
     assert.equal(portal.logins, 5, "com a sessão aberta não há login");
     assert.equal(resumo?.logins, 0);
     assert.deepEqual(novos(), []);
@@ -453,10 +459,11 @@ test("o Status do portal decide a saída: uma olhada por minuto, um aviso por tr
     assert.equal(voltaBravo.length, 1, "duas rodadas, um aviso");
     assert.equal(voltaBravo[0].body, "Olá, Bravo Teste! Seu ponto A040 voltou para a fila: o Status do Portal do Motorista mostra ATIVO (antes: EM DISPENSA).");
     assert.equal(rodada.length, 1);
-    // Alfa, Eco e Fox: um pedido cada. Bravo: a leitura e, na hora do aviso, as telas do menu.
+    // Alfa e Eco: um pedido cada. Fox: o Status e a procura da tela “Trocar Ponto”
+    // (a conta dele mostra outro ponto). Bravo: a leitura e, na hora do aviso, as telas do menu.
     const pedidosParalelos = pedidosNovos();
     assert.equal(pedidosParalelos.filter((p) => p === "GET moto/status").length, 5);
-    assert.ok(pedidosParalelos.length <= 8, `pedidos demais para duas rodadas: ${pedidosParalelos.join(", ")}`);
+    assert.ok(pedidosParalelos.length <= 9, `pedidos demais para duas rodadas: ${pedidosParalelos.join(", ")}`);
 
     /* 15 — ponto apagado não deixa situação guardada. */
     await db.delete(pontos).where(eq(pontos.id, eco.pontos[1]));

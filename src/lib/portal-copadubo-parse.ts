@@ -259,12 +259,158 @@ export function resolverUrl(base: string, alvo: string): string {
   }
 }
 
+// ------------------------------------------------------ escolha do ponto
+
+/** Um ponto da lista da tela “Trocar Ponto”: o valor enviado e o código (A032). */
+export type OpcaoDePonto = { valor: string; codigo: string };
+
+/**
+ * Formulário da tela “Trocar Ponto” do portal: uma lista com os pontos da conta
+ * e o botão “Confirmar”. O portal mostra o Status de UM ponto por vez — o que
+ * foi escolhido aqui.
+ */
+export type EscolhaDePonto = {
+  action: string;
+  method: "get" | "post";
+  /** Nome do campo da lista de pontos. */
+  campo: string;
+  opcoes: OpcaoDePonto[];
+  /** Campos escondidos do formulário, enviados como estão. */
+  ocultos: { nome: string; valor: string }[];
+  /** Botão de envio com nome (alguns PHP exigem o nome dele no pedido). */
+  botao: { nome: string; valor: string } | null;
+};
+
+/** Opção cujo texto é um código de ponto (“A032”, “A032 - …”). */
+const RE_OPCAO_PONTO = /^\s*(?:ponto\s*[:\-–]?\s*)?([ABM])\s?-?(\d{1,4})\b/i;
+/** Um formulário que fala disto NÃO é a escolha do ponto: é uma ação. */
+const RE_FORMULARIO_DE_ACAO = /dispensa|motivo|exclu|apag|remov|\bsair\b|senha|password/i;
+/** Endereço para onde a escolha do ponto nunca é enviada. */
+const RE_DESTINO_PROIBIDO = /sair|logout|logoff|deslog|dispensa|exclu|apag|remov|delet|senha|password/i;
+
+/** O endereço (caminho + parâmetros) não pode receber a escolha do ponto. */
+export function destinoProibido(caminhoEParametros: string): boolean {
+  return RE_DESTINO_PROIBIDO.test(caminhoEParametros);
+}
+
+/**
+ * Acha na página o formulário de ESCOLHA DO PONTO. Para não confundir com um
+ * formulário de ação (entrar em dispensa, por exemplo), só vale o formulário
+ * que tem UMA lista, feita de códigos de ponto, e nada para digitar ou marcar;
+ * e que não fala de dispensa, motivo, exclusão, saída ou senha — nem no texto,
+ * nem no endereço, nem nos campos escondidos.
+ */
+export function extrairEscolhaDePonto(html: string): EscolhaDePonto | null {
+  const limpo = limparHtml(html);
+  const reForm = /<form\b([^>]*)>([\s\S]*?)<\/form>/gi;
+  let f: RegExpExecArray | null;
+  while ((f = reForm.exec(limpo))) {
+    const a = atributos(f[1]);
+    const corpo = f[2];
+    const action = a.action ?? "";
+    if (RE_DESTINO_PROIBIDO.test(action)) continue;
+
+    const listas: { nome: string; opcoes: { valor: string; texto: string }[] }[] = [];
+    const reSelect = /<select\b([^>]*)>([\s\S]*?)<\/select>/gi;
+    let s: RegExpExecArray | null;
+    while ((s = reSelect.exec(corpo))) {
+      const at = atributos(s[1]);
+      const opcoes: { valor: string; texto: string }[] = [];
+      const reOpcao = /<option\b([^>]*)>([^<]*)/gi;
+      let o: RegExpExecArray | null;
+      while ((o = reOpcao.exec(s[2]))) {
+        const ao = atributos(o[1]);
+        const texto = normalizarEspacos(decodificarEntidades(o[2]));
+        opcoes.push({ valor: ao.value !== undefined ? ao.value : texto, texto });
+      }
+      listas.push({ nome: at.name ?? "", opcoes });
+    }
+    if (listas.length !== 1 || !listas[0].nome) continue;
+
+    // A lista tem de ser de pontos: no máximo UMA opção com valor que não seja
+    // um código (o “Escolha o Ponto...” de alguns formulários tem valor 0).
+    const opcoes: OpcaoDePonto[] = [];
+    let outras = 0;
+    for (const op of listas[0].opcoes) {
+      if (op.valor === "") continue;
+      const m = RE_OPCAO_PONTO.exec(op.texto);
+      if (m) opcoes.push({ valor: op.valor, codigo: `${m[1].toUpperCase()}${m[2].padStart(3, "0")}` });
+      else outras += 1;
+    }
+    if (!opcoes.length || outras > 1) continue;
+
+    const ocultos: { nome: string; valor: string }[] = [];
+    let botao: { nome: string; valor: string } | null = null;
+    let outroCampo = false;
+    const reInput = /<input\b([^>]*?)\/?>/gi;
+    let i: RegExpExecArray | null;
+    while ((i = reInput.exec(corpo))) {
+      const at = atributos(i[1]);
+      const tipo = (at.type ?? "text").toLowerCase();
+      if (tipo === "hidden") {
+        if (at.name) ocultos.push({ nome: at.name, valor: at.value ?? "" });
+      } else if (tipo === "submit" || tipo === "image") {
+        if (at.name && !botao) botao = { nome: at.name, valor: at.value ?? "" };
+      } else if (tipo !== "button" && tipo !== "reset") {
+        outroCampo = true; // algo para digitar, marcar ou anexar: não é só uma escolha
+      }
+    }
+    if (outroCampo || /<textarea\b/i.test(corpo)) continue;
+    // Campo escondido que nomeia uma ação (acao=dispensa…): fora.
+    if (ocultos.some((c) => /^[a-z_\- ]{3,40}$/i.test(c.valor) && RE_DESTINO_PROIBIDO.test(c.valor))) continue;
+    const reButton = /<button\b([^>]*)>/gi;
+    let b: RegExpExecArray | null;
+    while ((b = reButton.exec(corpo))) {
+      const at = atributos(b[1]);
+      if (!botao && at.name && (at.type ?? "submit").toLowerCase() === "submit") botao = { nome: at.name, valor: at.value ?? "" };
+    }
+    const texto = normalizarEspacos(
+      decodificarEntidades(corpo.replace(/<select\b[\s\S]*?<\/select>/gi, " ").replace(/<[^>]+>/g, " ")),
+    );
+    if (RE_FORMULARIO_DE_ACAO.test(texto)) continue;
+
+    return {
+      action,
+      method: (a.method ?? "get").toLowerCase() === "post" ? "post" : "get",
+      campo: listas[0].nome,
+      opcoes,
+      ocultos,
+      botao,
+    };
+  }
+  return null;
+}
+
+/** Corpo do pedido que escolhe um ponto: os campos escondidos, a lista e o botão. */
+export function montarCorpoEscolha(escolha: EscolhaDePonto, valor: string): string {
+  const campos = new URLSearchParams();
+  for (const c of escolha.ocultos) campos.append(c.nome, c.valor);
+  campos.append(escolha.campo, valor);
+  if (escolha.botao) campos.append(escolha.botao.nome, escolha.botao.valor);
+  return campos.toString();
+}
+
+/**
+ * Formulários da página, só a ESTRUTURA (endereço e nomes dos campos, nunca os
+ * valores): vai para o diagnóstico quando a escolha do ponto não é encontrada.
+ */
+export function resumoFormularios(html: string, limite = 3): string[] {
+  return extrairFormularios(html)
+    .slice(0, limite)
+    .map((f) => {
+      const campos = f.campos.map(
+        (c) => `${c.nome.slice(0, 24)}${c.tipo === "select" ? " (lista)" : c.tipo === "hidden" ? " (oculto)" : c.tipo === "password" ? " (senha)" : ""}`,
+      );
+      return `${f.method.toUpperCase()} ${(f.action || "(a própria página)").split("?")[0].slice(0, 60)} — campos: ${campos.join(", ").slice(0, 140) || "nenhum"}`;
+    });
+}
+
 /** Link de navegação do portal (uma aba do menu do motorista). */
 export type LinkPortal = { texto: string; url: string };
 
 /** Abas que o leitor pode abrir. Só navegação: nada que mude o ponto. */
 const RE_ABA_DO_MENU =
-  /^(ponto|meu ponto|status|status do ponto|ticket|tickets|fila|filas|ativos|tela de ativos|escala|escalas|in[íi]cio)$/i;
+  /^(ponto|meu ponto|trocar ponto|status|status do ponto|ticket|tickets|fila|filas|ativos|tela de ativos|escala|escalas|in[íi]cio)$/i;
 /** Endereço com cara de AÇÃO (sair, dispensa, excluir…): nunca é aberto. */
 const RE_ENDERECO_DE_ACAO =
   /sair|logout|logoff|deslog|dispensa|exclu|apag|remov|delet|cancel|confirm|aceit|recus|salv|grav|senha|password|cadastr|alter|edit|nov[oa]|baix|download|pdf|imprim|print/i;
@@ -400,7 +546,10 @@ export function montarCorpoLogin(
  */
 export function extrairSecoes(html: string): { titulo: string; secoes: SecaoPortal[]; totalLinhas: number; pareceLogin: boolean } {
   const formularioLogin = escolherFormularioLogin(html);
-  const corpo = limparHtml(html);
+  // As opções de uma lista (<select>) são escolhas de um formulário, não texto
+  // da página: a lista de pontos de “Trocar Ponto” não é um cartão, e os motivos
+  // de dispensa do formulário não são dados do ponto.
+  const corpo = limparHtml(html).replace(/<select\b[\s\S]*?<\/select>/gi, " ");
 
   const comMarcas = corpo
     // títulos → marcador de seção
@@ -545,7 +694,8 @@ export function hashConteudo(secoes: SecaoPortal[]): string {
 }
 
 /** Contador que o portal recalcula sozinho a cada minuto (“há 9 min”, “há 2 h”). */
-const RE_CONTADOR_DE_TEMPO = /\bh[áa]\s+\d+\s*(?:min(?:utos?)?|h(?:oras?)?|d(?:ias?)?|s(?:eg(?:undos?)?)?)\b/gi;
+const RE_CONTADOR_DE_TEMPO =
+  /\bh[áa]\s+\d+\s*(?:min(?:utos?)?|h(?:oras?)?|d(?:ias?)?|s(?:eg(?:undos?)?)?)(?:\s*(?:e\s+)?\d+\s*(?:min(?:utos?)?|h(?:oras?)?|s(?:eg(?:undos?)?)?))*\b/gi;
 
 /**
  * Impressão digital que NÃO muda quando só o relógio da página andou
@@ -710,6 +860,8 @@ const RE_ULTIMO_ESCALADO = /[úu]ltim[oa]s?\s+(?:pontos?\s+)?escalad[oa]s?/i;
 const RE_NEGADO = /\bn[ãa]o\s+(?:est[áa]\s+)?(?:escalad[oa]|ativ[oa])\b/gi;
 /** Botões e links de ação (“Sair da dispensa”, “Entrar em dispensa”…). */
 const RE_BOTAO = /^(sair|entrar|solicitar|pedir|encerrar|iniciar|registrar|confirmar|cancelar|voltar|abrir|atualizar|alterar|trocar)\b/i;
+/** Botão de dispensa do cartão (“Entrar na dispensa”, “Sair da dispensa”): é o último item dele. */
+const RE_BOTAO_DISPENSA = /^(?:entrar|sair)\s+(?:n[ao]|d[ao]|em)\s+dispensa\b/i;
 /** Linha da fila do quadro: “1 · A109 · TRUCK 4 EIXOS”. */
 const RE_LINHA_FILA = /^\d{1,3}\s*[·|.\-–]\s*[A-Z]{1,3}\s?-?\d{1,4}\b/i;
 const RE_FORA_DA_FILA = /seu\s+ponto\b.*\bn[ãa]o\s+est[áa]\s+na\s+fila/i;
@@ -796,47 +948,66 @@ export function interpretarStatus(secoes: SecaoPortal[], codigoMonitorado?: stri
     if (i > 0 && RE_ULTIMO_ESCALADO.test(plano[i - 1])) continue;
     for (const codigo of codigosDaLinha(l)) candidatas.push({ i, codigo });
   }
-  const escolhida = (alvo ? candidatas.find((c) => c.codigo === alvo) : null) ?? candidatas[0] ?? null;
   const cartaoUnico = new Set(candidatas.map((c) => c.codigo)).size <= 1;
 
-  if (!escolhida) {
+  if (!candidatas.length) {
     if (!falaDeStatus) return null;
     return { codigo: null, cartao: null, turno: null, turnoTexto: null, desde: null, haMinutos: null, motivo: null, nome: null, ehTelaStatus: true, detalhes: [] };
   }
 
-  // O cartão vai da linha do código até o próximo ponto, o quadro de ativos
-  // ou o limite de linhas — o que vier primeiro.
-  const bloco: string[] = [plano[escolhida.i]];
-  for (let j = escolhida.i + 1; j < plano.length && bloco.length < MAX_LINHAS_CARTAO; j++) {
-    const l = plano[j];
-    if (RE_ULTIMO_ESCALADO.test(l) || RE_CABECALHO_LIVRO.test(l) || RE_LINHA_FILA.test(l.trim()) || /^seq\b/i.test(l.trim())) break;
-    const comeco = RE_COMECA_COM_CODIGO.exec(l);
-    if (comeco && `${comeco[1].toUpperCase()}${comeco[2].padStart(3, "0")}` !== escolhida.codigo) break;
-    bloco.push(l);
-  }
-
-  // Situação: o selo do cartão (a situação escrita sozinha); sem ele, a
-  // primeira escrita no cartão; depois, até duas linhas acima do código (selo
-  // antes do número); por fim, numa tela de um ponto só, a página.
-  let turno: { chave: TurnoPortal; texto: string } | null = null;
-  for (const l of bloco) {
-    turno = turnoIsolado(l);
-    if (turno) break;
-  }
-  if (!turno) {
-    for (const l of bloco) {
-      turno = turnoDaLinha(l);
-      if (turno) break;
-    }
-  }
-  if (!turno) {
-    for (let j = escolhida.i - 1; j >= Math.max(0, escolhida.i - 2); j--) {
+  const cartaoDe = (c: { i: number; codigo: string }) => {
+    // O cartão vai da linha do código até o próximo ponto, o quadro de ativos,
+    // o botão de dispensa (último item do cartão) ou o limite de linhas.
+    const linhasDoCartao: string[] = [plano[c.i]];
+    for (let j = c.i + 1; j < plano.length && linhasDoCartao.length < MAX_LINHAS_CARTAO; j++) {
       const l = plano[j];
-      if (RE_ULTIMO_ESCALADO.test(l) || RE_CABECALHO_LIVRO.test(l) || codigosDaLinha(l).length) break;
-      turno = turnoDaLinha(l);
-      if (turno) break;
+      if (RE_ULTIMO_ESCALADO.test(l) || RE_CABECALHO_LIVRO.test(l) || RE_LINHA_FILA.test(l.trim()) || /^seq\b/i.test(l.trim())) break;
+      const comeco = RE_COMECA_COM_CODIGO.exec(l);
+      if (comeco && `${comeco[1].toUpperCase()}${comeco[2].padStart(3, "0")}` !== c.codigo) break;
+      if (RE_BOTAO_DISPENSA.test(l.trim())) break;
+      linhasDoCartao.push(l);
+    }
+
+    // Situação: o selo do cartão (a situação escrita sozinha); sem ele, a
+    // primeira escrita no cartão; depois, até duas linhas acima do código (selo
+    // antes do número).
+    let achado: { chave: TurnoPortal; texto: string } | null = null;
+    for (const l of linhasDoCartao) {
+      achado = turnoIsolado(l);
+      if (achado) break;
+    }
+    if (!achado) {
+      for (const l of linhasDoCartao) {
+        achado = turnoDaLinha(l);
+        if (achado) break;
+      }
+    }
+    if (!achado) {
+      for (let j = c.i - 1; j >= Math.max(0, c.i - 2); j--) {
+        const l = plano[j];
+        if (RE_ULTIMO_ESCALADO.test(l) || RE_CABECALHO_LIVRO.test(l) || codigosDaLinha(l).length) break;
+        achado = turnoDaLinha(l);
+        if (achado) break;
+      }
+    }
+    return { linhasDoCartao, achado };
+  };
+
+  // O código do ponto pode aparecer antes do cartão dele (num cabeçalho, numa
+  // lista): vale a primeira ocorrência que traz a situação.
+  const doAlvo = alvo ? candidatas.filter((c) => c.codigo === alvo) : [];
+  const ordem = doAlvo.length ? doAlvo : candidatas.filter((c) => c.codigo === candidatas[0].codigo);
+  let escolhida = ordem[0];
+  let lido = cartaoDe(escolhida);
+  for (let k = 1; k < ordem.length && !lido.achado; k++) {
+    const outro = cartaoDe(ordem[k]);
+    if (outro.achado) {
+      escolhida = ordem[k];
+      lido = outro;
     }
   }
+  const bloco = lido.linhasDoCartao;
+  let turno = lido.achado;
   if (!turno && falaDeStatus && cartaoUnico) {
     for (const l of plano) {
       if (RE_LINHA_FILA.test(l.trim()) || RE_FORA_DA_FILA.test(l)) continue;
@@ -856,8 +1027,11 @@ export function interpretarStatus(secoes: SecaoPortal[], codigoMonitorado?: stri
 
   const desdeM = achar(/(desde\s+(?:hoje|ontem|[^·]{0,24})[,]?\s*\d{1,2}[:h]\d{2})/i);
   const desde = desdeM ? desdeM[1].replace(/\s+/g, " ").trim() : null;
-  const haM = achar(/h[áa]\s+(\d{1,3})\s*min/i);
-  const haMinutos = haM ? Number(haM[1]) : null;
+  // “há 9 min”, “há 2 h 27 min”, “há 3 h”.
+  const haHM = achar(/h[áa]\s+(\d{1,3})\s*h(?:oras?)?\s*(?:e\s+)?(\d{1,2})\s*min/i);
+  const haM = haHM ? null : achar(/h[áa]\s+(\d{1,3})\s*min/i);
+  const haH = haHM || haM ? null : achar(/h[áa]\s+(\d{1,3})\s*h(?:oras?)?(?![a-zà-ú])/i);
+  const haMinutos = haHM ? Number(haHM[1]) * 60 + Number(haHM[2]) : haM ? Number(haM[1]) : haH ? Number(haH[1]) * 60 : null;
 
   // MOTIVO: “MOTIVO · 001 - OFICINA” ou “001 - OFICINA” (código + descrição).
   const motivoM =
