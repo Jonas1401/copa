@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auditar, exigirAdmin, ipDe } from "@/lib/admin/auth";
 import { garantirTabelas } from "@/lib/estado";
-import { garantirTabelasPortal, monitorarMotorista, painelPortalAdmin, removerAcessoPortal } from "@/lib/portal-copadubo";
+import { garantirTabelasPortal, painelPortalAdmin, removerAcessoPortal } from "@/lib/portal-copadubo";
+import { monitorarMotorista, resumoDoMonitor } from "@/lib/portal-monitor";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,16 +15,23 @@ const CAB = { "Cache-Control": "no-store" };
  * da última leitura e o diagnóstico. O CPF completo e a senha NUNCA saem do
  * servidor — nem para quem está logado no painel.
  *
- * GET  → { total, ativos, lidos24h, falhas, motoristas[] }
+ * GET  → { total, ativos, lidos24h, falhas, motoristas[], monitor }
  * POST → { motoristaId, acao: "ler" | "remover" }: lê o portal agora ou apaga
  *        o acesso daquele motorista (a senha dele sai do banco na hora).
+ *
+ * `monitor`: quem decide a saída do ponto (o Status do portal ou o quadro), o
+ * intervalo da leitura e a situação guardada de cada ponto.
  */
+async function painel() {
+  return { ...(await painelPortalAdmin()), monitor: await resumoDoMonitor() };
+}
+
 export async function GET() {
   const g = await exigirAdmin();
   if (g instanceof NextResponse) return g;
   await garantirTabelas();
   await garantirTabelasPortal();
-  return NextResponse.json(await painelPortalAdmin(), { headers: CAB });
+  return NextResponse.json(await painel(), { headers: CAB });
 }
 
 export async function POST(req: Request) {
@@ -47,14 +55,15 @@ export async function POST(req: Request) {
       detalhe: `Acesso ao portal do motorista #${motoristaId} removido: ${removido ? "sim" : "já não existia"}.`,
       ip: ipDe(req),
     });
-    return NextResponse.json({ removido, ...(await painelPortalAdmin()) }, { headers: CAB });
+    return NextResponse.json({ removido, ...(await painel()) }, { headers: CAB });
   }
 
   if (acao !== "ler") {
     return NextResponse.json({ erro: "Ação inválida." }, { status: 400, headers: CAB });
   }
 
-  // Uma leitura sob demanda é um login novo no portal do motorista.
+  // Leitura sob demanda: usa a sessão guardada do motorista (o login só se
+  // repete se o portal pedir) e avisa a troca de situação como qualquer leitura.
   const r = await monitorarMotorista(motoristaId, { avisar: false }).catch((e: unknown) => ({
     rodou: false as const,
     motivo: e instanceof Error ? e.message.slice(0, 160) : "falha",
@@ -69,5 +78,5 @@ export async function POST(req: Request) {
     }.`,
     ip: ipDe(req),
   });
-  return NextResponse.json({ resultado: r, ...(await painelPortalAdmin()) }, { headers: CAB });
+  return NextResponse.json({ resultado: r, ...(await painel()) }, { headers: CAB });
 }

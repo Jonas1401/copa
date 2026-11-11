@@ -259,6 +259,100 @@ export function resolverUrl(base: string, alvo: string): string {
   }
 }
 
+/** Link de navegação do portal (uma aba do menu do motorista). */
+export type LinkPortal = { texto: string; url: string };
+
+/** Abas que o leitor pode abrir. Só navegação: nada que mude o ponto. */
+const RE_ABA_DO_MENU =
+  /^(ponto|meu ponto|status|status do ponto|ticket|tickets|fila|filas|ativos|tela de ativos|escala|escalas|in[íi]cio)$/i;
+/** Endereço com cara de AÇÃO (sair, dispensa, excluir…): nunca é aberto. */
+const RE_ENDERECO_DE_ACAO =
+  /sair|logout|logoff|deslog|dispensa|exclu|apag|remov|delet|cancel|confirm|aceit|recus|salv|grav|senha|password|cadastr|alter|edit|nov[oa]|baix|download|pdf|imprim|print/i;
+/**
+ * “acao”/“action” só como palavra inteira (`?acao=sair`, `/acao.php`,
+ * `fazerAcao`): dentro de “situacao” ou “informacao” é só o nome de uma tela.
+ */
+const RE_PALAVRA_ACAO = /(?:^|[^a-z])(?:acao|acoes|action|actions)(?:[^a-z]|$)/;
+
+/** O endereço (caminho + parâmetros) tem cara de ação: o leitor não abre. */
+export function enderecoDeAcao(caminhoEParametros: string): boolean {
+  if (RE_ENDERECO_DE_ACAO.test(caminhoEParametros)) return true;
+  const palavras = caminhoEParametros.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
+  return RE_PALAVRA_ACAO.test(palavras);
+}
+
+/**
+ * Abas do menu do motorista que aparecem na página (Ponto, Status, Ticket,
+ * Fila…), para o leitor abrir as telas pelo endereço que o PRÓPRIO portal
+ * informa, sem adivinhar caminhos.
+ *
+ * O leitor entra com a conta do motorista, então a regra é só olhar: entra na
+ * lista apenas o link cujo texto é exatamente o nome de uma aba e cujo
+ * endereço não tem cara de ação. “Sair da dispensa”, “Entrar em dispensa”,
+ * “Sair” e qualquer botão ficam de fora — abrir um deles mudaria a situação
+ * do ponto de verdade.
+ */
+export function extrairLinksMenu(html: string, paginaUrl: string, ignorados?: LinkPortal[]): LinkPortal[] {
+  const limpo = limparHtml(html);
+  const saida: LinkPortal[] = [];
+  const vistos = new Set<string>();
+  const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(limpo))) {
+    const a = atributos(m[1]);
+    const href = (a.href ?? "").trim();
+    if (!href || href.startsWith("#") || /^(javascript|mailto|tel|data|blob):/i.test(href)) continue;
+    if (a["data-method"] || a.download !== undefined) continue;
+    const texto = normalizarEspacos(decodificarEntidades(m[2].replace(/<[^>]+>/g, " ")));
+    const rotulo = (texto || a.title || a["aria-label"] || "").trim();
+    if (!RE_ABA_DO_MENU.test(rotulo)) continue;
+    let url: URL;
+    try {
+      url = new URL(href, paginaUrl);
+    } catch {
+      continue;
+    }
+    if (!/^https?:$/.test(url.protocol)) continue;
+    url.hash = "";
+    const chave = url.toString();
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    if (enderecoDeAcao(`${url.pathname}${url.search}`)) {
+      // Tem nome de aba, mas o endereço parece uma ação: fica só no diagnóstico.
+      ignorados?.push({ texto: rotulo.slice(0, 40), url: chave });
+      continue;
+    }
+    saida.push({ texto: rotulo.slice(0, 40), url: chave });
+  }
+  return saida;
+}
+
+/**
+ * Página que respondeu sem texto mas manda o navegador para outro endereço
+ * (`<meta http-equiv="refresh">` ou `location.href = "…"`): devolve o destino.
+ * Alguns PHP respondem assim ao login em vez de usar o cabeçalho Location.
+ */
+export function destinoDeRedirecionamentoNaPagina(html: string, paginaUrl: string): string | null {
+  const meta = /<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/i.exec(html);
+  const doMeta = meta ? /url\s*=\s*['"]?([^'"\s>;]+)/i.exec(meta[0])?.[1] : null;
+  const doScript =
+    /(?:window\.|document\.|top\.|self\.)?location(?:\.href)?\s*=\s*["']([^"']{1,300})["']/i.exec(html)?.[1] ??
+    /location\.(?:replace|assign)\(\s*["']([^"']{1,300})["']\s*\)/i.exec(html)?.[1] ??
+    null;
+  const alvo = decodificarEntidades((doMeta ?? doScript ?? "").trim());
+  if (!alvo || /^(javascript|data|blob):/i.test(alvo)) return null;
+  try {
+    return new URL(alvo, paginaUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+/** A página veio sem texto mas com scripts: provavelmente é montada no navegador. */
+export function pareceMontadaPorScript(html: string): boolean {
+  return html.length > 600 && /<script\b/i.test(html) && extrairSecoes(html).totalLinhas <= 2;
+}
+
 /**
  * Monta o corpo do login com os nomes REAIS dos campos: usuário (CPF/e-mail) e
  * senha são os que têm cara disso; os demais (token, hidden, submit) mantêm o
@@ -450,6 +544,21 @@ export function hashConteudo(secoes: SecaoPortal[]): string {
   return `${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
 }
 
+/** Contador que o portal recalcula sozinho a cada minuto (“há 9 min”, “há 2 h”). */
+const RE_CONTADOR_DE_TEMPO = /\bh[áa]\s+\d+\s*(?:min(?:utos?)?|h(?:oras?)?|d(?:ias?)?|s(?:eg(?:undos?)?)?)\b/gi;
+
+/**
+ * Impressão digital que NÃO muda quando só o relógio da página andou
+ * (“há 9 min” → “há 10 min”). É o que diz se duas leituras seguidas mostram a
+ * mesma coisa — a leitura de minuto em minuto não vira uma linha nova no
+ * histórico a cada minuto.
+ */
+export function hashEstavel(secoes: SecaoPortal[]): string {
+  return hashConteudo(
+    secoes.map((s) => ({ titulo: s.titulo, linhas: s.linhas.map((l) => l.replace(RE_CONTADOR_DE_TEMPO, "há N")) })),
+  );
+}
+
 /** Lista simples (sem ordem) de todas as linhas. */
 export function todasAsLinhas(secoes: SecaoPortal[]): string[] {
   return secoes.flatMap((s) => s.linhas);
@@ -529,23 +638,36 @@ export function finalCpf(cpf: string): string {
  * TELA DE STATUS DO PONTO (print do portal, 09/11/2026)
  *
  * “Status do Ponto”
- *   A032   [ADG-1J42]                       ● EM DISPENSA
+ *   A032   [placa]                          ● EM DISPENSA
  *   ⏱ Desde hoje, 11:32   há 9 min
  *   MOTIVO
  *   001 - OFICINA
- *   👤 JONAS PAULO DE SOUZA
+ *   👤 NOME DO MOTORISTA
  *   [ Sair da dispensa ]
  *
- * A leitura é por LINHAS (o texto já vem limpo do `extrairSecoes`), então
- * continua valendo se o portal trocar o HTML por outro layout.
+ * Situações que o portal mostra para o ponto: ATIVO (na fila), ESCALADO
+ * (chamado para o trabalho) e EM DISPENSA. As demais (EM ATENDIMENTO,
+ * DESCANSANDO, AGUARDANDO) ficaram de versões anteriores da tela.
+ *
+ * A leitura é por LINHAS (o texto já vem limpo do `extrairSecoes`) e sempre
+ * dentro do CARTÃO do ponto pedido: a situação é a primeira que aparece junto
+ * do código do ponto. Assim “Último Ponto Escalado”, o botão “Entrar em
+ * dispensa” ou o cartão de outro ponto nunca viram a situação deste.
  * ========================================================================== */
 
-export type TurnoPortal = "EM DISPENSA" | "EM ATENDIMENTO" | "DESCANSANDO" | "AGUARDANDO" | "FORA";
+export type TurnoPortal =
+  | "ATIVO"
+  | "ESCALADO"
+  | "EM DISPENSA"
+  | "EM ATENDIMENTO"
+  | "DESCANSANDO"
+  | "AGUARDANDO"
+  | "FORA";
 
 export type StatusPortal = {
   /** Código do ponto mostrado na tela (ex.: A032). */
   codigo: string | null;
-  /** Cartão/veículo ao lado do ponto (ex.: ADG-1J42). */
+  /** Cartão/veículo ao lado do ponto (ex.: ABC-1D23). */
   cartao: string | null;
   turno: TurnoPortal | null;
   /** Texto exato do turno como o portal escreve (ex.: "EM DISPENSA"). */
@@ -560,79 +682,226 @@ export type StatusPortal = {
   nome: string | null;
   /** É a tela de status do ponto (e não outra página do portal). */
   ehTelaStatus: boolean;
+  /**
+   * As demais linhas do cartão do ponto, como o portal escreve. Quando o ponto
+   * está ESCALADO, é aqui que vêm os dados da escala (o leitor não supõe o
+   * nome dos campos: leva a linha inteira).
+   */
+  detalhes: string[];
 };
 
-/** Código de ponto no padrão do portal: uma letra de livro + 3 dígitos (A032). */
-const RE_CODIGO = /\b([ABM])\s?-?(\d{3})\b/i;
-
-/** Turnos que o portal escreve em maiúsculas no alto do cartão. */
+/** Situações do ponto, como o portal escreve no cartão. */
 const TURNOS: { chave: TurnoPortal; re: RegExp }[] = [
   { chave: "EM DISPENSA", re: /\bEM\s+DISPENSA\b/i },
   { chave: "EM ATENDIMENTO", re: /\bEM\s+ATENDIMENTO\b/i },
+  { chave: "ESCALADO", re: /\bESCALADO\b/i },
   { chave: "DESCANSANDO", re: /\bDESCANSANDO\b/i },
   { chave: "AGUARDANDO", re: /\bAGUARDANDO\b/i },
+  { chave: "ATIVO", re: /\bATIVO\b/i },
   { chave: "FORA", re: /\b(fora\s+de\s+servi[cç]o|sem\s+ponto)\b/i },
 ];
 
-/** Ruídos que a leitura de seções deixa na frente dos valores. */
-const limparValor = (linha: string) =>
-  linha
-    .replace(/^[\s·|•\-–—]+/, "")
-    .replace(/\b(desde|motivo|ponto|semana|ticket)\b\s*[:·-]?\s*/gi, (m) => (m.trim().length === 0 ? m : ""))
-    .trim();
+/** Código de ponto em qualquer lugar da linha (A032, A-32, M28). */
+const RE_CODIGOS_NA_LINHA = /\b([ABM])\s?-?(\d{2,4})\b/gi;
+/** Linha que COMEÇA com um código: é o começo do cartão de um ponto. */
+const RE_COMECA_COM_CODIGO = /^\s*(?:ponto\s*[:\-–]?\s*)?([ABM])\s?-?(\d{2,4})\b/i;
+/** Rótulo do quadro de ativos — nunca é a situação do ponto do motorista. */
+const RE_ULTIMO_ESCALADO = /[úu]ltim[oa]s?\s+(?:pontos?\s+)?escalad[oa]s?/i;
+const RE_NEGADO = /\bn[ãa]o\s+(?:est[áa]\s+)?(?:escalad[oa]|ativ[oa])\b/gi;
+/** Botões e links de ação (“Sair da dispensa”, “Entrar em dispensa”…). */
+const RE_BOTAO = /^(sair|entrar|solicitar|pedir|encerrar|iniciar|registrar|confirmar|cancelar|voltar|abrir|atualizar|alterar|trocar)\b/i;
+/** Linha da fila do quadro: “1 · A109 · TRUCK 4 EIXOS”. */
+const RE_LINHA_FILA = /^\d{1,3}\s*[·|.\-–]\s*[A-Z]{1,3}\s?-?\d{1,4}\b/i;
+const RE_FORA_DA_FILA = /seu\s+ponto\b.*\bn[ãa]o\s+est[áa]\s+na\s+fila/i;
+const RE_CABECALHO_LIVRO = /^\s*livro\s+[ABM]\b/i;
+/** Abas e rótulos do próprio portal: não são dado do ponto. */
+const RE_ABA = /^(ponto|status|status do ponto|ticket|fila|ativos|tela de ativos|sair|menu|in[íi]cio|voltar|copadubo|motivo)$/i;
+/** Quantas linhas, no máximo, formam o cartão de um ponto. */
+const MAX_LINHAS_CARTAO = 14;
+
+function codigosDaLinha(linha: string): string[] {
+  const saida: string[] = [];
+  const re = new RegExp(RE_CODIGOS_NA_LINHA.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(linha))) saida.push(`${m[1].toUpperCase()}${m[2].padStart(3, "0")}`);
+  return saida;
+}
+
+/** Placa ao lado do ponto: antiga (ABC-1234) ou Mercosul (ABC1D23). */
+const RE_PLACA = /\b[A-Z]{3}-?[0-9][A-Z0-9][0-9]{2}\b/gi;
+
+/** A situação escrita numa linha (a que aparece primeiro), ou null. */
+function turnoDaLinha(linha: string): { chave: TurnoPortal; texto: string } | null {
+  const l = linha.trim();
+  if (!l || RE_BOTAO.test(l)) return null;
+  const limpa = l.replace(new RegExp(RE_ULTIMO_ESCALADO.source, "gi"), " ").replace(RE_NEGADO, " ");
+  let melhor: { chave: TurnoPortal; texto: string; i: number } | null = null;
+  let quantas = 0;
+  for (const t of TURNOS) {
+    const m = t.re.exec(limpa);
+    if (!m) continue;
+    quantas += 1;
+    if (!melhor || m.index < melhor.i) melhor = { chave: t.chave, texto: m[0].toUpperCase(), i: m.index };
+  }
+  // Várias situações na mesma linha, sem o código de um ponto, é legenda ou
+  // filtro da tela (“Ativo · Escalado · Em dispensa”), não a situação do ponto.
+  if (quantas >= 2 && !codigosDaLinha(l).length) return null;
+  return melhor ? { chave: melhor.chave, texto: melhor.texto } : null;
+}
+
+/**
+ * A situação escrita SOZINHA na linha — o selo do cartão (“● EM DISPENSA”,
+ * “A032 · placa · ESCALADO”, “Situação: ATIVO”). Vale mais que a mesma palavra
+ * no meio de uma frase (“Cadastro ativo desde 2020”).
+ */
+function turnoIsolado(linha: string): { chave: TurnoPortal; texto: string } | null {
+  const turno = turnoDaLinha(linha);
+  if (!turno) return null;
+  const resto = linha
+    .replace(new RegExp(RE_CODIGOS_NA_LINHA.source, "gi"), " ")
+    .replace(new RegExp(RE_PLACA.source, "gi"), " ")
+    .replace(new RegExp(TURNOS.find((t) => t.chave === turno.chave)!.re.source, "gi"), " ")
+    .replace(/\b(status|situa[çc][ãa]o|do|ponto|atual)\b/gi, " ");
+  return /[0-9A-Za-zÀ-ú]/.test(resto) ? null : turno;
+}
 
 /**
  * Interpreta a tela de status a partir das linhas da página.
- * Devolve `null`-safe: nada de exceção — campo que não veio fica `null`.
+ *
+ * `codigoMonitorado`: o ponto que o app acompanha (A032). Com ele, a leitura
+ * procura o cartão DESSE ponto; se a página só mostra outro ponto, devolve o
+ * que a página mostra (quem chama compara os códigos e descarta).
+ * Nada de exceção — campo que não veio fica `null`.
  */
-export function interpretarStatus(secoes: SecaoPortal[]): StatusPortal | null {
+export function interpretarStatus(secoes: SecaoPortal[], codigoMonitorado?: string | null): StatusPortal | null {
   const linhas = todasAsLinhas(secoes);
-  const texto = linhas.join(" · ");
-  const tituloPagina = secoes.map((s) => s.titulo).join(" ");
-  const ehTelaStatus = /status\s+do\s+ponto/i.test(`${tituloPagina} ${texto}`) || TURNOS.some((t) => t.re.test(texto));
-  if (!ehTelaStatus) return null;
+  const textoTodo = linhas.join(" · ");
+  const falaDeStatus = /status\s+do\s+ponto/i.test(`${secoes.map((s) => s.titulo).join(" ")} ${textoTodo}`);
 
-  // Código do ponto: a primeira ocorrência no texto (o cartão vem logo depois).
-  const codigoM = RE_CODIGO.exec(texto);
-  const codigo = codigoM ? `${codigoM[1].toUpperCase()}${codigoM[2]}` : null;
-
-  // Cartão/placa: 3 letras, hífen, 4 caracteres (ADG-1J42) ou placa Mercosul.
-  const cartaoM = /\b([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})\b/.exec(texto) ?? /\b([A-Z]{3}-?\d{4})\b/.exec(texto);
-  const cartao = cartaoM ? cartaoM[1].toUpperCase() : null;
-
-  let turno: TurnoPortal | null = null;
-  let turnoTexto: string | null = null;
-  for (const t of TURNOS) {
-    const m = texto.match(t.re);
-    if (m) {
-      turno = t.chave;
-      turnoTexto = m[0].toUpperCase();
-      break;
-    }
+  // Títulos de seção também contam como linha: o código do ponto pode estar num <h2>.
+  const plano: string[] = [];
+  for (const s of secoes) {
+    if (s.titulo && s.titulo !== "Página") plano.push(s.titulo);
+    plano.push(...s.linhas);
   }
 
-  const desdeM = /(desde\s+(?:hoje|ontem|[^·]{0,24})[,]?\s*\d{1,2}[:h]\d{2})/i.exec(texto);
+  const alvo = codigoMonitorado ? normalizarCodigoPortal(codigoMonitorado) : null;
+
+  // Linhas que podem ser o cartão de um ponto: têm um código e NÃO são do
+  // quadro de ativos (fila numerada, “Último Ponto Escalado”, aviso de fora da fila).
+  const candidatas: { i: number; codigo: string }[] = [];
+  for (let i = 0; i < plano.length; i++) {
+    const l = plano[i];
+    if (RE_LINHA_FILA.test(l.trim()) || RE_FORA_DA_FILA.test(l) || RE_ULTIMO_ESCALADO.test(l)) continue;
+    if (i > 0 && RE_ULTIMO_ESCALADO.test(plano[i - 1])) continue;
+    for (const codigo of codigosDaLinha(l)) candidatas.push({ i, codigo });
+  }
+  const escolhida = (alvo ? candidatas.find((c) => c.codigo === alvo) : null) ?? candidatas[0] ?? null;
+  const cartaoUnico = new Set(candidatas.map((c) => c.codigo)).size <= 1;
+
+  if (!escolhida) {
+    if (!falaDeStatus) return null;
+    return { codigo: null, cartao: null, turno: null, turnoTexto: null, desde: null, haMinutos: null, motivo: null, nome: null, ehTelaStatus: true, detalhes: [] };
+  }
+
+  // O cartão vai da linha do código até o próximo ponto, o quadro de ativos
+  // ou o limite de linhas — o que vier primeiro.
+  const bloco: string[] = [plano[escolhida.i]];
+  for (let j = escolhida.i + 1; j < plano.length && bloco.length < MAX_LINHAS_CARTAO; j++) {
+    const l = plano[j];
+    if (RE_ULTIMO_ESCALADO.test(l) || RE_CABECALHO_LIVRO.test(l) || RE_LINHA_FILA.test(l.trim()) || /^seq\b/i.test(l.trim())) break;
+    const comeco = RE_COMECA_COM_CODIGO.exec(l);
+    if (comeco && `${comeco[1].toUpperCase()}${comeco[2].padStart(3, "0")}` !== escolhida.codigo) break;
+    bloco.push(l);
+  }
+
+  // Situação: o selo do cartão (a situação escrita sozinha); sem ele, a
+  // primeira escrita no cartão; depois, até duas linhas acima do código (selo
+  // antes do número); por fim, numa tela de um ponto só, a página.
+  let turno: { chave: TurnoPortal; texto: string } | null = null;
+  for (const l of bloco) {
+    turno = turnoIsolado(l);
+    if (turno) break;
+  }
+  if (!turno) {
+    for (const l of bloco) {
+      turno = turnoDaLinha(l);
+      if (turno) break;
+    }
+  }
+  if (!turno) {
+    for (let j = escolhida.i - 1; j >= Math.max(0, escolhida.i - 2); j--) {
+      const l = plano[j];
+      if (RE_ULTIMO_ESCALADO.test(l) || RE_CABECALHO_LIVRO.test(l) || codigosDaLinha(l).length) break;
+      turno = turnoDaLinha(l);
+      if (turno) break;
+    }
+  }
+  if (!turno && falaDeStatus && cartaoUnico) {
+    for (const l of plano) {
+      if (RE_LINHA_FILA.test(l.trim()) || RE_FORA_DA_FILA.test(l)) continue;
+      turno = turnoDaLinha(l);
+      if (turno) break;
+    }
+  }
+  if (!turno && !falaDeStatus) return null;
+
+  const textoBloco = bloco.join(" · ");
+  // Numa tela de um ponto só, o dado pode estar fora do cartão (layout antigo).
+  const achar = (re: RegExp) => re.exec(textoBloco) ?? (cartaoUnico ? re.exec(textoTodo) : null);
+
+  // Cartão/placa: 3 letras, hífen, 4 caracteres (ABC-1D23) ou placa Mercosul.
+  const cartaoM = achar(/\b([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})\b/) ?? achar(/\b([A-Z]{3}-?\d{4})\b/);
+  const cartao = cartaoM ? cartaoM[1].toUpperCase() : null;
+
+  const desdeM = achar(/(desde\s+(?:hoje|ontem|[^·]{0,24})[,]?\s*\d{1,2}[:h]\d{2})/i);
   const desde = desdeM ? desdeM[1].replace(/\s+/g, " ").trim() : null;
-  const haM = /h[áa]\s+(\d{1,3})\s*min/i.exec(texto);
+  const haM = achar(/h[áa]\s+(\d{1,3})\s*min/i);
   const haMinutos = haM ? Number(haM[1]) : null;
 
   // MOTIVO: “MOTIVO · 001 - OFICINA” ou “001 - OFICINA” (código + descrição).
-  const motivoM = /motivo\s*[:·-]?\s*([0-9]{1,3}\s*[-–]\s*[^·]{2,60})/i.exec(texto) ?? /\b([0-9]{3}\s*[-–]\s*[A-ZÀ-Ú][^·]{1,50})/.exec(texto);
+  const motivoM =
+    achar(/motivo\s*[:·-]?\s*([0-9]{1,3}\s*[-–]\s*[^·]{2,60})/i) ?? achar(/\b([0-9]{3}\s*[-–]\s*[A-ZÀ-Ú][^·]{1,50})/);
   const motivo = motivoM ? motivoM[1].replace(/\s*[-–]\s*/, " - ").trim() : null;
 
   // Nome do motorista: linha em MAIÚSCULAS com 2+ palavras (evita “EM DISPENSA”).
+  const pareceNome = (l: string) =>
+    /^[A-ZÀ-Ú][A-ZÀ-Ú' ]{6,60}$/.test(l) &&
+    l.split(/\s+/).length >= 2 &&
+    !TURNOS.some((t) => t.re.test(l)) &&
+    !/^(MOTIVO|DESDE|PONTO|STATUS)/.test(l);
   const nome =
-    linhas
-      .map((l) => l.trim())
-      .find(
-        (l) =>
-          /^[A-ZÀ-Ú][A-ZÀ-Ú' ]{6,60}$/.test(l) &&
-          l.split(/\s+/).length >= 2 &&
-          !TURNOS.some((t) => t.re.test(l)) &&
-          !/^(MOTIVO|DESDE|PONTO|STATUS)/.test(l),
-      ) ?? null;
+    bloco.map((l) => l.trim()).find(pareceNome) ??
+    (cartaoUnico ? linhas.map((l) => l.trim()).find(pareceNome) : undefined) ??
+    null;
 
-  return { codigo, cartao, turno, turnoTexto, desde, haMinutos, motivo, nome, ehTelaStatus: true };
+  // Demais linhas do cartão, sem o que já foi lido acima (código, placa, selo).
+  const detalhes: string[] = [];
+  for (let k = 0; k < bloco.length && detalhes.length < 12; k++) {
+    let l = bloco[k].trim();
+    if (RE_BOTAO.test(l)) continue;
+    if (k === 0) {
+      l = l.replace(new RegExp(RE_CODIGOS_NA_LINHA.source, "gi"), " ");
+      if (cartao) l = l.split(cartao).join(" ");
+    }
+    if (turno) l = l.replace(new RegExp(TURNOS.find((t) => t.chave === turno!.chave)!.re.source, "gi"), " ");
+    l = l.replace(/^[\s·|•\-–—:]+|[\s·|•\-–—:]+$/g, "").replace(/\s*·\s*(·\s*)+/g, " · ").replace(/\s+/g, " ").trim();
+    if (l.replace(/[^0-9A-Za-zÀ-ú]/g, "").length < 3 || RE_ABA.test(l)) continue;
+    if (!detalhes.includes(l)) detalhes.push(l.slice(0, 160));
+  }
+
+  return {
+    codigo: escolhida.codigo,
+    cartao,
+    turno: turno?.chave ?? null,
+    turnoTexto: turno?.texto ?? null,
+    desde,
+    haMinutos,
+    motivo,
+    nome,
+    ehTelaStatus: true,
+    detalhes,
+  };
 }
 
 /** Frase curta do status (a mesma que o motorista recebe no aviso). */
@@ -643,6 +912,8 @@ export function fraseStatus(s: StatusPortal): string {
     const tempo = s.haMinutos != null ? ` · há ${s.haMinutos} min` : "";
     return `${ponto} está EM DISPENSA${motivo}${tempo}.`;
   }
+  if (s.turno === "ESCALADO") return `${ponto} foi ESCALADO (saiu para o trabalho).`;
+  if (s.turno === "ATIVO") return `${ponto} está ATIVO (na fila).`;
   if (s.turno === "EM ATENDIMENTO") return `${ponto} está em atendimento (saiu para o trabalho).`;
   if (s.turno === "DESCANSANDO") return `${ponto} está em descanso.`;
   if (s.turno === "AGUARDANDO") return `${ponto} está aguardando.`;

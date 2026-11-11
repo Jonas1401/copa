@@ -2,14 +2,23 @@ import { after, NextResponse } from "next/server";
 import { tickRadar } from "@/lib/clima-monitor";
 import {
   montarEstado,
+  processarSaidasPendentes,
   temPontoCadastrado,
   varrerSeVelho,
 } from "@/lib/estado";
 import { motoristaDaSessao } from "@/lib/motorista-sessao";
-import { acessoPortalDoMotorista, garantirTabelasPortal, INTERVALO_LEITURA_MS, monitorarMotorista, ultimaLeituraPortal } from "@/lib/portal-copadubo";
+import { acessoPortalDoMotorista, garantirTabelasPortal, INTERVALO_LEITURA_MS, monitorarSeDevido, ultimaLeituraPortal } from "@/lib/portal-copadubo";
+import { normalizarCodigoPortal } from "@/lib/portal-copadubo-parse";
+import { monitorarStatusEmSegundoPlano } from "@/lib/portal-monitor";
+import { fontePortal, situacaoFresca, situacoesDoMotorista } from "@/lib/portal-situacao";
 import { pontoEmDispensa } from "@/lib/portal-status-ponto";
 
 export const dynamic = "force-dynamic";
+/**
+ * A resposta sai em até 1,5 s; o que roda depois dela (`after`) pode incluir
+ * uma consulta ao Portal do Motorista, que leva alguns segundos.
+ */
+export const maxDuration = 60;
 
 const PRAZO_RESPOSTA = 1500;
 
@@ -26,20 +35,33 @@ async function atualizarPortal(id: number) {
   if (atualizando.has(id)) return;
   atualizando.add(id);
   try {
-    const ultima = await ultimaLeituraPortal(id);
-    if (!ultima || Date.now() - ultima.criadoEm.getTime() >= INTERVALO_LEITURA_MS) {
-      await monitorarMotorista(id);
-    }
+    // Fonte `quadro`: a regra de quando reler o portal é uma só (a mesma do
+    // cron): só com um ponto do motorista fora do quadro e respeitando o
+    // intervalo entre logins.
+    await monitorarSeDevido(id);
   } catch { /* A próxima consulta tentará novamente. */ }
   finally { atualizando.delete(id); }
+}
+
+// Saídas que esperam a consulta ao portal: uma rodada por vez nesta instância.
+let conferindoSaidas = false;
+async function conferirSaidasNoPortal() {
+  if (conferindoSaidas) return;
+  conferindoSaidas = true;
+  try {
+    await processarSaidasPendentes();
+  } catch { /* O cron (ou a próxima chamada) retoma: a espera fica gravada. */ }
+  finally { conferindoSaidas = false; }
 }
 
 export async function GET() {
   try {
     // Com ponto monitorado, cada chamada pode carregar uma varredura nova do
     // site — nunca mais que 1,5s de espera; o resto termina em segundo plano.
+    let varredura: Promise<unknown> | null = null;
     if (await temPontoCadastrado()) {
-      await comPrazo(varrerSeVelho(), PRAZO_RESPOSTA);
+      varredura = varrerSeVelho().catch(() => null);
+      await comPrazo(varredura, PRAZO_RESPOSTA);
     }
     const motorista = await motoristaDaSessao();
     const estado = await montarEstado(motorista?.id ?? null);
@@ -47,13 +69,30 @@ export async function GET() {
     // Uma falha ou leitura antiga nunca deve inventar uma dispensa atual.
     let ultimaPortal: Awaited<ReturnType<typeof ultimaLeituraPortal>> = null;
     let portalAtivo = false;
+    // Fonte `portal` (o padrão): a saída do ponto é avisada pelo Status do
+    // Portal do Motorista. O app mostra a situação lida lá e diz ao motorista
+    // quando falta o cadastro do acesso — sem ele não há aviso de saída.
+    const fonte = fontePortal();
     if (motorista && estado.pontos.length) {
       try {
         const acesso = await acessoPortalDoMotorista(motorista.id);
         portalAtivo = acesso?.ativo === 1;
-        if (portalAtivo) {
-          ultimaPortal = await ultimaLeituraPortal(motorista.id);
-          estado.pontos = estado.pontos.map((p) => ({ ...p, emDispensa: pontoEmDispensa(ultimaPortal, p) }));
+        if (fonte === "portal") {
+          estado.avisoSaida = portalAtivo ? "portal" : acesso ? "pausado" : "sem_acesso";
+          if (portalAtivo) {
+            const situacoes = await situacoesDoMotorista(motorista.id);
+            estado.pontos = estado.pontos.map((p) => {
+              const lida = situacoes.find((s) => s.pontoId === p.id && s.codigo === normalizarCodigoPortal(p.codigo));
+              const turno = lida && situacaoFresca(lida) ? lida.turno : null;
+              return { ...p, situacaoPortal: turno, emDispensa: turno === "EM DISPENSA" };
+            });
+          }
+        } else {
+          estado.avisoSaida = "quadro";
+          if (portalAtivo) {
+            ultimaPortal = await ultimaLeituraPortal(motorista.id);
+            estado.pontos = estado.pontos.map((p) => ({ ...p, emDispensa: pontoEmDispensa(ultimaPortal, p) }));
+          }
         }
       } catch { /* O portal não pode impedir a exibição da fila. */ }
     }
@@ -63,11 +102,24 @@ export async function GET() {
     // maior parte das vezes; nunca joga erro nem atrasa a resposta da fila.
     await tickRadar().catch(() => null);
     // Portal do motorista: as tabelas nascem na primeira abertura do app (o
-    // motorista não depende de ninguém rodar SQL para ver a tela) e a checagem
-    // de atualização do portal roda em segundo plano.
+    // motorista não depende de ninguém rodar SQL para ver a tela) e as idas ao
+    // portal rodam em segundo plano, depois da resposta.
+    const temPontoFora = estado.pontos.some((p) => p.status === "SAIU");
     after(async () => {
       await garantirTabelasPortal().catch(() => null);
-      if (motorista && portalAtivo && (!ultimaPortal || Date.now() - ultimaPortal.criadoEm.getTime() >= INTERVALO_LEITURA_MS)) {
+      // A varredura desta chamada pode ainda estar em andamento — e é ela que
+      // descobre que um ponto saiu do quadro.
+      if (varredura) await varredura;
+      // Fonte `quadro`: ponto que acabou de sair do quadro é conferido no
+      // portal antes do aviso (não depende de o cron rodar a cada minuto).
+      // Com a fonte `portal` não sobra nada aqui além de uma saída agendada
+      // antes da troca da fonte.
+      await conferirSaidasNoPortal();
+      if (fonte === "portal") {
+        // O app aberto mantém a leitura do Status em dia (uma rodada curta,
+        // para todos os motoristas com a leitura vencida).
+        await monitorarStatusEmSegundoPlano();
+      } else if (motorista && portalAtivo && temPontoFora && (!ultimaPortal || Date.now() - ultimaPortal.criadoEm.getTime() >= INTERVALO_LEITURA_MS)) {
         await atualizarPortal(motorista.id);
       }
     });

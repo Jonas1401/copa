@@ -294,7 +294,7 @@ export async function enviarPush(
 }
 
 // ------------------------------------------------- notificações do turno
-async function nomeDoMotorista(id: number | null | undefined) {
+export async function nomeDoMotorista(id: number | null | undefined) {
   if (!id) return null;
   const [m] = await db
     .select({ nome: motoristas.nome })
@@ -304,11 +304,49 @@ async function nomeDoMotorista(id: number | null | undefined) {
   return m?.nome ?? null;
 }
 
+/**
+ * O que o Portal do Motorista disse na hora da saída. Com `saiu`, o aviso
+ * leva a mensagem do portal (ESCALADO com os dados da escala, EM DISPENSA…).
+ * Sem `saiu`, vale o quadro, e `observacao` conta o que o portal mostrou.
+ */
+export type PortalNoAviso = { saiu: boolean; titulo: string; mensagem: string; observacao?: string };
+
+export const TITULO_PADRAO_AVISO = "🚛 Monitor Ponto CopaLinks";
+
+/**
+ * Título e corpo do aviso de SAÍDA do ponto. Função pura: é a mesma usada no
+ * envio de verdade e na simulação do painel do administrador.
+ */
+export function textoAvisoSaida(e: {
+  codigo: string;
+  rotulo: string;
+  livro: string;
+  saidaPorUltimo?: boolean;
+  portal?: PortalNoAviso | null;
+  nome?: string | null;
+}): { title: string; body: string } {
+  const saudacao = e.nome ? `Olá, ${e.nome}! ` : "";
+  if (e.portal?.saiu) return { title: e.portal.titulo, body: `${saudacao}${e.portal.mensagem}` };
+  return {
+    title: TITULO_PADRAO_AVISO,
+    body: `${saudacao}Seu número ${e.codigo} ${e.saidaPorUltimo ? "agora aparece como Último Escalado" : "não aparece mais no quadro"}. ${
+      e.portal?.observacao ?? "O destino não foi confirmado no Portal do Motorista."
+    }\n${e.rotulo} — Livro ${e.livro}`,
+  };
+}
+
 export async function notificarEvento(entrada: {
   acao: "chamada" | "saiu" | "voltou" | "perto";
   /** Motivo de saída confirmado na leitura completa do site. */
   saidaPorUltimo?: boolean;
-  portal?: { saiu: boolean; titulo: string; mensagem: string } | null;
+  /**
+   * O que o Portal do Motorista disse (ver `PortalNoAviso`): na saída, a
+   * situação do ponto; na volta (`voltou`), o texto do aviso quando é o
+   * Status do portal que mostra o ponto ATIVO de novo.
+   */
+  portal?: PortalNoAviso | null;
+  /** Momento da saída (ou da volta vista no portal): cada uma tem o próprio aviso (entra na tag). */
+  instante?: Date | null;
   /** Quantos estão na frente (usado no aviso "perto da vez"). */
   naFrente?: number;
   tipo: string;
@@ -327,10 +365,20 @@ export async function notificarEvento(entrada: {
   const saudacao = nome ? `Olá, ${nome}! ` : "";
   const linha = `${entrada.rotulo} — Livro ${entrada.livro}`;
   const detalhe = `Seu ponto: ${entrada.codigo}\nNa Vez: ${entrada.codigoNaVez}`;
+  const avisoSaida = textoAvisoSaida({
+    codigo: entrada.codigo,
+    rotulo: entrada.rotulo,
+    livro: entrada.livro,
+    saidaPorUltimo: entrada.saidaPorUltimo,
+    portal: entrada.portal,
+    nome,
+  });
   const textos: Record<string, string> = {
     chamada: `${saudacao}Seu número está NA VEZ (número 1 do quadro). Aguarde a próxima chamada.\n${linha}\n${detalhe}`,
-    saiu: entrada.portal?.saiu ? `${saudacao}${entrada.portal.mensagem}` : `${saudacao}Seu número ${entrada.codigo} ${entrada.saidaPorUltimo ? "agora aparece como Último Escalado" : "não aparece mais no quadro"}. O destino não foi confirmado no Portal do Motorista.\n${linha}`,
-    voltou: `${saudacao}Seu ponto voltou para a fila.\n${linha}\n${detalhe}`,
+    saiu: avisoSaida.body,
+    voltou: entrada.portal
+      ? `${saudacao}${entrada.portal.mensagem}`
+      : `${saudacao}Seu ponto voltou para a fila.\n${linha}\n${detalhe}`,
     perto: `${saudacao}Seu ponto está chegando perto da vez: ${entrada.naFrente ?? "poucos"} na frente.\n${linha}\n${detalhe}`,
   };
 
@@ -345,11 +393,23 @@ export async function notificarEvento(entrada: {
     entrada.codigoNaVez,
     // Cada dono tem o próprio aviso (o mesmo número pode estar em dois motoristas).
     `M${entrada.motoristaId}`,
+    // Cada SAÍDA tem o próprio aviso: sem o momento, uma nova saída com o mesmo
+    // vizinho de fila (dentro de 2 dias) seria tratada como aviso repetido. O
+    // momento é o mesmo em toda nova tentativa da MESMA saída (vem do banco),
+    // então repetir o envio continua sem duplicar o aviso.
+    ...((entrada.acao === "saiu" || entrada.acao === "voltou") && entrada.instante
+      ? [`T${entrada.instante.getTime().toString(36)}`]
+      : []),
   ].join("_");
 
   return enviarPush(
     {
-      title: entrada.acao === "saiu" && entrada.portal?.saiu ? entrada.portal.titulo : "🚛 Monitor Ponto CopaLinks",
+      title:
+        entrada.acao === "saiu"
+          ? avisoSaida.title
+          : entrada.acao === "voltou" && entrada.portal
+            ? entrada.portal.titulo
+            : TITULO_PADRAO_AVISO,
       body: textos[entrada.acao] ?? textos.chamada,
       tag,
       acao: entrada.acao,

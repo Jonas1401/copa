@@ -1,8 +1,22 @@
-import { consultarPortalNaSaida, type EventoSaida } from "@/lib/portal-saida";
+import {
+  adiarSaidaPendente,
+  agendarSaidaPendente,
+  cancelarSaidaPendenteDoPonto,
+  concluirSaidaPendente,
+  consultarPortalNaSaida,
+  decidirAvisoDeSaida,
+  registrarConsultaAutomatica,
+  reivindicarSaidasPendentes,
+  situacaoDoPontoNasTelas,
+  temAcessoPortalAtivo,
+  type ConsultaPortal,
+  type SaidaPendente,
+} from "@/lib/portal-saida";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { comBanco, db } from "@/db";
 import { amostras, eventos, pontos } from "@/db/schema";
-import { notificarEvento } from "@/lib/push";
+import { nomeDoMotorista, notificarEvento } from "@/lib/push";
+import { fontePortal } from "@/lib/portal-situacao";
 import { composioConfigurado, lerPaginas } from "@/lib/composio";
 
 export type Tipo = "TRUCK" | "CAVALO";
@@ -61,6 +75,11 @@ export type PontoDTO = {
   naFrente: number;
   status: StatusPonto;
   emDispensa?: boolean;
+  /**
+   * Situação do ponto no Portal do Motorista (ATIVO, ESCALADO, EM DISPENSA…),
+   * lida há pouco na conta do próprio motorista. Vazio = sem leitura recente.
+   */
+  situacaoPortal?: string | null;
   detalhe: string;
   vistoEm: string | null;
   chamadoEm: string | null;
@@ -97,6 +116,14 @@ export type EstadoDTO = {
   tabelas: number;
   /** Links diretos para o quadro no site monitorado. */
   site: { geral: string; livros: Record<Livro, string> };
+  /**
+   * Quem avisa a SAÍDA dos pontos deste motorista:
+   *   `portal`     o Status do Portal do Motorista, lido na conta dele;
+   *   `sem_acesso` ninguém — falta cadastrar o CPF e a senha do portal;
+   *   `pausado`    ninguém — o portal recusou a senha cadastrada;
+   *   `quadro`     o quadro público (fonte antiga, `PORTAL_FONTE_SAIDA=quadro`).
+   */
+  avisoSaida?: "portal" | "sem_acesso" | "pausado" | "quadro";
 };
 
 const chave = (tipo: string, livro: string) => `${tipo}:${livro}`;
@@ -387,9 +414,16 @@ export async function registrarEvento(input: {
  * Varre os seis quadros. Só considera saída com a leitura completa: o ponto
  * virou Último Escalado ou já não aparece em nenhuma tabela do seu livro.
  * Um quadro parcial/offline nunca muda um ponto para SAIU.
+ *
+ * `consultarPortal`: depois da conferência, entra no Portal do Motorista para
+ * as saídas que esperam o aviso (só quem pode esperar a consulta terminar —
+ * o cron — pede isto; a tela do app usa `processarSaidasPendentes` em segundo
+ * plano). Só há saída esperando com `PORTAL_FONTE_SAIDA=quadro`: no padrão,
+ * quem avisa a saída é a leitura do Status do portal (`portal-monitor`), e a
+ * saída que o quadro vê fica só no histórico.
  */
 export async function varrer(
-  opcoes: { forcarRede?: boolean } = {},
+  opcoes: { forcarRede?: boolean; consultarPortal?: boolean } = {},
 ): Promise<Snapshot> {
   const [ultima] = await db
     .select()
@@ -449,6 +483,10 @@ export async function varrer(
   // A conferência só vale quando o site respondeu: sem leitura não se declara
   // que ninguém saiu.
   if (lido) await conferirPontos(fila);
+  // As saídas que esperam o portal não dependem do quadro ter respondido agora.
+  if (opcoes.consultarPortal) {
+    await processarSaidasPendentes(lido ? fila : null).catch(() => null);
+  }
 
   return snapshot;
 }
@@ -475,8 +513,151 @@ export async function varrerSeVelho() {
   if (idade > INTERVALO_VARREDURA) await varrer();
 }
 
+// ----------------------------------------- saída conferida no portal
+/** Tempo, por varredura, em que novas consultas ao portal podem COMEÇAR. */
+const PRAZO_SAIDAS_PENDENTES_MS = 15_000;
+
+/**
+ * Confere no Portal do Motorista as saídas que ainda estão sem aviso.
+ *
+ * Quando um ponto some do quadro, `conferirPontos` guarda a saída em
+ * `portal_saidas_pendentes`. Aqui o app entra no portal com a conta do PRÓPRIO
+ * motorista (um login por motorista, um motorista de cada vez), lê a situação
+ * do ponto — ATIVO, ESCALADO ou EM DISPENSA — e envia UM aviso dizendo o que
+ * aconteceu, com os dados da escala quando o ponto foi ESCALADO.
+ *
+ * A decisão é de `decidirAvisoDeSaida`. Se o portal não responder, vale o
+ * aviso do quadro: nenhuma saída fica sem aviso.
+ */
+export async function processarSaidasPendentes(
+  fila: FilaEstado | null = null,
+  opcoes: { buscar?: typeof fetch; prazoMs?: number } = {},
+) {
+  const inicio = Date.now();
+  const prazo = opcoes.prazoMs ?? PRAZO_SAIDAS_PENDENTES_MS;
+  const resumo = { consultas: 0, avisos: 0, adiadas: 0, canceladas: 0 };
+
+  while (Date.now() - inicio < prazo) {
+    const lote = await reivindicarSaidasPendentes();
+    if (!lote.length) break;
+    const motoristaId = lote[0].motoristaId;
+
+    // Só segue a saída cujo ponto continua fora do quadro, com o mesmo dono.
+    const vivas: SaidaPendente[] = [];
+    for (const saida of lote) {
+      const [ponto] = await db
+        .select({ status: pontos.status, motoristaId: pontos.motoristaId })
+        .from(pontos)
+        .where(eq(pontos.id, saida.pontoId))
+        .limit(1);
+      if (ponto && ponto.status === "SAIU" && ponto.motoristaId === saida.motoristaId) {
+        vivas.push(saida);
+      } else {
+        await concluirSaidaPendente(saida.id);
+        resumo.canceladas++;
+      }
+    }
+    if (!vivas.length) continue;
+
+    const consulta = await consultarPortalNaSaida(
+      motoristaId,
+      vivas.map((s) => s.codigo),
+      { buscar: opcoes.buscar },
+    ).catch(
+      (): ConsultaPortal => ({ resultado: "falha", telas: [], diagnostico: ["A consulta ao portal falhou."] }),
+    );
+    resumo.consultas++;
+    const nome = await nomeDoMotorista(motoristaId).catch(() => null);
+
+    for (const saida of vivas) {
+      const tipo = saida.tipo as Tipo;
+      const livro = saida.livro as Livro;
+      const situacao = situacaoDoPontoNasTelas(consulta, saida.codigo, { nomeMotorista: nome });
+      const ehUltimoEscalado =
+        saida.saidaPorUltimo === 1 || fila?.[chave(tipo, livro)]?.ultimo === saida.numero;
+      const decisao = decidirAvisoDeSaida({
+        codigo: saida.codigo,
+        situacao,
+        ehUltimoEscalado,
+        tentativas: saida.tentativas,
+        idadeMs: Date.now() - saida.criadoEm.getTime(),
+      });
+      await registrarConsultaAutomatica({
+        motoristaId,
+        codigo: saida.codigo,
+        livro: saida.livro,
+        situacao,
+        decisao,
+        tentativa: saida.tentativas,
+        diagnostico: consulta.diagnostico,
+      }).catch(() => null);
+
+      if (decisao.acao === "aguardar") {
+        await adiarSaidaPendente(
+          saida.id,
+          decisao.emMs,
+          situacao.tipo === "status" ? situacao.evento.turno : situacao.tipo,
+        );
+        resumo.adiadas++;
+        continue;
+      }
+
+      // O ponto voltou ao quadro enquanto o portal respondia? A varredura já
+      // tratou a volta: esta saída não é mais avisada.
+      const [atual] = await db
+        .select({ status: pontos.status })
+        .from(pontos)
+        .where(eq(pontos.id, saida.pontoId))
+        .limit(1);
+      if (!atual || atual.status !== "SAIU") {
+        await concluirSaidaPendente(saida.id);
+        resumo.canceladas++;
+        continue;
+      }
+
+      // Primeiro o Push (a tag é a mesma numa nova tentativa: não repete o
+      // aviso), depois o fim da espera e só então a linha do histórico.
+      try {
+        await notificarEvento({
+          acao: "saiu",
+          tipo,
+          livro,
+          codigo: saida.codigo,
+          codigoNaVez: saida.codigoNaVez,
+          rotulo: ROTULO_TIPO[tipo],
+          motoristaId,
+          saidaPorUltimo: ehUltimoEscalado,
+          portal: decisao.portal,
+          instante: saida.criadoEm,
+        });
+      } catch {
+        console.error("[monitor] Falha no envio de notificação", "saiu", saida.codigo);
+      }
+      if (await concluirSaidaPendente(saida.id)) {
+        await registrarEvento({
+          codigo: saida.codigo,
+          tipo,
+          livro,
+          numero: saida.numero,
+          acao: "saiu",
+          mensagem: decisao.historico,
+        });
+        resumo.avisos++;
+      }
+    }
+  }
+  return resumo;
+}
+
 async function conferirPontos(fila: FilaEstado) {
   const todos = await db.select().from(pontos).orderBy(pontos.ordem, pontos.id);
+  // Fonte `portal` (o padrão): quem decide que o ponto saiu — e que voltou — é
+  // o Status do Portal do Motorista, lido de minuto em minuto na conta do
+  // próprio motorista (`portal-monitor`). O quadro continua guardando a posição
+  // na fila e avisando que a vez está chegando; a saída e a volta que ELE vê
+  // ficam só no registro, sem aviso. Motorista sem acesso ao portal não recebe
+  // aviso de saída.
+  const peloPortal = fontePortal() === "portal";
 
   await Promise.all(
     todos.map(async (p) => {
@@ -493,7 +674,7 @@ async function conferirPontos(fila: FilaEstado) {
         acao: "chamada" | "saiu" | "voltou" | "perto",
         codigoNaVez: string,
         saidaPorUltimo = false,
-        portal?: EventoSaida | null,
+        instante?: Date,
       ) => {
         // Na Vercel uma Promise sem await pode morrer assim que a resposta do
         // cron termina. Espera a entrega ao serviço de push antes de responder.
@@ -508,7 +689,7 @@ async function conferirPontos(fila: FilaEstado) {
             motoristaId: p.motoristaId ?? null,
             naFrente: naFrenteAviso,
             saidaPorUltimo,
-            portal,
+            instante,
           });
         } catch {
           // Nunca interrompe a atualização da fila por falha do serviço push.
@@ -548,31 +729,67 @@ async function conferirPontos(fila: FilaEstado) {
         // saiu do quadro OU agora é o Último Escalado (último chamado).
         const saiuPorUltimo = fila[chave(tipo, p.livro as Livro)]?.ultimo === p.numero;
         if (p.status !== "SAIU") {
+          const saidaEm = new Date();
           const [alterado] = await db
             .update(pontos)
             .set({
               status: "SAIU",
               naFrente: 0,
-              saidaEm: new Date(),
+              saidaEm,
               chamadoEm: p.chamadoEm ?? new Date(),
             })
             .where(and(eq(pontos.id, p.id), ne(pontos.status, "SAIU")))
             .returning({ id: pontos.id });
           if (!alterado) return; // outro ciclo já notificou esta saída
-          // Confere o portal do próprio motorista antes de enviar um único aviso.
-          // Se não houver acesso ou a leitura falhar, não inventa destino.
-          const portal = p.motoristaId
-            ? await consultarPortalNaSaida(p.motoristaId, codigo).catch(() => null)
-            : null;
+          if (peloPortal) {
+            const comAcesso = p.motoristaId
+              ? await temAcessoPortalAtivo(p.motoristaId).catch(() => false)
+              : false;
+            await registrarEvento({
+              codigo,
+              tipo,
+              livro: p.livro,
+              numero: p.numero,
+              acao: "quadro",
+              mensagem: comAcesso
+                ? `${codigo} não está mais no quadro · quem avisa a saída é o Status do Portal do Motorista`
+                : `${codigo} não está mais no quadro · sem aviso de saída: motorista sem acesso ao Portal do Motorista`,
+            });
+            return;
+          }
+          // Motorista com acesso ao Portal do Motorista: a saída fica guardada e
+          // `processarSaidasPendentes` confere a situação do ponto no portal
+          // (ATIVO / ESCALADO / EM DISPENSA) antes de enviar um único aviso.
+          let aguardaPortal = false;
+          if (p.motoristaId) {
+            try {
+              aguardaPortal =
+                (await temAcessoPortalAtivo(p.motoristaId)) &&
+                (await agendarSaidaPendente({
+                  pontoId: p.id,
+                  motoristaId: p.motoristaId,
+                  codigo,
+                  tipo,
+                  livro: p.livro,
+                  numero: p.numero,
+                  codigoNaVez: naVezAgora(),
+                  saidaPorUltimo: saiuPorUltimo,
+                }));
+            } catch {
+              aguardaPortal = false; // sem a espera, o aviso do quadro sai agora
+            }
+          }
+          if (aguardaPortal) return;
+          // Sem acesso ao portal não há o que consultar: não inventa destino.
           await registrarEvento({
             codigo,
             tipo,
             livro: p.livro,
             numero: p.numero,
             acao: "saiu",
-            mensagem: portal?.saiu ? portal.mensagem : `${codigo} não está mais no quadro · destino não confirmado`,
+            mensagem: `${codigo} não está mais no quadro · destino não confirmado`,
           });
-          await dispararPush("saiu", naVezAgora(), saiuPorUltimo, portal);
+          await dispararPush("saiu", naVezAgora(), saiuPorUltimo, saidaEm);
         }
         return;
       }
@@ -591,16 +808,37 @@ async function conferirPontos(fila: FilaEstado) {
         })
         .where(eq(pontos.id, p.id));
 
-      if (p.status === "SAIU") {
+      if (p.status === "SAIU" && peloPortal) {
+        // A volta é avisada pelo Status do portal (ESCALADO/DISPENSA → ATIVO).
+        // Uma saída do quadro que ainda esperava o portal (agendada antes da
+        // troca da fonte) perde o sentido.
+        await cancelarSaidaPendenteDoPonto(p.id).catch(() => false);
         await registrarEvento({
           codigo,
           tipo,
           livro: p.livro,
           numero: p.numero,
-            acao: "voltou",
-            mensagem: `${codigo} voltou para a fila · número ${numeroFila}`,
-          });
-          await dispararPush("voltou", naVezAgora());
+          acao: "quadro",
+          mensagem: `${codigo} voltou ao quadro · número ${numeroFila}`,
+        });
+      }
+
+      if (p.status === "SAIU" && !peloPortal) {
+        // O aviso de saída ainda esperava o portal? Então a saída nunca chegou
+        // a ser avisada (o número só piscou no quadro): cancela e não avisa a
+        // volta de uma saída que o motorista não soube.
+        const saidaSemAviso = await cancelarSaidaPendenteDoPonto(p.id).catch(() => false);
+        await registrarEvento({
+          codigo,
+          tipo,
+          livro: p.livro,
+          numero: p.numero,
+          acao: "voltou",
+          mensagem: saidaSemAviso
+            ? `${codigo} voltou ao quadro antes do aviso de saída · número ${numeroFila}`
+            : `${codigo} voltou para a fila · número ${numeroFila}`,
+        });
+        if (!saidaSemAviso) await dispararPush("voltou", naVezAgora());
       } else if (
         p.alertaPerto != null &&
         posicao > 0 &&

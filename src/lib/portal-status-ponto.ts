@@ -9,7 +9,8 @@ export function pontoEmDispensa(
   if (!leitura || leitura.ok !== 1 || !Array.isArray(leitura.secoes)) return false;
   const lidoEm = new Date(leitura.criadoEm).getTime();
   if (!Number.isFinite(lidoEm) || lidoEm > agora || agora - lidoEm > 15 * 60_000 || lidoEm < new Date(ponto.criadoEm).getTime()) return false;
-  const status = interpretarStatus(leitura.secoes as SecaoPortal[]);
-  return status?.turno === "EM DISPENSA" &&
-    status.codigo === `${ponto.livro}${String(ponto.numero).padStart(3, "0")}`;
+  // Motorista com mais de um ponto: vale o cartão DESTE número, não o primeiro.
+  const codigo = `${ponto.livro}${String(ponto.numero).padStart(3, "0")}`;
+  const status = interpretarStatus(leitura.secoes as SecaoPortal[], codigo);
+  return status?.turno === "EM DISPENSA" && status.codigo === codigo;
 }

@@ -1,15 +1,29 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { comBanco, temBancoConfigurado } from "@/db";
 import { db } from "@/db";
-import { configuracao, portalEventos, portalMotoristaAcessos, portalLeituras, pontos } from "@/db/schema";
+import { configuracao, portalEventos, portalMotoristaAcessos, portalSaidasPendentes, pontos } from "@/db/schema";
 import { enviarPush } from "@/lib/push";
-import { credenciaisDoMotorista, garantirTabelasPortal, lerTelasDoMotorista } from "@/lib/portal-copadubo";
+import {
+  avisarAcessoPausado,
+  credenciaisDoMotorista,
+  extrairStatusEAtivos,
+  garantirTabelasPortal,
+  lerTelasDoMotorista,
+  lerTelasNaSessaoGuardada,
+  registrarLeituraPortal,
+  umPorVez,
+  type CredenciaisPortal,
+  type TelaLida,
+  type TelasDoMotorista,
+} from "@/lib/portal-copadubo";
+import { fontePortal } from "@/lib/portal-situacao";
 import {
   fraseStatus,
-  interpretarAtivos,
-  interpretarStatus,
+  hashConteudo,
+  linhasDeInteresse,
   normalizarCodigoPortal,
   posicaoNoPortal,
+  todasAsLinhas,
   type LivroAtivosPortal,
   type SecaoPortal,
   type StatusPortal,
@@ -19,12 +33,22 @@ import {
 /**
  * SAÍDA DO PONTO → mensagem com o trabalho.
  *
- * Quando o CopaLinks percebe que o ponto monitorado saiu da tela/quadro
- * (status do fila virou SAIU ou o portal mostra EM ATENDIMENTO), o app entra
- * no site com o CPF/senha do próprio motorista e lê:
+ * Aqui ficam (1) como o que o portal mostra vira a mensagem do aviso —
+ * `montarEventoSaida`, `situacaoDoPontoNasTelas` — e (2) o fluxo em que o
+ * QUADRO percebe a saída e o portal é consultado uma vez.
  *
- *   1. Status do Ponto  → turno (disponível, em atendimento, em dispensa…),
- *                         motivo da dispensa e há quanto tempo;
+ * QUEM DECIDE A SAÍDA: por padrão é o Status do Portal do Motorista, lido de
+ * minuto em minuto (`portal-monitor.ts`, que usa as funções de mensagem daqui).
+ * O fluxo (2), descrito abaixo, só vale com `PORTAL_FONTE_SAIDA=quadro` — e
+ * para os testes manuais do painel do administrador.
+ *
+ * Quando o CopaLinks percebe que o ponto monitorado saiu do quadro (o status
+ * da fila virou SAIU), o app entra no portal com o CPF/senha do próprio
+ * motorista e lê:
+ *
+ *   1. Status do Ponto  → a situação do ponto: ATIVO (continua na fila),
+ *                         ESCALADO (saiu para o trabalho, com os dados da
+ *                         escala) ou EM DISPENSA (motivo e há quanto tempo);
  *   2. Tela de Ativos   → a fila do livro do ponto: onde ele aparece, o tipo
  *                         de trabalho do dia (TRUCK 4 EIXOS, TRUCK BA 2E…) e o
  *                         último ponto escalado.
@@ -42,7 +66,14 @@ import {
 
 export const CHAVE_MODO = "portal_saida_modo";
 export const CHAVE_CAMINHOS = "portal_saida_caminhos";
-export const CAMINHOS_PADRAO = ["", "moto/fila.php"];
+/**
+ * Caminhos EXTRAS do portal, além dos que o leitor descobre sozinho (a tela de
+ * status e as abas do menu). O padrão é nenhum: nada de endereço adivinhado.
+ */
+export const CAMINHOS_PADRAO: string[] = [];
+/** Endereços de versões antigas que o portal não tem (respondem 404). */
+const CAMINHOS_ANTIGOS = new Set(["moto/fila.php", "status.php", "moto/status.php"]);
+const caminhoValido = (c: string) => c !== "" && /^[\w\-./?=&%]+$/.test(c) && !CAMINHOS_ANTIGOS.has(c);
 
 export type ModoSaida = "desligado" | "somente_admin" | "motoristas";
 
@@ -59,6 +90,8 @@ export function podeEnviarSaida(modo: ModoSaida, _origem: "cron" | "admin"): boo
 
 /** Tradução do estado do portal para o nome usado nos avisos. */
 const ROTULO_TURNO: Record<TurnoPortal, string> = {
+  ATIVO: "ATIVO",
+  ESCALADO: "ESCALADO",
   "EM DISPENSA": "EM DISPENSA",
   "EM ATENDIMENTO": "EM ATENDIMENTO",
   DESCANSANDO: "EM DESCANSO",
@@ -86,6 +119,8 @@ export type EventoSaida = {
   proximoDaVez: string | null;
   haMinutos: number | null;
   desde: string | null;
+  /** Linhas do cartão do ponto no portal (os dados da escala, quando ESCALADO). */
+  detalhes: string[];
   titulo: string;
   mensagem: string;
 };
@@ -117,7 +152,7 @@ export async function lerModoSaida(): Promise<{ modo: ModoSaida; caminhos: strin
   const caminhos = bruto
     .split(/[\n,;]+/)
     .map((c) => c.trim().replace(/^\/+/, ""))
-    .filter((c) => c === "" || /^[\w\-./?=&%]+$/.test(c))
+    .filter(caminhoValido)
     .slice(0, 6);
   return {
     modo: ["desligado", "somente_admin", "motoristas"].includes(modo) ? modo : "desligado",
@@ -129,12 +164,12 @@ export async function gravarModoSaida(modo: ModoSaida, caminhos: string[]) {
   if (!temBancoConfigurado) return;
   const limpos = caminhos
     .map((c) => c.trim().replace(/^\/+/, ""))
-    .filter((c) => c === "" || /^[\w\-./?=&%]+$/.test(c))
+    .filter(caminhoValido)
     .slice(0, 6)
     .join(",");
   for (const [chave, valor] of [
     [CHAVE_MODO, modo],
-    [CHAVE_CAMINHOS, limpos || CAMINHOS_PADRAO.join(",")],
+    [CHAVE_CAMINHOS, limpos],
   ] as const) {
     await comBanco(() =>
       db
@@ -147,11 +182,17 @@ export async function gravarModoSaida(modo: ModoSaida, caminhos: string[]) {
 
 /* ------------------------------------------------------------- composição */
 
+/** Tamanho máximo do corpo do aviso (cabe com folga no limite do Web Push). */
+const MAX_MENSAGEM = 900;
+
+const semAcentos = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 /** Mensagem do aviso a partir do status do ponto + quadro de ativos. */
 export function montarEventoSaida(
   status: StatusPortal | null,
   livros: LivroAtivosPortal[],
   codigoMonitorado?: string | null,
+  opcoes: { nomeMotorista?: string | null } = {},
 ): EventoSaida {
   const codigoDigitado = codigoMonitorado ? normalizarCodigoPortal(codigoMonitorado) : null;
   const codigo = status?.codigo ?? codigoDigitado;
@@ -159,14 +200,18 @@ export function montarEventoSaida(
   const livro = achado?.livro ?? (codigo ? livros.find((l) => l.livro === codigo[0]) ?? null : null) ?? null;
   // “Para qual trabalho saiu”: o TIPO da linha do próprio ponto; se ele já saiu
   // do quadro, só usa o último escalado quando for o próprio ponto.
-  const tipoTrabalho = achado?.item.tipo || (livro?.ultimo === codigo ? livro.ultimoTipo : null) || null;
+  const ultimoEhEste = Boolean(livro?.ultimo && codigo && normalizarCodigoPortal(livro.ultimo) === codigo);
+  const tipoTrabalho = achado?.item.tipo || (ultimoEhEste ? livro?.ultimoTipo : null) || null;
   const proximoDaVez = livro?.fila[0]?.codigo ?? null;
   const posicao = achado?.posicao ?? null;
   const turno = status?.turno ?? null;
   const dispensa = turno === "EM DISPENSA";
-  const saiu = dispensa || turno === "EM ATENDIMENTO";
+  const escalado = turno === "ESCALADO";
+  const saiu = dispensa || escalado || turno === "EM ATENDIMENTO";
 
-  const titulos: Record<string, string> = {
+  const titulos: Record<TurnoPortal, string> = {
+    ESCALADO: "🚛 Seu ponto foi ESCALADO",
+    ATIVO: "🟦 Seu ponto está ATIVO",
     "EM DISPENSA": "🟥 Seu ponto foi para a DISPENSA",
     "EM ATENDIMENTO": "🚛 Seu ponto SAIU — trabalho em andamento",
     DESCANSANDO: "😴 Seu ponto está em descanso",
@@ -181,8 +226,30 @@ export function montarEventoSaida(
   const desde = status?.desde ? `Desde ${status.desde}` : null;
   const ha = status?.haMinutos != null ? `há ${status.haMinutos} min` : null;
 
+  // Linhas do cartão do ponto, sem o nome do próprio motorista (ele já sabe).
+  // Só sai a linha que BATE com o nome cadastrado no app: uma linha em
+  // maiúsculas pode ser dado da escala (navio, terminal), e esse não se perde.
+  const nomeApp = semAcentos(opcoes.nomeMotorista ?? "").split(/\s+/).filter((p) => p.length >= 3);
+  const ehONome = (linha: string) =>
+    Boolean(status?.nome) &&
+    linha === status?.nome &&
+    nomeApp.some((p) => semAcentos(linha).split(/\s+/).includes(p));
+  const detalhes = (status?.detalhes ?? []).filter((l) => !ehONome(l));
+
   let mensagem: string;
-  if (dispensa) {
+  if (escalado) {
+    // Os dados da escala vão como o portal escreve, linha por linha: o leitor
+    // não supõe o nome dos campos (navio, terminal, carga…).
+    mensagem = [
+      `Seu ponto ${codigo ?? ""} foi ESCALADO.`,
+      detalhes.length
+        ? detalhes.join("\n")
+        : "O portal não mostrou os dados da escala nesta tela — confira no Portal do Motorista.",
+      trabalho ? `${trabalho}${onde ? ` · ${onde}` : ""}.` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } else if (dispensa) {
     mensagem = [
       `Seu ponto ${codigo ?? ""} saiu para a DISPENSA${status?.motivo ? ` (motivo ${status.motivo})` : ""}.`,
       ha ? `Está nessa situação ${ha}.` : desde ? `${desde}.` : null,
@@ -218,6 +285,7 @@ export function montarEventoSaida(
         motivo: null,
         nome: null,
         ehTelaStatus: false,
+        detalhes: [],
       }),
       trabalho ? `${trabalho}${onde ? ` · ${onde}` : ""}.` : null,
       posicaoTxt ? `${posicaoTxt}.` : null,
@@ -225,6 +293,7 @@ export function montarEventoSaida(
       .filter(Boolean)
       .join(" ");
   }
+  if (mensagem.length > MAX_MENSAGEM) mensagem = `${mensagem.slice(0, MAX_MENSAGEM - 1).trimEnd()}…`;
 
   return {
     saiu,
@@ -239,35 +308,435 @@ export function montarEventoSaida(
     proximoDaVez,
     haMinutos: status?.haMinutos ?? null,
     desde: status?.desde ?? null,
+    detalhes,
     titulo,
     mensagem,
   };
 }
 
-/** Consulta ao detectar a saída, antes do aviso da fila. Nunca usa dados de outro ponto. */
-export async function consultarPortalNaSaida(motoristaId: number, codigo: string): Promise<EventoSaida | null> {
+/* --------------------------------------------- consulta automática na saída */
+
+/** Resultado de UMA ida ao portal para conferir a saída de um motorista. */
+export type ConsultaPortal = {
+  resultado: "lido" | "sem_acesso" | "login_recusado" | "captcha" | "falha";
+  telas: Pick<TelaLida, "caminho" | "titulo" | "secoes" | "totalLinhas">[];
+  /** Diagnóstico legível (sem CPF, senha, cookie ou HTML). */
+  diagnostico: string[];
+};
+
+/**
+ * Consulta ao detectar a saída, ANTES do aviso: entra no portal com a conta do
+ * próprio motorista e lê as telas (Status do Ponto e as abas do menu). Um
+ * login só, mesmo que o motorista tenha mais de um ponto saindo.
+ *
+ * Toda consulta — boa ou ruim — fica em `portal_leituras`: é o que o motorista
+ * vê em “Portal do motorista” e o que alimenta o selo DISPENSA do ponto.
+ */
+export function consultarPortalNaSaida(
+  motoristaId: number,
+  codigos: string | string[],
+  opcoes: { buscar?: typeof fetch } = {},
+): Promise<ConsultaPortal> {
+  return umPorVez(motoristaId, () => consultarAgora(motoristaId, codigos, opcoes));
+}
+
+/**
+ * As telas do motorista para uma consulta sob demanda (saída que esperava o
+ * portal, teste do painel). Com o Status do portal como fonte do aviso (o
+ * padrão), a conta tem UMA sessão — a guardada, que a leitura de minuto em
+ * minuto usa: um login novo aqui poderia derrubá-la. Com a fonte `quadro`,
+ * cada consulta é um login novo, como sempre foi.
+ *
+ * Quem chama já está dentro do `umPorVez` deste motorista.
+ */
+async function lerTelasParaConsulta(
+  motoristaId: number,
+  credenciais: CredenciaisPortal,
+  caminhos: string[],
+  opcoes: { buscar?: typeof fetch; codigo?: string | null },
+): Promise<TelasDoMotorista> {
+  if (fontePortal() === "portal") {
+    const telas = await lerTelasNaSessaoGuardada(motoristaId, { ...opcoes, caminhos, origem: "manual", jaNaFila: true });
+    if (telas) return telas;
+  }
+  return lerTelasDoMotorista(credenciais, caminhos, opcoes);
+}
+
+async function consultarAgora(
+  motoristaId: number,
+  codigos: string | string[],
+  opcoes: { buscar?: typeof fetch },
+): Promise<ConsultaPortal> {
+  const principal = (Array.isArray(codigos) ? codigos[0] : codigos) ?? null;
   await garantirTabelasPortal();
   const credenciais = await credenciaisDoMotorista(motoristaId);
-  if (!credenciais) return null;
-  const { caminhos } = await lerModoSaida();
-  const leitura = await lerTelasDoMotorista(credenciais, caminhos);
-  if (!leitura.ok) return null;
-  let status: StatusPortal | null = null;
-  let livros: LivroAtivosPortal[] = [];
-  let secoesStatus: SecaoPortal[] = [];
-  for (const tela of leitura.telas) {
-    const s = interpretarStatus(tela.secoes);
-    if (!status && s) { status = s; secoesStatus = tela.secoes; }
-    if (!livros.length) livros = interpretarAtivos(tela.secoes);
+  if (!credenciais) {
+    return { resultado: "sem_acesso", telas: [], diagnostico: ["Motorista sem CPF/senha do portal (ou com o acesso pausado)."] };
   }
-  if (!status || status.codigo !== normalizarCodigoPortal(codigo)) return null;
-  // Alimenta o indicador DISPENSA da tela com a mesma leitura recém-confirmada.
-  await comBanco(() => db.insert(portalLeituras).values({
-    motoristaId, ok: 1, secoes: secoesStatus,
-    totalLinhas: secoesStatus.reduce((n, s) => n + s.linhas.length, 0),
-    diagnostico: "Consulta do portal ao detectar saída do quadro.",
-  }));
-  return montarEventoSaida(status, livros, codigo);
+  const { caminhos } = await lerModoSaida();
+  const inicio = Date.now();
+  const leitura = await lerTelasParaConsulta(motoristaId, credenciais, caminhos, { buscar: opcoes.buscar, codigo: principal });
+
+  const gravada = await guardarConsulta(motoristaId, leitura, principal, Date.now() - inicio, "Consulta do portal ao detectar saída do quadro.");
+  if (gravada.pausado) await avisarAcessoPausado(motoristaId, gravada.id);
+
+  return {
+    resultado: leitura.loginRecusado ? "login_recusado" : leitura.captcha ? "captcha" : leitura.ok ? "lido" : "falha",
+    telas: leitura.telas.map((t) => ({ caminho: t.caminho, titulo: t.titulo, secoes: t.secoes, totalLinhas: t.totalLinhas })),
+    diagnostico: leitura.diagnostico,
+  };
+}
+
+/**
+ * Guarda em `portal_leituras` o que uma ida ao portal trouxe: a tela que mostra
+ * a situação do ponto (ou, sem ela, a primeira com conteúdo). É também aqui que
+ * a recusa de login é contada — duas seguidas pausam o acesso do motorista.
+ */
+async function guardarConsulta(
+  motoristaId: number,
+  leitura: TelasDoMotorista,
+  codigo: string | null,
+  ms: number,
+  origem: string,
+) {
+  const { status, secoesStatus } = extrairStatusEAtivos(leitura.telas, codigo);
+  const guardada = status ? null : leitura.telas.find((t) => t.totalLinhas > 0) ?? null;
+  const secoes = status ? secoesStatus : guardada?.secoes ?? [];
+  return registrarLeituraPortal(motoristaId, {
+    ok: leitura.ok,
+    loginRecusado: leitura.loginRecusado,
+    captcha: leitura.captcha,
+    statusHttp: null,
+    titulo: status ? "Status do Ponto" : guardada?.titulo ?? "",
+    totalLinhas: secoes.reduce((n, s) => n + s.linhas.length, 0),
+    secoes,
+    sinais: linhasDeInteresse(secoes),
+    hash: secoes.length ? hashConteudo(secoes) : "",
+    novas: [],
+    removidas: [],
+    diagnostico: [origem, ...leitura.diagnostico],
+    ms,
+  });
+}
+
+/** O que a consulta diz sobre UM ponto. */
+export type SituacaoNoPortal =
+  | { tipo: "status"; evento: EventoSaida }
+  | { tipo: "sem_acesso" | "login_recusado" | "captcha" }
+  | { tipo: "falha"; motivo: string };
+
+/**
+ * Procura o ponto nas telas lidas. Nunca usa dados de outro ponto: se o portal
+ * mostrar um código diferente do monitorado, é falha (e não uma situação).
+ */
+export function situacaoDoPontoNasTelas(
+  consulta: ConsultaPortal,
+  codigo: string,
+  opcoes: { nomeMotorista?: string | null } = {},
+): SituacaoNoPortal {
+  if (consulta.resultado === "sem_acesso" || consulta.resultado === "login_recusado" || consulta.resultado === "captcha") {
+    return { tipo: consulta.resultado };
+  }
+  if (consulta.resultado === "falha") {
+    return { tipo: "falha", motivo: consulta.diagnostico[consulta.diagnostico.length - 1] ?? "O portal não respondeu." };
+  }
+  const alvo = normalizarCodigoPortal(codigo);
+  const { status, livros } = extrairStatusEAtivos(consulta.telas, alvo);
+  if (!status) return { tipo: "falha", motivo: "A tela de Status do Ponto não apareceu na leitura." };
+  if (status.codigo !== alvo) {
+    return { tipo: "falha", motivo: `O portal mostrou o ponto ${status.codigo ?? "sem código"}, e não o ${alvo}.` };
+  }
+  if (!status.turno) {
+    return { tipo: "falha", motivo: `O portal mostrou o ponto ${alvo}, mas sem uma situação conhecida (ATIVO / ESCALADO / EM DISPENSA).` };
+  }
+  // Linha repetida em TODAS as telas é moldura do site (menu, rodapé): não é dado da escala.
+  const comTexto = consulta.telas.filter((t) => t.totalLinhas > 0);
+  const moldura =
+    comTexto.length >= 2
+      ? new Set(todasAsLinhas(comTexto[0].secoes).filter((l) => comTexto.every((t) => todasAsLinhas(t.secoes).includes(l))))
+      : new Set<string>();
+  const limpo: StatusPortal = { ...status, detalhes: status.detalhes.filter((l) => !moldura.has(l)) };
+  return { tipo: "status", evento: montarEventoSaida(limpo, livros, alvo, opcoes) };
+}
+
+/** Novas consultas enquanto o portal ainda diz ATIVO: +1, +2 e +3 minutos. */
+export const ESPERA_NOVA_CONSULTA_MS = 60_000;
+export const MAX_CONSULTAS_ATIVO = 4;
+/** Só uma nova tentativa quando o portal falhou. */
+export const MAX_CONSULTAS_FALHA = 2;
+/** Depois deste tempo o aviso sai com o que houver — nunca fica em silêncio. */
+export const JANELA_ESPERA_MS = 5 * 60_000;
+
+export type DecisaoSaida =
+  | {
+      acao: "avisar";
+      /** O que vai para o `notificarEvento` (null = aviso clássico do quadro). */
+      portal: { saiu: boolean; titulo: string; mensagem: string; observacao?: string } | null;
+      /** Linha do histórico do app. */
+      historico: string;
+      motivo: string;
+    }
+  | { acao: "aguardar"; emMs: number; motivo: string };
+
+/**
+ * Decide o aviso de saída. Função pura (testada sem banco e sem rede).
+ *
+ *   ESCALADO / EM DISPENSA / EM ATENDIMENTO → avisa já, com os dados do portal;
+ *   ATIVO (ou outra situação de fila) e o número é o Último Escalado do quadro
+ *       → avisa já pelo quadro (o portal ainda não registrou a escala);
+ *   ATIVO e o número só sumiu do quadro → espera e consulta de novo (+1, +2,
+ *       +3 min); se o ponto voltar ao quadro, a varredura cancela sem avisar;
+ *       se continuar ATIVO, sai um aviso dizendo exatamente isso;
+ *   falha de leitura → uma nova tentativa no ciclo seguinte, depois o aviso
+ *       clássico; login recusado, captcha ou sem acesso → aviso clássico já.
+ */
+export function decidirAvisoDeSaida(e: {
+  codigo: string;
+  situacao: SituacaoNoPortal;
+  ehUltimoEscalado: boolean;
+  /** Consultas já feitas para esta saída, contando a atual. */
+  tentativas: number;
+  /** Tempo desde que o ponto saiu do quadro. */
+  idadeMs: number;
+}): DecisaoSaida {
+  const classico = (motivo: string): DecisaoSaida => ({
+    acao: "avisar",
+    portal: null,
+    historico: `${e.codigo} não está mais no quadro · destino não confirmado`,
+    motivo,
+  });
+  const dentroDaJanela = e.idadeMs < JANELA_ESPERA_MS;
+
+  const situacao = e.situacao;
+  if (situacao.tipo !== "status") {
+    if (situacao.tipo === "falha") {
+      if (!e.ehUltimoEscalado && dentroDaJanela && e.tentativas < MAX_CONSULTAS_FALHA) {
+        return { acao: "aguardar", emMs: ESPERA_NOVA_CONSULTA_MS, motivo: `${situacao.motivo} Nova tentativa no próximo ciclo.` };
+      }
+      return classico(situacao.motivo);
+    }
+    // Sem como entrar: insistir só repetiria a mesma recusa na conta do motorista.
+    if (situacao.tipo === "login_recusado") return classico("O portal recusou o CPF/senha.");
+    if (situacao.tipo === "captcha") return classico("O portal pediu captcha.");
+    return classico("Motorista sem acesso ativo ao portal.");
+  }
+
+  const evento = situacao.evento;
+  if (evento.saiu) {
+    const resumo = evento.mensagem.replace(/\s*\n\s*/g, " · ").replace(/^Seu ponto /, "");
+    return {
+      acao: "avisar",
+      portal: { saiu: true, titulo: evento.titulo, mensagem: evento.mensagem },
+      historico: resumo.length > 240 ? `${resumo.slice(0, 239)}…` : resumo,
+      motivo: `Portal: ${evento.turno}.`,
+    };
+  }
+
+  const rotulo = evento.turno ? ROTULO_TURNO[evento.turno] : "sem situação";
+  if (e.ehUltimoEscalado) {
+    return {
+      acao: "avisar",
+      portal: {
+        saiu: false,
+        titulo: evento.titulo,
+        mensagem: evento.mensagem,
+        observacao: `No Portal do Motorista o ponto ainda aparece como ${rotulo}: a escala ainda não foi registrada lá.`,
+      },
+      historico: `${e.codigo} é o Último Escalado do quadro · portal ainda mostra ${rotulo}`,
+      motivo: `Portal: ${rotulo}; o quadro confirma a chamada.`,
+    };
+  }
+  if (dentroDaJanela && e.tentativas < MAX_CONSULTAS_ATIVO) {
+    return {
+      acao: "aguardar",
+      emMs: ESPERA_NOVA_CONSULTA_MS,
+      motivo: `Portal: ${rotulo}. O ponto saiu do quadro mas o portal ainda não mostra escala nem dispensa; nova consulta em 1 minuto.`,
+    };
+  }
+  return {
+    acao: "avisar",
+    portal: {
+      saiu: false,
+      titulo: evento.titulo,
+      mensagem: evento.mensagem,
+      observacao: `No Portal do Motorista o ponto continua ${rotulo}, sem escala nem dispensa registradas.`,
+    },
+    historico: `${e.codigo} não está mais no quadro · portal mostra ${rotulo}`,
+    motivo: `Portal: ${rotulo} depois de ${e.tentativas} consulta(s).`,
+  };
+}
+
+/* ------------------------------------------- avisos de saída em espera (fila) */
+
+export type SaidaPendente = typeof portalSaidasPendentes.$inferSelect;
+
+/** O motorista tem CPF/senha do portal cadastrados e o acesso não está pausado. */
+export async function temAcessoPortalAtivo(motoristaId: number): Promise<boolean> {
+  if (!temBancoConfigurado) return false;
+  await garantirTabelasPortal();
+  const [acesso] = await comBanco(() =>
+    db
+      .select({ ativo: portalMotoristaAcessos.ativo })
+      .from(portalMotoristaAcessos)
+      .where(eq(portalMotoristaAcessos.motoristaId, motoristaId))
+      .limit(1),
+  );
+  return acesso?.ativo === 1;
+}
+
+/**
+ * Guarda a saída de um ponto para ser conferida no portal. O registro é
+ * DURÁVEL: se a função da hospedagem for encerrada no meio da consulta, o
+ * próximo ciclo retoma — o aviso não se perde.
+ */
+export async function agendarSaidaPendente(dados: {
+  pontoId: number;
+  motoristaId: number;
+  codigo: string;
+  tipo: string;
+  livro: string;
+  numero: number;
+  codigoNaVez: string;
+  saidaPorUltimo: boolean;
+}): Promise<boolean> {
+  if (!temBancoConfigurado) return false;
+  await garantirTabelasPortal();
+  // Os horários são do relógio do BANCO (`now()`), o mesmo que a reserva usa:
+  // uma diferença de relógio entre o servidor e o banco não atrasa a consulta.
+  const valores = {
+    motoristaId: dados.motoristaId,
+    codigo: dados.codigo,
+    tipo: dados.tipo,
+    livro: dados.livro,
+    numero: dados.numero,
+    codigoNaVez: dados.codigoNaVez,
+    saidaPorUltimo: dados.saidaPorUltimo ? 1 : 0,
+    tentativas: 0,
+    proximaEm: sql`now()`,
+    emAndamentoAte: null,
+    ultimoStatus: null,
+    criadoEm: sql`now()`,
+  };
+  await comBanco(() =>
+    db
+      .insert(portalSaidasPendentes)
+      .values({ pontoId: dados.pontoId, ...valores })
+      .onConflictDoUpdate({ target: portalSaidasPendentes.pontoId, set: valores }),
+  );
+  return true;
+}
+
+/**
+ * Reserva as saídas vencidas de UM motorista (o que espera há mais tempo).
+ * A reserva é atômica e por motorista: duas funções rodando ao mesmo tempo
+ * nunca fazem dois logins simultâneos na mesma conta.
+ */
+export async function reivindicarSaidasPendentes(): Promise<SaidaPendente[]> {
+  if (!temBancoConfigurado) return [];
+  await garantirTabelasPortal();
+  return comBanco(() =>
+    db
+      .update(portalSaidasPendentes)
+      .set({
+        emAndamentoAte: sql`now() + interval '45 seconds'`,
+        tentativas: sql`${portalSaidasPendentes.tentativas} + 1`,
+      })
+      .where(
+        and(
+          sql`${portalSaidasPendentes.motoristaId} = (
+            select s.motorista_id from portal_saidas_pendentes s
+            where s.proxima_em <= now()
+              and (s.em_andamento_ate is null or s.em_andamento_ate < now())
+              and not exists (
+                select 1 from portal_saidas_pendentes o
+                where o.motorista_id = s.motorista_id and o.em_andamento_ate >= now()
+              )
+            order by s.proxima_em, s.id
+            limit 1
+          )`,
+          sql`${portalSaidasPendentes.proximaEm} <= now()`,
+          sql`(${portalSaidasPendentes.emAndamentoAte} is null or ${portalSaidasPendentes.emAndamentoAte} < now())`,
+        ),
+      )
+      .returning(),
+  );
+}
+
+/** Encerra a espera. `true` só para quem de fato removeu (é quem pode avisar). */
+export async function concluirSaidaPendente(id: number): Promise<boolean> {
+  const removidas = await comBanco(() =>
+    db.delete(portalSaidasPendentes).where(eq(portalSaidasPendentes.id, id)).returning({ id: portalSaidasPendentes.id }),
+  );
+  return removidas.length > 0;
+}
+
+/** Marca uma nova consulta para daqui a `emMs` e libera a reserva. */
+export async function adiarSaidaPendente(id: number, emMs: number, ultimoStatus: string | null) {
+  await comBanco(() =>
+    db
+      .update(portalSaidasPendentes)
+      .set({
+        // Relógio do banco, como em `agendarSaidaPendente` e na reserva.
+        proximaEm: sql`now() + (${Math.max(0, Math.round(emMs))} * interval '1 millisecond')`,
+        emAndamentoAte: null,
+        ultimoStatus,
+      })
+      .where(eq(portalSaidasPendentes.id, id)),
+  );
+}
+
+/**
+ * O ponto voltou ao quadro antes de o aviso de saída sair: cancela a espera.
+ * `true` = havia um aviso em espera (a saída não chegou a ser avisada).
+ */
+export async function cancelarSaidaPendenteDoPonto(pontoId: number): Promise<boolean> {
+  if (!temBancoConfigurado) return false;
+  await garantirTabelasPortal();
+  const removidas = await comBanco(() =>
+    db.delete(portalSaidasPendentes).where(eq(portalSaidasPendentes.pontoId, pontoId)).returning({ id: portalSaidasPendentes.id }),
+  );
+  return removidas.length > 0;
+}
+
+/**
+ * Deixa no painel do administrador o que a consulta automática viu e decidiu
+ * (telas, linhas, abas do menu, situação). É o que permite conferir a leitura
+ * do portal sem pedir a senha de ninguém.
+ */
+export async function registrarConsultaAutomatica(dados: {
+  motoristaId: number;
+  codigo: string;
+  livro: string;
+  situacao: SituacaoNoPortal;
+  decisao: DecisaoSaida;
+  tentativa: number;
+  diagnostico: string[];
+}) {
+  if (!temBancoConfigurado) return;
+  const evento = dados.situacao.tipo === "status" ? dados.situacao.evento : null;
+  const avisou = dados.decisao.acao === "avisar";
+  const portal = dados.decisao.acao === "avisar" ? dados.decisao.portal : null;
+  // Só é “aviso do portal” quando o portal confirmou a saída (ESCALADO / EM
+  // DISPENSA). Nos demais, o motorista recebeu o aviso do quadro.
+  const peloPortal = Boolean(portal?.saiu);
+  const mensagem = peloPortal && portal ? portal.mensagem : [dados.decisao.motivo, portal?.observacao].filter(Boolean).join(" ");
+  await comBanco(() =>
+    db.insert(portalEventos).values({
+      motoristaId: dados.motoristaId,
+      tipo: evento?.dispensa ? "dispensa" : evento?.saiu ? "saida" : "consulta",
+      codigo: normalizarCodigoPortal(dados.codigo),
+      turno: evento?.turno ?? null,
+      motivo: evento?.motivo ?? null,
+      tipoTrabalho: evento?.tipoTrabalho ?? null,
+      livro: evento?.livro ?? dados.livro,
+      destino: avisou ? "motorista" : "nenhum",
+      titulo: !avisou ? "Aguardando o portal" : peloPortal ? evento?.titulo ?? "Aviso de saída" : "Aviso de saída pelo quadro",
+      mensagem: mensagem.slice(0, 900),
+      diagnostico: [`Consulta automática nº ${dados.tentativa} · ${dados.decisao.motivo}`, ...dados.diagnostico].join("\n").slice(0, 1_500),
+      modo: "automatico",
+    }),
+  );
+  await comBanco(() => db.delete(portalEventos).where(sql`${portalEventos.criadoEm} < now() - interval '30 days'`));
 }
 
 /** Nome do motorista para o título do aviso (sem expor CPF). */
@@ -301,10 +770,25 @@ export async function verificarSaidaDoMotorista(
   if (!telas) {
     const credenciais = await credenciaisDoMotorista(motoristaId);
     if (!credenciais) {
-      return { rodou: false, motivo: "sem_acesso", evento: null, destino: "nenhum", diagnostico: ["Motorista sem CPF/senha do portal."], quando };
+      return {
+        rodou: false,
+        motivo: "sem_acesso",
+        evento: null,
+        destino: "nenhum",
+        diagnostico: ["Motorista sem CPF/senha do portal (ou com o acesso pausado por senha recusada)."],
+        quando,
+      };
     }
-    const leitura = await lerTelasDoMotorista(credenciais, caminhos, { buscar: opcoes.buscar });
+    // O teste do painel também é uma ida de verdade à conta do motorista: uma
+    // por vez, guardada como as demais leituras e contada na pausa por recusa.
+    const inicio = Date.now();
+    const leitura = await umPorVez(motoristaId, () => lerTelasParaConsulta(motoristaId, credenciais, caminhos, { buscar: opcoes.buscar }));
     diagnostico.push(...leitura.diagnostico);
+    const gravada = await guardarConsulta(motoristaId, leitura, null, Date.now() - inicio, "Leitura pedida no painel do administrador.");
+    if (gravada.pausado) {
+      diagnostico.push("Segunda recusa seguida: o acesso deste motorista foi pausado até ele cadastrar a senha de novo no app.");
+      await avisarAcessoPausado(motoristaId, gravada.id);
+    }
     if (!leitura.ok) {
       return {
         rodou: true,
@@ -320,13 +804,9 @@ export async function verificarSaidaDoMotorista(
     diagnostico.push("Telas simuladas (teste do administrador).");
   }
 
-  let status: StatusPortal | null = null;
-  let livros: LivroAtivosPortal[] = [];
-  for (const tela of telas) {
-    if (!status) status = interpretarStatus(tela.secoes);
-    if (!livros.length) livros = interpretarAtivos(tela.secoes);
-  }
+  const { status, livros } = extrairStatusEAtivos(telas);
   if (!status) diagnostico.push("A tela de Status do Ponto não apareceu na leitura.");
+  else if (!status.turno) diagnostico.push("A tela mostrou o ponto, mas sem uma situação conhecida (ATIVO / ESCALADO / EM DISPENSA).");
   if (!livros.length) diagnostico.push("A Tela de Ativos não apareceu na leitura.");
 
   const evento = montarEventoSaida(status, livros);
@@ -351,7 +831,7 @@ export async function verificarSaidaDoMotorista(
     const r = await enviarPush(
       {
         title: evento.titulo,
-        body: evento.mensagem.slice(0, 180),
+        body: evento.mensagem,
         tag: await assinatura(motoristaId),
         acao: "portal-saida",
         url: "/",
@@ -373,8 +853,8 @@ export async function verificarSaidaDoMotorista(
       livro: evento.livro,
       destino,
       titulo: evento.titulo,
-      mensagem: evento.mensagem.slice(0, 400),
-      diagnostico: diagnostico.join("\n").slice(0, 800),
+      mensagem: evento.mensagem.slice(0, 900),
+      diagnostico: diagnostico.join("\n").slice(0, 1_500),
       modo,
     }),
   );

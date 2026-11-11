@@ -4,7 +4,7 @@ import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 import { limparMotoristasInativos } from "@/lib/motorista-inatividade";
-import { monitorarTodos } from "@/lib/portal-copadubo";
+import { monitorarTodos } from "@/lib/portal-monitor";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,7 +33,10 @@ export async function GET(req: Request) {
   // O monitor de navios é independente de pontos cadastrados e de falhas da
   // fila. As leituras HTTP diretas/Composio acontecem em paralelo no cron.
   const tarefaNavios = verificarNaviosFertilizantes().catch(() => null);
-  // Portal do motorista: cada ciclo lê quem já passou do intervalo (5 min).
+  // Portal do motorista: a cada ciclo, olha o Status de cada motorista que
+  // cadastrou o acesso (sessão guardada: um pedido por motorista) e avisa a
+  // troca de situação — ESCALADO, EM DISPENSA, de volta a ATIVO. É a fonte do
+  // aviso de saída; por isso este despertador precisa rodar a cada minuto.
   // Um portal fora do ar nunca impede a fila nem os navios.
   const tarefaPortal = monitorarTodos().catch(() => null);
   if (!(await temPontoCadastrado())) {
@@ -43,7 +46,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       rodou: false, motivo: "Nenhum ponto cadastrado — monitoramento da fila em repouso.",
       ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
-      ...(portal?.lidos ? { portal } : {}),
+      ...(portal?.motoristas ? { portal } : {}),
       ...(inativos.excluidos ? { inativos } : {}),
     });
   }
@@ -51,7 +54,10 @@ export async function GET(req: Request) {
   let testes = { total: 0, enviados: 0 };
   let leitura: Awaited<ReturnType<typeof varrer>> | null = null;
   try {
-    leitura = await varrer({ forcarRede: true });
+    // `consultarPortal`: só tem trabalho com `PORTAL_FONTE_SAIDA=quadro` (o
+    // ponto que saiu do quadro é conferido no portal antes do aviso). Com a
+    // fonte padrão, a saída vem da leitura do Status acima.
+    leitura = await varrer({ forcarRede: true, consultarPortal: true });
   } catch {
     // Uma falha da fila não pode impedir a publicação dos avisos de navios.
   } finally {
@@ -66,7 +72,7 @@ export async function GET(req: Request) {
     } : { motivo: "Falha temporária na leitura da fila." }),
     quando: new Date().toISOString(),
     ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
-    ...(portal?.lidos ? { portal } : {}),
+    ...(portal?.motoristas ? { portal } : {}),
     ...(inativos.excluidos ? { inativos } : {}),
   });
 }

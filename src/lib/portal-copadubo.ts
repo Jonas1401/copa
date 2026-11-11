@@ -1,23 +1,30 @@
-import { createHash } from "node:crypto";
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { comBanco, temBancoConfigurado } from "@/db";
 import { db } from "@/db";
-import { motoristas, portalLeituras, portalMotoristaAcessos } from "@/db/schema";
+import { motoristas, pontos, portalEventos, portalLeituras, portalMotoristaAcessos, portalSaidasPendentes, portalSituacoes } from "@/db/schema";
 import { cifrarParaColuna, decifrarDeColuna } from "@/lib/admin/segredos";
 import { enviarPush } from "@/lib/push";
+import { SessaoPortal, type PedidoPortal, type RespostaPortal } from "@/lib/portal-sessao";
 import {
   analisarPortal,
   cpfPlausivel,
+  destinoDeRedirecionamentoNaPagina,
   interpretarAtivos,
   interpretarStatus,
-  posicaoNoPortal,
   escolherFormularioLogin,
+  extrairLinksMenu,
   extrairSecoes,
   hashConteudo,
+  hashEstavel,
   limparCpf,
   linhasAlteradas,
+  linhasDeInteresse,
   montarCorpoLogin,
+  normalizarCodigoPortal,
+  pareceMontadaPorScript,
   resolverUrl,
+  type FormularioPortal,
+  type LinkPortal,
   type LivroAtivosPortal,
   type SecaoPortal,
   type StatusPortal,
@@ -29,40 +36,64 @@ import {
  * O motorista cadastra o PRÓPRIO CPF e a senha dentro do aplicativo. Os dois
  * ficam cifrados (AES-256-GCM, mesma chave mestra do cofre de API Keys) e são
  * usados por ESTE módulo apenas para:
- *   1. abrir a página de login e descobrir sozinhos os nomes dos campos;
- *   2. entrar e ler a página de status;
- *   3. transformar a página em seções/linhas (leitura genérica);
- *   4. guardar um resumo por leitura e avisar o motorista quando algo muda.
+ *   1. abrir a área do motorista, que leva à tela de login, e descobrir
+ *      sozinho os nomes dos campos;
+ *   2. ENVIAR o login e conferir que a sessão abriu de verdade;
+ *   3. abrir a tela de status (e as abas que o próprio menu informa);
+ *   4. transformar cada tela em seções/linhas (leitura genérica);
+ *   5. guardar um resumo por leitura e a situação de cada ponto (ATIVO /
+ *      ESCALADO / EM DISPENSA) — é a troca dela que avisa o motorista.
  *
  * Regras de segurança que este arquivo NÃO abre exceção:
  *   - a senha nunca é devolvida para o navegador, nem para o /admin (só o CPF
  *     mascarado e os 4 últimos caracteres da senha);
  *   - a senha nunca vai para log, auditoria, aviso ou IA;
+ *   - CPF e senha só são enviados para o endereço do próprio portal;
+ *   - o leitor só OLHA: abre telas e abas de navegação, nunca um botão ou link
+ *     de ação (“Sair da dispensa”, “Entrar em dispensa”…);
  *   - o conteúdo lido é do PRÓPRIO motorista e só ele (e o administrador,
  *     para diagnóstico) vê;
- *   - cada leitura é um login novo (nada de cookie reaproveitado em disco).
+ *   - a sessão aberta no portal fica guardada CIFRADA (como a senha) para a
+ *     leitura de minuto em minuto ser um pedido só; o login só se repete
+ *     quando o portal encerra a sessão — e, se ele a encerrar a toda hora, no
+ *     máximo um login automático a cada 10 min (`esperaParaLoginAutomatico`).
+ *     O cookie nunca vai para log, diagnóstico ou navegador;
+ *   - login recusado duas vezes seguidas PAUSA o acesso, para a conta do
+ *     motorista não ser bloqueada por tentativas repetidas.
  */
 
 export const PORTAL_BASE = "https://portal.copadubo.com.br";
-/** Página que o motorista vê depois de entrar (a mesma do pedido do app). */
-export const PORTAL_STATUS = `${PORTAL_BASE}/moto/status.php`;
+/** Área do motorista: sem sessão, o portal manda daqui para a tela de login. */
+export const CAMINHO_AREA = "moto/";
+/** Tela “Status do Ponto”, dentro da área do motorista. */
+export const CAMINHO_STATUS = "moto/status";
+export const PORTAL_STATUS = `${PORTAL_BASE}/${CAMINHO_STATUS}`;
 export const PORTAL_LOGIN = `${PORTAL_BASE}/login`;
 
-/** Prazos curtos: a função serverless da Vercel Hobby tem 10 s. */
-const PRAZO_ENVIO_MS = 6_000;
-/** Intervalo mínimo entre leituras do mesmo motorista (o cron roda 1×/min). */
-export const INTERVALO_LEITURA_MS = 5 * 60_000;
-/** Tavily de avisos: no máximo 6 por hora e 20 por dia, por motorista. */
+/**
+ * Intervalo mínimo entre leituras PERIÓDICAS do mesmo motorista. Cada leitura
+ * é um login de verdade na conta dele, então ela só acontece enquanto um ponto
+ * do motorista está fora do quadro (ver `motoristasComLeituraDevida`).
+ */
+export const INTERVALO_LEITURA_MS = 10 * 60_000;
+/** Por quantas horas, depois da saída do quadro, a leitura periódica continua. */
+export const JANELA_LEITURA_APOS_SAIDA_H = 6;
+/** Depois de 3 falhas seguidas, a leitura periódica espera este tempo. */
+const ESPERA_APOS_FALHAS_MS = 30 * 60_000;
+/** Recusas de login seguidas que pausam o acesso do motorista. */
+export const RECUSAS_PARA_PAUSAR = 2;
+/** Cota de avisos: no máximo 6 por hora e 20 por dia, por motorista. */
 const AVISO_MIN_MS = 10 * 60_000;
 const AVISO_MAX_HORA = 6;
 const AVISO_MAX_DIA = 20;
-
-const AGENTE =
-  "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36";
+/** Abas do menu abertas, no máximo, numa mesma visita ao portal. */
+const MAX_ABAS = 4;
 
 /** Endereço do portal, trocável por ambiente (teste/homologação). */
-export function urlPortal(caminho = "status.php"): string {
-  const base = (process.env.PORTAL_MOTORISTA_URL ?? PORTAL_BASE).replace(/\/+$/, "");
+export function urlPortal(caminho: string = CAMINHO_STATUS): string {
+  // `||` e não `??`: a variável criada VAZIA no painel da hospedagem vale o padrão.
+  const configurada = (process.env.PORTAL_MOTORISTA_URL || "").trim();
+  const base = (configurada || PORTAL_BASE).replace(/\/+$/, "").replace(/\/moto$/i, "");
   if (!caminho) return base;
   return `${base}/${caminho.replace(/^\/+/, "")}`;
 }
@@ -95,22 +126,15 @@ export type LeituraPortal = {
   ms: number;
   /** Conteúdo da página só para IA/administrador (não vai para o celular). */
   texto: string;
+  /** Esta leitura ENVIOU um login (não reaproveitou a sessão guardada). */
+  fezLogin?: boolean;
+  /** O freio entre logins segurou a leitura: quando vale tentar de novo. */
+  tentarEmMs?: number;
 };
 
-export type ResultadoLogin = { ok: true; html: string; url: string; cookies: string } | { ok: false; leitura: LeituraPortal };
-
-/** `fetch` que nunca lança: devolve a resposta ou o erro (para virar diagnóstico). */
-async function buscarSeguro(
-  buscar: typeof fetch,
-  url: string,
-  init: RequestInit,
-): Promise<Response | Error> {
-  try {
-    return await buscar(url, init);
-  } catch (e) {
-    return e instanceof Error ? e : new Error(String(e));
-  }
-}
+export type ResultadoLogin =
+  | { ok: true; sessao: SessaoPortal; pagina: RespostaPortal; diagnostico: string[] }
+  | { ok: false; leitura: LeituraPortal };
 
 function leituraFalha(motivo: string, extra: Partial<LeituraPortal> = {}): LeituraPortal {
   return {
@@ -135,71 +159,88 @@ function leituraFalha(motivo: string, extra: Partial<LeituraPortal> = {}): Leitu
   };
 }
 
-/** Cookies de `Set-Cookie` (só o par nome=valor, sem atributos). */
-function juntarCookies(resposta: Response, anteriores = ""): string {
-  const jar = new Map<string, string>();
-  for (const par of anteriores.split(/;\s*/).filter(Boolean)) {
-    const i = par.indexOf("=");
-    if (i > 0) jar.set(par.slice(0, i), par.slice(i + 1));
-  }
-  const recebidos = typeof resposta.headers.getSetCookie === "function"
-    ? resposta.headers.getSetCookie()
-    : (resposta.headers.get("set-cookie") ? [resposta.headers.get("set-cookie") as string] : []);
-  for (const bruto of recebidos) {
-    const primeiro = bruto.split(";")[0]?.trim();
-    if (!primeiro) continue;
-    const i = primeiro.indexOf("=");
-    if (i > 0) jar.set(primeiro.slice(0, i), primeiro.slice(i + 1));
-  }
-  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
-}
-
 const pareceErroDeCredencial = (html: string) =>
   /senha\s+(inv[áa]lida|incorreta)|usu[áa]rio\s+(inv[áa]lido|n[ãa]o)|login\s+inv[áa]lido|dados\s+incorretos|cpf\s+ou\s+senha|credenciais|n[ãa]o\s+encontrad|falha\s+no\s+login|e-?mail\s+ou\s+cpf/i.test(
     html.replace(/<[^>]+>/g, " "),
   );
 
+/** Caminho de um endereço do portal para o diagnóstico: sem domínio e sem parâmetros. */
+function caminhoDe(url: string): string {
+  try {
+    return new URL(url).pathname.replace(/^\/+/, "") || "início";
+  } catch {
+    return "?";
+  }
+}
+
 /**
- * Entra no portal com CPF + senha e devolve a página de status.
+ * Formulário de ENTRADA do portal: o que tem uma senha só. Um “trocar senha”
+ * dentro da área logada (duas ou três senhas) não é a tela de login.
+ */
+function formularioDeEntrada(html: string): FormularioPortal | null {
+  const formulario = escolherFormularioLogin(html);
+  if (!formulario) return null;
+  return formulario.campos.filter((c) => c.tipo === "password").length <= 1 ? formulario : null;
+}
+
+/**
+ * Abre uma página do portal. Se ela vier sem texto e mandar o navegador para
+ * outro endereço pelo HTML (`meta refresh` / `location.href`), segue também.
+ */
+async function abrir(sessao: SessaoPortal, url: string, pedido?: PedidoPortal): Promise<RespostaPortal> {
+  let resposta = await sessao.pedir(url, pedido);
+  for (let n = 0; n < 2 && resposta.ok && resposta.status < 400; n += 1) {
+    if (extrairSecoes(resposta.html).totalLinhas > 0) break;
+    const destino = destinoDeRedirecionamentoNaPagina(resposta.html, resposta.url);
+    if (!destino || destino === resposta.url || !sessao.mesmoSite(destino)) break;
+    resposta = await sessao.pedir(destino, { referer: resposta.url });
+  }
+  return resposta;
+}
+
+/**
+ * Entra no portal com CPF + senha e devolve a sessão aberta.
  *
- * Passos: GET na página que o motorista usa (que redireciona ao login) →
- * descobre o formulário pelo campo de senha → POST com os nomes REAIS dos
- * campos → confere se a resposta ainda é a tela de login.
+ * Passos: GET na área do motorista (que redireciona ao login) → descobre o
+ * formulário pelo campo de senha → POST com os nomes REAIS dos campos → confere
+ * se a resposta ainda é a tela de login.
+ *
+ * Só existe “Login aceito” depois do POST: uma página qualquer que responda
+ * sem pedir senha (um 404, por exemplo) NÃO é a área do motorista.
  */
 export async function entrarNoPortal(
   credenciais: CredenciaisPortal,
-  opcoes: { buscar?: typeof fetch; inicio?: string } = {},
+  opcoes: { buscar?: typeof fetch; inicio?: string; /** Chamado quando o login vai ser ENVIADO. */ aoEnviar?: () => void } = {},
 ): Promise<ResultadoLogin> {
-  const buscar = opcoes.buscar ?? fetch;
-  const inicio = opcoes.inicio ?? urlPortal();
+  const sessao = new SessaoPortal(opcoes.buscar ?? fetch, urlPortal(""));
+  const inicio = opcoes.inicio ?? urlPortal(CAMINHO_AREA);
 
-  const pagina = await buscarSeguro(buscar, inicio, {
-    redirect: "follow",
-    headers: { "user-agent": AGENTE, accept: "text/html,*/*" },
-    signal: AbortSignal.timeout(PRAZO_ENVIO_MS),
-  });
-
-  if (pagina instanceof Error) {
-    return { ok: false, leitura: leituraFalha(`Sem resposta do portal: ${pagina.message.slice(0, 120)}`) };
+  let pagina = await abrir(sessao, inicio);
+  if (!pagina.ok) {
+    return { ok: false, leitura: leituraFalha(`Sem resposta do portal: ${(pagina.erro ?? "falha de rede").slice(0, 120)}`) };
   }
-  if (!pagina.ok && pagina.status >= 500) {
+  if (pagina.status >= 500) {
     return { ok: false, leitura: leituraFalha(`Portal respondeu ${pagina.status}.`, { statusHttp: pagina.status, urlFinal: pagina.url }) };
   }
 
-  const htmlInicial = await pagina.text();
-  const cookies = juntarCookies(pagina);
-  const formulario = escolherFormularioLogin(htmlInicial);
-
-  // A página do pedido às vezes já vem aberta (sessão pública): não força login.
-  if (!formulario && !analisarPortal(htmlInicial).pareceLogin) {
-    const analise = analisarPortal(htmlInicial);
-    if (analise.totalLinhas > 0) {
-      return { ok: true, html: htmlInicial, url: pagina.url, cookies };
+  let formulario = formularioDeEntrada(pagina.html);
+  if (!formulario) {
+    // A área do motorista não levou ao login: tenta a tela de login do portal.
+    const login = await abrir(sessao, urlPortal("login"));
+    const doLogin = login.ok && login.status < 400 ? formularioDeEntrada(login.html) : null;
+    if (doLogin) {
+      formulario = doLogin;
+      pagina = login;
     }
   }
-
   if (!formulario) {
-    return { ok: false, leitura: leituraFalha("Não encontrei o formulário de login na página.", { statusHttp: pagina.status, urlFinal: pagina.url }) };
+    return {
+      ok: false,
+      leitura: leituraFalha(
+        `Não encontrei o formulário de login na página (${caminhoDe(pagina.url)} respondeu HTTP ${pagina.status}).`,
+        { statusHttp: pagina.status, urlFinal: pagina.url },
+      ),
+    };
   }
   if (formulario.temCaptcha) {
     return {
@@ -217,81 +258,424 @@ export async function entrarNoPortal(
     return { ok: false, leitura: leituraFalha("O formulário de login não tem campo de usuário reconhecível.", { urlFinal: pagina.url }) };
   }
 
-  const acao = resolverUrl(pagina.url || inicio, formulario.action);
-  const corpo = montarCorpoLogin(formulario, credenciais);
-  const envio = await buscarSeguro(buscar, acao, {
-    method: formulario.method === "post" ? "POST" : "POST",
-    redirect: "follow",
-    headers: {
-      "user-agent": AGENTE,
-      accept: "text/html,*/*",
-      "content-type": "application/x-www-form-urlencoded",
-      ...(cookies ? { cookie: cookies } : {}),
-      referer: pagina.url || inicio,
-    },
-    body: corpo.toString(),
-    signal: AbortSignal.timeout(PRAZO_ENVIO_MS),
-  });
-
-  if (envio instanceof Error) {
-    return { ok: false, leitura: leituraFalha(`Envio do login falhou: ${envio.message.slice(0, 120)}`) };
+  const acao = resolverUrl(pagina.url, formulario.action);
+  if (!sessao.mesmoSite(acao)) {
+    // CPF e senha só saem daqui para o próprio portal.
+    return { ok: false, leitura: leituraFalha("O formulário de login aponta para outro site — nada foi enviado.", { urlFinal: pagina.url }) };
   }
+  const corpo = montarCorpoLogin(formulario, credenciais);
+  opcoes.aoEnviar?.();
+  const envio = await abrir(sessao, acao, { metodo: "POST", corpo: corpo.toString(), referer: pagina.url });
 
-  const htmlDepois = await envio.text();
-  const cookiesDepois = juntarCookies(envio, cookies);
+  if (!envio.ok) {
+    return { ok: false, leitura: leituraFalha(`Envio do login falhou: ${(envio.erro ?? "falha de rede").slice(0, 120)}`) };
+  }
+  if (envio.status >= 500) {
+    return {
+      ok: false,
+      leitura: leituraFalha(`O portal respondeu ${envio.status} ao receber o login.`, { statusHttp: envio.status, urlFinal: envio.url }),
+    };
+  }
 
   // Voltou com formulário de senha → a sessão não abriu (credencial recusada).
   // Sem formulário e com a página cheia, entrou de verdade: a mensagem de erro
   // só é considerada quando a página veio SEM conteúdo (evita falso positivo
   // de uma página logada que apenas fala de "senha" no menu).
-  const formularioDepois = escolherFormularioLogin(htmlDepois);
-  const analiseDepois = analisarPortal(htmlDepois);
-  const erroNaPagina = pareceErroDeCredencial(htmlDepois);
+  const formularioDepois = formularioDeEntrada(envio.html);
+  const analiseDepois = analisarPortal(envio.html);
+  const erroNaPagina = pareceErroDeCredencial(envio.html);
+  const recusado = (motivo: string, resposta: RespostaPortal): ResultadoLogin => ({
+    ok: false,
+    leitura: leituraFalha(motivo, { loginRecusado: true, avisoPreciso: false, statusHttp: resposta.status, urlFinal: resposta.url }),
+  });
   if (formularioDepois || (analiseDepois.totalLinhas === 0 && erroNaPagina)) {
+    return recusado(
+      erroNaPagina || analiseDepois.totalLinhas === 0
+        ? "O portal recusou o CPF/senha cadastrados."
+        : "Depois do login o portal voltou para a tela de entrada (sessão não abriu).",
+      envio,
+    );
+  }
+  // Erro HTTP ao receber o login (404, 403, 419…) não é a área do motorista —
+  // e também não prova que a senha está errada: é falha, sem contar recusa.
+  if (envio.status >= 400) {
     return {
       ok: false,
       leitura: leituraFalha(
-        erroNaPagina || analiseDepois.totalLinhas === 0
-          ? "O portal recusou o CPF/senha cadastrados."
-          : "Depois do login o portal voltou para a tela de entrada (sessão não abriu).",
-        { loginRecusado: true, avisoPreciso: false, statusHttp: envio.status, urlFinal: envio.url },
+        `O portal respondeu ${envio.status} ao receber o login (${caminhoDe(envio.url)}).`,
+        { statusHttp: envio.status, urlFinal: envio.url },
       ),
     };
   }
-
-  // Entrou. Se o login levou para uma página sem conteúdo útil, busca o status.
+  // Resposta em branco: só vale como login se a área do motorista abrir agora.
   if (analiseDepois.totalLinhas === 0) {
-    const status = await buscarSeguro(buscar, urlPortal(), {
-      redirect: "follow",
-      headers: { "user-agent": AGENTE, accept: "text/html,*/*", ...(cookiesDepois ? { cookie: cookiesDepois } : {}) },
-      signal: AbortSignal.timeout(PRAZO_ENVIO_MS),
-    });
-    if (status instanceof Error) {
-      return { ok: false, leitura: leituraFalha(`Login ok, mas a página de status falhou: ${status.message.slice(0, 120)}`) };
+    const area = await abrir(sessao, inicio, { referer: envio.url });
+    if (!area.ok) {
+      return { ok: false, leitura: leituraFalha(`Sem resposta do portal depois do login: ${(area.erro ?? "falha de rede").slice(0, 120)}`) };
     }
-    const htmlStatus = await status.text();
-    if (escolherFormularioLogin(htmlStatus)) {
+    if (formularioDeEntrada(area.html)) {
+      return recusado("Depois do login o portal voltou para a tela de entrada (sessão não abriu).", area);
+    }
+    if (area.status >= 400) {
       return {
         ok: false,
-        leitura: leituraFalha("Entrou, mas a página de status pediu login de novo (sessão não persistiu).", { statusHttp: status.status, urlFinal: status.url }),
+        leitura: leituraFalha(
+          `Depois do login, a área do motorista respondeu ${area.status} (${caminhoDe(area.url)}).`,
+          { statusHttp: area.status, urlFinal: area.url },
+        ),
       };
     }
-    return { ok: true, html: htmlStatus, url: status.url, cookies: juntarCookies(status, cookiesDepois) };
+    return { ok: true, sessao, pagina: area, diagnostico: ["Login aceito pelo portal."] };
   }
 
-  return { ok: true, html: htmlDepois, url: envio.url, cookies: cookiesDepois };
+  return { ok: true, sessao, pagina: envio, diagnostico: ["Login aceito pelo portal."] };
+}
+
+export type TelaLida = {
+  /** Caminho da tela no portal (sem domínio e sem parâmetros). */
+  caminho: string;
+  url: string;
+  titulo: string;
+  secoes: SecaoPortal[];
+  totalLinhas: number;
+  statusHttp: number;
+};
+
+export type TelasDoMotorista = {
+  ok: boolean;
+  loginRecusado: boolean;
+  captcha: boolean;
+  telas: TelaLida[];
+  diagnostico: string[];
+  /** Esta visita ENVIOU um login (não reaproveitou a sessão guardada). */
+  fezLogin?: boolean;
+};
+
+type VisitaAoPortal = TelasDoMotorista & { falha: LeituraPortal | null };
+
+/**
+ * O que fica guardado (cifrado) entre uma leitura e outra do mesmo motorista:
+ * a sessão aberta no portal. Com ela, olhar o Status é UM pedido — o login só
+ * se repete quando o portal encerra a sessão.
+ */
+export type SessaoGuardada = {
+  /** Cookies da sessão aberta no portal. */
+  cookies: Record<string, string>;
+  /** Endereço em que a tela de Status foi encontrada (a leitura vai direto a ele). */
+  statusUrl: string | null;
+  /** Momento (ms) dos últimos logins ENVIADOS (o último é a referência do freio). */
+  logins: number[];
+  /**
+   * Momento (ms) do último login enviado que NÃO abriu a sessão (senha
+   * recusada, resposta que não deu para entender). Vazio depois de um login
+   * aceito.
+   */
+  falhouEm: number | null;
+  /** Fichas do freio que sobraram logo depois do último login enviado. */
+  fichas: number;
+};
+
+/** Logins automáticos que podem acontecer em seguida antes de o freio segurar. */
+export const LOGINS_SEGUIDOS = 2;
+/** Depois deles, um login automático a cada 10 min (uma ficha do freio volta nesse tempo). */
+const INTERVALO_FREIO_LOGINS_MS = 10 * 60_000;
+
+export const sessaoVazia = (): SessaoGuardada => ({ cookies: {}, statusUrl: null, logins: [], falhouEm: null, fichas: LOGINS_SEGUIDOS });
+
+/** Fichas do freio disponíveis agora: cabem `LOGINS_SEGUIDOS`; volta uma a cada `intervaloMs`. */
+function fichasDoFreio(sessao: SessaoGuardada, intervaloMs: number, agora: number): number {
+  const anteriores = sessao.logins.filter((t) => t <= agora);
+  if (!anteriores.length) return LOGINS_SEGUIDOS;
+  const sobraram = Number.isFinite(sessao.fichas) ? Math.max(0, sessao.fichas) : 0;
+  return Math.min(LOGINS_SEGUIDOS, sobraram + (agora - Math.max(...anteriores)) / intervaloMs);
+}
+
+/**
+ * FREIO DOS LOGINS AUTOMÁTICOS — quanto falta (ms) para a leitura periódica
+ * poder enviar um login nesta conta; 0 = pode agora.
+ *
+ * Com a sessão guardada o login é raro: só quando o portal a encerra. O freio
+ * existe para o caso ruim, sem deixar o ponto sem leitura no caso comum:
+ *
+ *   - o portal encerrou a sessão (o site reiniciou, o motorista entrou no
+ *     portal pelo celular…): a leitura seguinte entra de novo NA HORA — até
+ *     `LOGINS_SEGUIDOS` logins em seguida;
+ *   - o portal continua derrubando a sessão: daí em diante, um login a cada
+ *     `intervaloMs` (10 min). A leitura de minuto em minuto nunca vira um
+ *     login por minuto na conta do motorista;
+ *   - o último login NÃO abriu a sessão (senha recusada, resposta que não deu
+ *     para entender): espera `intervaloMs` antes de tentar outro.
+ *
+ * É um balde de fichas: cabem `LOGINS_SEGUIDOS`, cada login gasta uma
+ * (`registrarLoginEnviado`) e uma ficha volta a cada `intervaloMs`. O login
+ * pedido por uma pessoa (“Ler agora”) não espera o freio, mas gasta ficha.
+ */
+export function esperaParaLoginAutomatico(sessao: SessaoGuardada, intervaloMs: number, agora = Date.now()): number {
+  if (!(intervaloMs > 0)) return 0;
+  if (sessao.falhouEm != null && sessao.falhouEm <= agora) {
+    const falta = sessao.falhouEm + intervaloMs - agora;
+    if (falta > 0) return falta;
+  }
+  const fichas = fichasDoFreio(sessao, intervaloMs, agora);
+  return fichas >= 1 ? 0 : Math.ceil((1 - fichas) * intervaloMs);
+}
+
+/**
+ * Anota na sessão guardada um login ENVIADO agora: gasta uma ficha do freio e,
+ * até a sessão abrir, o login conta como “não abriu a conta” (quem chama limpa
+ * `falhouEm` quando o portal aceita).
+ */
+export function registrarLoginEnviado(sessao: SessaoGuardada, agora = Date.now(), intervaloMs = INTERVALO_FREIO_LOGINS_MS) {
+  sessao.fichas = Math.max(0, fichasDoFreio(sessao, intervaloMs, agora) - 1);
+  sessao.logins = [...sessao.logins.filter((t) => agora - t < 3_600_000), agora].slice(-12);
+  sessao.falhouEm = agora;
+}
+
+type OpcoesVisita = {
+  buscar?: typeof fetch;
+  extras?: string[];
+  ateOStatus?: boolean;
+  codigo?: string | null;
+  /** Sessão guardada do motorista: a visita USA e ATUALIZA este objeto. */
+  sessao?: SessaoGuardada | null;
+  /**
+   * Intervalo do freio dos logins AUTOMÁTICOS na mesma conta (ver
+   * `esperaParaLoginAutomatico`); 0 = sem freio: leitura pedida por uma
+   * pessoa. Só vale junto com `sessao`.
+   */
+  esperaEntreLoginsMs?: number;
+};
+
+/**
+ * UMA visita ao portal: as telas da área do motorista.
+ *
+ * Com uma sessão guardada, começa direto pela tela de Status — sem login. O
+ * login só acontece quando não há sessão ou quando o portal a encerrou (a
+ * página pedida volta como tela de login), e respeita o freio
+ * `esperaEntreLoginsMs` para a conta do motorista não receber um login atrás do
+ * outro se o portal estiver derrubando a sessão.
+ *
+ * Ordem das telas: a página em que a visita caiu → a tela de status → os
+ * caminhos extras do administrador → as abas que o menu do portal informa
+ * (Ponto, Status, Ticket, Fila). Nenhum caminho é adivinhado: o que não está
+ * aqui vem do menu.
+ *
+ * `ateOStatus`: para assim que a situação do ponto for lida (leitura periódica:
+ * menos pedidos ao portal).
+ */
+async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisita = {}): Promise<VisitaAoPortal> {
+  const buscar = opcoes.buscar ?? fetch;
+  const guardada = opcoes.sessao ?? null;
+  const diagnostico: string[] = [];
+  let fezLogin = false;
+  const falhou = (leitura: LeituraPortal): VisitaAoPortal => {
+    const linhas = [...diagnostico, ...leitura.diagnostico];
+    return {
+      ok: false,
+      loginRecusado: leitura.loginRecusado,
+      captcha: leitura.captcha,
+      telas: [],
+      diagnostico: linhas,
+      falha: { ...leitura, diagnostico: linhas, fezLogin },
+      fezLogin,
+    };
+  };
+  const temSituacaoEm = (html: string) => Boolean(interpretarStatus(analisarPortal(html).secoes, opcoes.codigo)?.turno);
+
+  let sessao: SessaoPortal | null = null;
+  /** Páginas já abertas antes da descoberta das telas, com o rótulo do diagnóstico. */
+  const iniciais: { resposta: RespostaPortal; rotulo: string }[] = [];
+
+  // 1) Sessão guardada: vai direto à tela de Status, sem login.
+  if (guardada && Object.keys(guardada.cookies).length) {
+    const candidata = new SessaoPortal(buscar, urlPortal(""), { cookies: guardada.cookies });
+    const alvo = guardada.statusUrl && candidata.mesmoSite(guardada.statusUrl) ? guardada.statusUrl : urlPortal(CAMINHO_STATUS);
+    const abertas: { resposta: RespostaPortal; rotulo: string }[] = [];
+    let vencida = false;
+    const pagina = await abrir(candidata, alvo);
+    // Portal fora do ar não é motivo para um login novo: a sessão continua guardada.
+    if (!pagina.ok) {
+      return falhou(leituraFalha(`Sem resposta do portal: ${(pagina.erro ?? "falha de rede").slice(0, 120)}`));
+    }
+    if (pagina.status >= 500) {
+      return falhou(leituraFalha(`Portal respondeu ${pagina.status}.`, { statusHttp: pagina.status, urlFinal: pagina.url }));
+    }
+    if (formularioDeEntrada(pagina.html)) {
+      vencida = true;
+    } else {
+      abertas.push({ resposta: pagina, rotulo: `Sessão guardada (${caminhoDe(pagina.url)})` });
+      if (pagina.status >= 400 || !temSituacaoEm(pagina.html)) {
+        // O endereço guardado não mostrou a situação: recomeça pela área do
+        // motorista, que tem o menu — e é onde uma sessão vencida aparece.
+        const area = await abrir(candidata, urlPortal(CAMINHO_AREA));
+        if (!area.ok) {
+          return falhou(leituraFalha(`Sem resposta do portal: ${(area.erro ?? "falha de rede").slice(0, 120)}`));
+        }
+        if (area.status >= 500) {
+          return falhou(leituraFalha(`Portal respondeu ${area.status}.`, { statusHttp: area.status, urlFinal: area.url }));
+        }
+        if (formularioDeEntrada(area.html)) vencida = true;
+        else abertas.push({ resposta: area, rotulo: `Área do motorista (${caminhoDe(area.url)})` });
+      }
+    }
+    if (vencida) {
+      diagnostico.push("A sessão guardada venceu: o portal pediu o login de novo.");
+      guardada.cookies = {};
+    } else {
+      sessao = candidata;
+      iniciais.push(...abertas);
+      diagnostico.push("Sessão guardada reaproveitada: nenhum login nesta leitura.");
+    }
+  }
+
+  // 2) Sem sessão válida: login, respeitando o freio dos logins automáticos.
+  if (!sessao) {
+    const espera = opcoes.esperaEntreLoginsMs ?? 0;
+    if (guardada && espera > 0) {
+      const falta = esperaParaLoginAutomatico(guardada, espera);
+      if (falta > 0) {
+        const motivo =
+          guardada.falhouEm != null && Date.now() - guardada.falhouEm < espera
+            ? "o último login não abriu a conta"
+            : "os últimos logins nesta conta foram há pouco";
+        return falhou(
+          leituraFalha(
+            `Sem sessão aberta no portal, e ${motivo}: novo login automático em ${Math.max(1, Math.ceil(falta / 60_000))} min (freio para não bloquear a conta do motorista).`,
+            { avisoPreciso: false, tentarEmMs: falta },
+          ),
+        );
+      }
+    }
+    const entrada = await entrarNoPortal(credenciais, {
+      buscar,
+      aoEnviar: () => {
+        fezLogin = true;
+        if (guardada) registrarLoginEnviado(guardada);
+      },
+    });
+    if (!entrada.ok) {
+      if (guardada) guardada.cookies = {};
+      return falhou(entrada.leitura);
+    }
+    if (guardada) guardada.falhouEm = null;
+    sessao = entrada.sessao;
+    diagnostico.push(...entrada.diagnostico);
+    iniciais.push({ resposta: entrada.pagina, rotulo: `Depois do login (${caminhoDe(entrada.pagina.url)})` });
+  }
+
+  const telas: TelaLida[] = [];
+  const abas: LinkPortal[] = [];
+  /** Links com nome de aba cujo endereço parece uma ação (nunca abertos). */
+  const abasIgnoradas: LinkPortal[] = [];
+  const pedidos = new Set<string>();
+  const guardadas = new Set<string>();
+  const visita = sessao;
+  const chaveDe = (url: string) => {
+    try {
+      const u = new URL(url);
+      return `${u.host}${u.pathname.replace(/\/+$/, "")}${u.search}`;
+    } catch {
+      return url;
+    }
+  };
+  const temSituacao = () => telas.some((t) => Boolean(interpretarStatus(t.secoes, opcoes.codigo)?.turno));
+
+  const guardar = (r: RespostaPortal, rotulo: string) => {
+    if (!r.ok) {
+      diagnostico.push(`${rotulo}: sem resposta (${(r.erro ?? "falha").slice(0, 80)}).`);
+      return;
+    }
+    if (r.status === 404) {
+      diagnostico.push(`${rotulo}: não existe neste portal (404).`);
+      return;
+    }
+    if (r.status >= 400) {
+      diagnostico.push(`${rotulo}: o portal respondeu ${r.status}.`);
+      return;
+    }
+    if (formularioDeEntrada(r.html)) {
+      diagnostico.push(`${rotulo}: pediu login de novo.`);
+      return;
+    }
+    const chave = chaveDe(r.url);
+    if (guardadas.has(chave)) return;
+    guardadas.add(chave);
+    const a = analisarPortal(r.html);
+    telas.push({ caminho: caminhoDe(r.url), url: r.url, titulo: a.titulo, secoes: a.secoes, totalLinhas: a.totalLinhas, statusHttp: r.status });
+    const ignoradas: LinkPortal[] = [];
+    for (const link of extrairLinksMenu(r.html, r.url, ignoradas)) {
+      if (visita.mesmoSite(link.url) && !abas.some((x) => x.url === link.url)) abas.push(link);
+    }
+    for (const link of ignoradas) {
+      if (!abasIgnoradas.some((x) => x.url === link.url)) abasIgnoradas.push(link);
+    }
+    const semTexto = a.totalLinhas <= 2 && pareceMontadaPorScript(r.html);
+    diagnostico.push(
+      `${rotulo}: ${a.totalLinhas} linha(s)${semTexto ? " — a página parece ser montada por JavaScript (o leitor só enxerga o HTML)" : ""}.`,
+    );
+  };
+
+  const abrirTela = async (url: string, rotulo: string) => {
+    const chave = chaveDe(url);
+    if (pedidos.has(chave) || guardadas.has(chave)) return;
+    pedidos.add(chave);
+    guardar(await abrir(visita, url), rotulo);
+  };
+
+  for (const inicial of iniciais) {
+    pedidos.add(chaveDe(inicial.resposta.url));
+    guardar(inicial.resposta, inicial.rotulo);
+  }
+
+  if (!(opcoes.ateOStatus && temSituacao())) await abrirTela(urlPortal(CAMINHO_STATUS), CAMINHO_STATUS);
+  for (const extra of (opcoes.extras ?? []).filter(Boolean).slice(0, 6)) {
+    await abrirTela(urlPortal(extra), extra);
+  }
+  let abertas = 0;
+  for (let i = 0; i < abas.length && abertas < MAX_ABAS; i += 1) {
+    if (opcoes.ateOStatus && temSituacao()) break;
+    const aba = abas[i];
+    const chave = chaveDe(aba.url);
+    if (pedidos.has(chave) || guardadas.has(chave)) continue;
+    abertas += 1;
+    await abrirTela(aba.url, `Aba “${aba.texto}” (${caminhoDe(aba.url)})`);
+  }
+  diagnostico.push(
+    abas.length
+      ? `Abas no menu: ${abas.map((a) => `${a.texto} → ${caminhoDe(a.url)}`).join(", ")}.`
+      : "Nenhuma aba reconhecida no menu do portal (Ponto, Status, Ticket, Fila).",
+  );
+  if (abasIgnoradas.length) {
+    diagnostico.push(
+      `Abas não abertas (o endereço parece uma ação): ${abasIgnoradas.map((a) => `${a.texto} → ${caminhoDe(a.url)}`).join(", ")}.`,
+    );
+  }
+
+  if (guardada) {
+    // A sessão continua aberta para a próxima leitura; o endereço da tela que
+    // mostrou a situação é guardado para ela ir direto (um pedido só).
+    guardada.cookies = visita.exportarCookies();
+    guardada.statusUrl = telas.find((t) => Boolean(interpretarStatus(t.secoes, opcoes.codigo)?.turno))?.url ?? null;
+  }
+
+  return { ok: telas.some((t) => t.totalLinhas > 0), loginRecusado: false, captcha: false, telas, diagnostico, falha: null, fezLogin };
 }
 
 /**
  * Lê o portal de um motorista e devolve o resultado já comparado com a
- * leitura anterior (quando `anteriores` é informado).
+ * leitura anterior (quando `anteriores` é informado). `anteriores: null` =
+ * quem chama não compara linhas (o monitor do Status compara a SITUAÇÃO do
+ * ponto): a leitura vem sem a conta de linhas novas.
+ *
+ * A leitura guardada é a de UMA tela: a que mostra a situação do ponto; sem
+ * ela, a tela de status; sem ela, a página em que o login caiu.
  *
  * Não grava nada: quem chama decide (o cron grava em `portal_leituras`).
  */
 export async function lerPortalDoMotorista(
   credenciais: CredenciaisPortal,
-  anteriores: SecaoPortal[] = [],
-  opcoes: { buscar?: typeof fetch } = {},
+  anteriores: SecaoPortal[] | null = [],
+  opcoes: Pick<OpcoesVisita, "buscar" | "codigo" | "sessao" | "esperaEntreLoginsMs"> = {},
 ): Promise<LeituraPortal> {
   const inicio = Date.now();
   if (!cpfPlausivel(credenciais.cpf)) {
@@ -301,146 +685,120 @@ export async function lerPortalDoMotorista(
     return leituraFalha("Senha do portal não cadastrada.");
   }
 
-  const entrada = await entrarNoPortal(credenciais, opcoes);
-  if (!entrada.ok) return { ...entrada.leitura, ms: Date.now() - inicio };
+  const visita = await visitarPortal(credenciais, {
+    buscar: opcoes.buscar,
+    ateOStatus: true,
+    codigo: opcoes.codigo,
+    sessao: opcoes.sessao,
+    esperaEntreLoginsMs: opcoes.esperaEntreLoginsMs,
+  });
+  if (visita.falha) return { ...visita.falha, ms: Date.now() - inicio };
 
-  const analise = analisarPortal(entrada.html);
-  const vazia = analise.totalLinhas === 0;
-  const anterior = anteriores.length ? anteriores : [];
-  const { novas, removidas } = anterior.length ? linhasAlteradas(anterior, analise.secoes) : { novas: [], removidas: [] };
+  const tela =
+    visita.telas.find((t) => Boolean(interpretarStatus(t.secoes, opcoes.codigo)?.turno)) ??
+    visita.telas.find((t) => t.totalLinhas > 0 && t.caminho.replace(/\/+$/, "") === CAMINHO_STATUS) ??
+    visita.telas.find((t) => t.totalLinhas > 0) ??
+    null;
+  if (!tela) {
+    return {
+      ...leituraFalha("Login aceito, mas nenhuma tela da área do motorista trouxe conteúdo."),
+      vazia: true,
+      avisoPreciso: false,
+      diagnostico: [...visita.diagnostico, "Nenhuma tela da área do motorista trouxe conteúdo."],
+      ms: Date.now() - inicio,
+      fezLogin: visita.fezLogin,
+    };
+  }
+
+  const status = interpretarStatus(tela.secoes, opcoes.codigo);
+  const { novas, removidas } = anteriores?.length ? linhasAlteradas(anteriores, tela.secoes) : { novas: [], removidas: [] };
 
   return {
-    ok: !vazia,
+    ok: true,
     loginRecusado: false,
     captcha: false,
-    vazia,
-    statusHttp: 200,
-    urlFinal: entrada.url,
-    titulo: analise.titulo,
-    secoes: analise.secoes,
-    totalLinhas: analise.totalLinhas,
-    hash: hashConteudo(analise.secoes),
-    sinais: analise.sinais,
+    vazia: false,
+    statusHttp: tela.statusHttp,
+    urlFinal: tela.url,
+    titulo: tela.titulo,
+    secoes: tela.secoes,
+    totalLinhas: tela.totalLinhas,
+    hash: hashConteudo(tela.secoes),
+    sinais: linhasDeInteresse(tela.secoes),
     novas,
     removidas,
     avisoPreciso: false,
     diagnostico: [
-      "Login aceito pelo portal.",
-      `Página lida: ${analise.titulo || entrada.url}`,
-      `${analise.secoes.length} seção(ões) · ${analise.totalLinhas} linha(s).`,
-      anterior.length ? `${novas.length} linha(s) nova(s), ${removidas.length} removida(s).` : "Primeira leitura: nada é avisado ainda.",
+      ...visita.diagnostico,
+      `Página lida: ${tela.titulo || tela.caminho}`,
+      `${tela.secoes.length} seção(ões) · ${tela.totalLinhas} linha(s).`,
+      status?.turno
+        ? `Situação do ponto ${status.codigo ?? ""}: ${status.turnoTexto ?? status.turno}.`
+        : "A situação do ponto (ATIVO / ESCALADO / EM DISPENSA) não apareceu nesta página.",
+      ...(anteriores === null
+        ? []
+        : [anteriores.length ? `${novas.length} linha(s) nova(s), ${removidas.length} removida(s).` : "Primeira leitura: nada é avisado ainda."]),
     ],
     ms: Date.now() - inicio,
-    texto: analise.secoes
+    texto: tela.secoes
       .map((s) => `# ${s.titulo}\n${s.linhas.map((l) => `- ${l}`).join("\n")}`)
       .join("\n")
       .slice(0, 6_000),
+    fezLogin: visita.fezLogin,
   };
 }
 
-export type TelaLida = { caminho: string; url: string; titulo: string; secoes: SecaoPortal[]; totalLinhas: number };
-
-export type TelasDoMotorista = {
-  ok: boolean;
-  loginRecusado: boolean;
-  captcha: boolean;
-  telas: TelaLida[];
-  diagnostico: string[];
-};
-
 /**
- * Lê MAIS DE UMA tela do portal na mesma sessão (ex.: Status do Ponto e a
- * Tela de Ativos/Fila). O primeiro caminho pode ser "" (a página inicial,
- * que é a mesma do login); os demais são abertos com o cookie da sessão.
+ * Lê as telas do motorista na mesma sessão: Status do Ponto e as abas do menu
+ * (Ponto, Ticket, Fila/Ativos). `caminhos` são endereços EXTRAS escolhidos
+ * pelo administrador; o padrão é descobrir tudo pelo menu do próprio portal.
  */
 export async function lerTelasDoMotorista(
   credenciais: CredenciaisPortal,
-  caminhos: string[] = ["", "moto/fila.php"],
-  opcoes: { buscar?: typeof fetch } = {},
+  caminhos: string[] = [],
+  opcoes: Pick<OpcoesVisita, "buscar" | "codigo" | "sessao" | "esperaEntreLoginsMs"> = {},
 ): Promise<TelasDoMotorista> {
-  const buscar = opcoes.buscar ?? fetch;
-  const entrada = await entrarNoPortal(credenciais, opcoes);
-  if (!entrada.ok) {
-    return {
-      ok: false,
-      loginRecusado: entrada.leitura.loginRecusado,
-      captcha: entrada.leitura.captcha,
-      telas: [],
-      diagnostico: entrada.leitura.diagnostico,
-    };
-  }
-  const telas: TelaLida[] = [];
-  const diagnostico: string[] = ["Login aceito pelo portal."];
-  const primeira = analisarPortal(entrada.html);
-  telas.push({ caminho: caminhos[0] ?? "", url: entrada.url, titulo: primeira.titulo, secoes: primeira.secoes, totalLinhas: primeira.totalLinhas });
-
-  for (const caminho of caminhos.slice(1)) {
-    const alvo = urlPortal(caminho);
-    const r = await buscarSeguro(buscar, alvo, {
-      redirect: "follow",
-      headers: {
-        "user-agent": AGENTE,
-        accept: "text/html,*/*",
-        ...(entrada.cookies ? { cookie: entrada.cookies } : {}),
-      },
-      signal: AbortSignal.timeout(PRAZO_ENVIO_MS),
-    });
-    if (r instanceof Error) {
-      diagnostico.push(`${caminho}: sem resposta (${r.message.slice(0, 60)}).`);
-      continue;
-    }
-    if (r.status === 404) {
-      diagnostico.push(`${caminho}: não existe neste portal (404).`);
-      continue;
-    }
-    const html = await r.text();
-    if (escolherFormularioLogin(html)) {
-      diagnostico.push(`${caminho}: pediu login de novo.`);
-      continue;
-    }
-    const a = analisarPortal(html);
-    telas.push({ caminho, url: r.url, titulo: a.titulo, secoes: a.secoes, totalLinhas: a.totalLinhas });
-    diagnostico.push(`${caminho || "início"}: ${a.totalLinhas} linha(s).`);
-  }
-
+  const visita = await visitarPortal(credenciais, {
+    buscar: opcoes.buscar,
+    extras: caminhos,
+    codigo: opcoes.codigo,
+    sessao: opcoes.sessao,
+    esperaEntreLoginsMs: opcoes.esperaEntreLoginsMs,
+  });
   return {
-    ok: telas.some((t) => t.totalLinhas > 0),
-    loginRecusado: false,
-    captcha: false,
-    telas,
-    diagnostico,
+    ok: visita.ok,
+    loginRecusado: visita.loginRecusado,
+    captcha: visita.captcha,
+    telas: visita.telas,
+    diagnostico: visita.diagnostico,
+    fezLogin: visita.fezLogin,
   };
 }
 
 /** Status do ponto + quadros de ativos das telas lidas (o que a saída usa). */
-export function extrairStatusEAtivos(telas: TelaLida[]): {
+export function extrairStatusEAtivos(
+  telas: Pick<TelaLida, "secoes">[],
+  codigo?: string | null,
+): {
   status: StatusPortal | null;
   livros: LivroAtivosPortal[];
-  telaStatus: TelaLida | null;
-  telaAtivos: TelaLida | null;
+  secoesStatus: SecaoPortal[];
 } {
   let status: StatusPortal | null = null;
-  let telaStatus: TelaLida | null = null;
+  let secoesStatus: SecaoPortal[] = [];
   let livros: LivroAtivosPortal[] = [];
-  let telaAtivos: TelaLida | null = null;
 
   for (const tela of telas) {
-    if (!status) {
-      const s = interpretarStatus(tela.secoes);
-      if (s) {
-        status = s;
-        telaStatus = tela;
-      }
+    const s = interpretarStatus(tela.secoes, codigo);
+    // Fica com a primeira tela que diz a SITUAÇÃO; uma tela que só cita o
+    // código (sem ATIVO/ESCALADO/EM DISPENSA) vale apenas se não houver outra.
+    if (s && (!status || (!status.turno && s.turno))) {
+      status = s;
+      secoesStatus = tela.secoes;
     }
-    if (!telaAtivos) {
-      const l = interpretarAtivos(tela.secoes);
-      if (l.length) {
-        livros = l;
-        telaAtivos = tela;
-      }
-    }
+    if (!livros.length) livros = interpretarAtivos(tela.secoes);
   }
-  return { status, livros, telaStatus, telaAtivos };
+  return { status, livros, secoesStatus };
 }
 
 // ------------------------------------------------------------------ banco
@@ -501,6 +859,47 @@ export async function garantirTabelasPortal() {
       );
       CREATE INDEX IF NOT EXISTS portal_eventos_motorista_idx ON portal_eventos (motorista_id, id DESC);
       CREATE INDEX IF NOT EXISTS portal_eventos_criado_idx ON portal_eventos (criado_em);
+      CREATE TABLE IF NOT EXISTS portal_saidas_pendentes (
+        id SERIAL PRIMARY KEY,
+        ponto_id INTEGER NOT NULL,
+        motorista_id INTEGER NOT NULL,
+        codigo TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        livro TEXT NOT NULL,
+        numero INTEGER NOT NULL,
+        codigo_na_vez TEXT NOT NULL,
+        saida_por_ultimo INTEGER NOT NULL DEFAULT 0,
+        tentativas INTEGER NOT NULL DEFAULT 0,
+        proxima_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        em_andamento_ate TIMESTAMP WITH TIME ZONE,
+        ultimo_status TEXT,
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT portal_saida_pendente_ponto UNIQUE (ponto_id)
+      );
+      CREATE INDEX IF NOT EXISTS portal_saidas_pendentes_proxima_idx ON portal_saidas_pendentes (proxima_em);
+      ALTER TABLE portal_motorista_acessos ADD COLUMN IF NOT EXISTS sessao_cifrada TEXT;
+      ALTER TABLE portal_motorista_acessos ADD COLUMN IF NOT EXISTS proxima_leitura_em TIMESTAMP WITH TIME ZONE;
+      CREATE TABLE IF NOT EXISTS portal_situacoes (
+        ponto_id INTEGER PRIMARY KEY,
+        motorista_id INTEGER NOT NULL,
+        codigo TEXT NOT NULL,
+        turno TEXT NOT NULL,
+        mudou_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        lido_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS portal_situacoes_motorista_idx ON portal_situacoes (motorista_id);
+      DO $$
+      DECLARE t text;
+      BEGIN
+        -- Sem policy, o RLS fecha estas tabelas para a API pública do Supabase;
+        -- o servidor (dono das tabelas) continua lendo e gravando normalmente.
+        FOREACH t IN ARRAY ARRAY['portal_motorista_acessos', 'portal_leituras', 'portal_eventos', 'portal_saidas_pendentes', 'portal_situacoes'] LOOP
+          BEGIN
+            EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+          EXCEPTION WHEN OTHERS THEN NULL;
+          END;
+        END LOOP;
+      END $$;
     `),
   );
   tabelasProntas = true;
@@ -628,6 +1027,9 @@ export async function salvarAcessoPortal(
           senhaFinal4: senha.slice(-4),
           ativo: 1,
           atualizadoEm: new Date(),
+          // Senha nova: a sessão antiga não vale mais e a leitura recomeça já.
+          sessaoCifrada: null,
+          proximaLeituraEm: null,
         },
       }),
   );
@@ -642,7 +1044,23 @@ export async function removerAcessoPortal(motoristaId: number) {
     db.delete(portalMotoristaAcessos).where(eq(portalMotoristaAcessos.motoristaId, motoristaId)).returning({ id: portalMotoristaAcessos.motoristaId }),
   );
   await comBanco(() => db.delete(portalLeituras).where(eq(portalLeituras.motoristaId, motoristaId)));
+  // Sem acesso, a situação lida no portal deixa de valer para os pontos dele.
+  await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
   return apagados.length > 0;
+}
+
+/**
+ * Cadastro do motorista excluído: nada do portal dele fica no banco — CPF e
+ * senha cifrados, leituras, registros de consulta e avisos em espera.
+ */
+export async function apagarDadosPortalDoMotorista(motoristaId: number) {
+  if (!temBancoConfigurado) return;
+  await garantirTabelasPortal();
+  await comBanco(() => db.delete(portalMotoristaAcessos).where(eq(portalMotoristaAcessos.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalSaidasPendentes).where(eq(portalSaidasPendentes.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalLeituras).where(eq(portalLeituras.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalEventos).where(eq(portalEventos.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
 }
 
 /** Abre as credenciais guardadas (uso exclusivo do servidor). */
@@ -681,88 +1099,85 @@ async function leituraAnterior(motoristaId: number) {
  * (uma alteração avisada não se repete) e respeitando a cota de 6/hora e
  * 20/dia — o portal pode piscar e não pode virar enxurrada de Push.
  */
-export async function monitorarMotorista(
+export function monitorarMotorista(
   motoristaId: number,
   opcoes: { buscar?: typeof fetch; forcar?: boolean; avisar?: boolean } = {},
 ) {
+  return umPorVez(motoristaId, () => monitorarAgora(motoristaId, opcoes));
+}
+
+/** Idas ao portal em andamento NESTA instância, por motorista. */
+const emAndamento = new Map<number, Promise<unknown>>();
+
+/**
+ * Uma ida ao portal por vez para cada motorista: a leitura periódica e a
+ * consulta da saída do ponto nunca fazem dois logins simultâneos na mesma
+ * conta (a segunda espera a primeira terminar).
+ */
+export function umPorVez<T>(motoristaId: number, tarefa: () => Promise<T>): Promise<T> {
+  const anterior = emAndamento.get(motoristaId) ?? Promise.resolve();
+  const atual = anterior.then(tarefa, tarefa);
+  const fim = atual.then(
+    () => undefined,
+    () => undefined,
+  );
+  emAndamento.set(motoristaId, fim);
+  void fim.then(() => {
+    if (emAndamento.get(motoristaId) === fim) emAndamento.delete(motoristaId);
+  });
+  return atual;
+}
+
+async function monitorarAgora(
+  motoristaId: number,
+  opcoes: { buscar?: typeof fetch; forcar?: boolean; avisar?: boolean },
+) {
   const credenciais = await credenciaisDoMotorista(motoristaId);
-  if (!credenciais) return { rodou: false, motivo: "sem_acesso" as const };
+  if (!credenciais) return { rodou: false as const, motivo: "sem_acesso" as const };
 
   const anteriores = await leituraAnterior(motoristaId);
   // Quantas leituras SEGUIDAS falharam antes desta (para não gritar numa piscada).
   const falhasSeguidas = await contarFalhasSeguidas(motoristaId);
   const leitura = await lerPortalDoMotorista(credenciais, anteriores, { buscar: opcoes.buscar });
 
-  await garantirTabelasPortal();
-  const [gravada] = await comBanco(() =>
-    db
-      .insert(portalLeituras)
-      .values({
-        motoristaId,
-        ok: leitura.ok ? 1 : 0,
-        loginRecusado: leitura.loginRecusado ? 1 : 0,
-        captcha: leitura.captcha ? 1 : 0,
-        statusHttp: leitura.statusHttp,
-        titulo: leitura.titulo.slice(0, 160),
-        totalLinhas: leitura.totalLinhas,
-        secoes: leitura.secoes,
-        sinais: leitura.sinais,
-        hash: leitura.hash,
-        novas: leitura.novas,
-        removidas: leitura.removidas,
-        diagnostico: leitura.diagnostico.join("\n").slice(0, 600),
-        ms: leitura.ms,
-      })
-      .returning({ id: portalLeituras.id, criadoEm: portalLeituras.criadoEm }),
-  );
-
-  // Só apaga histórico antigo deste motorista: 7 dias bastam para diagnóstico.
-  await comBanco(() =>
-    db.delete(portalLeituras).where(
-      and(
-        eq(portalLeituras.motoristaId, motoristaId),
-        sql`${portalLeituras.criadoEm} < now() - interval '7 days'`,
-      ),
-    ),
-  );
+  const gravada = await registrarLeituraPortal(motoristaId, leitura);
 
   let aviso: { enviado: boolean; motivo?: string } = { enviado: false };
   const mudou = leitura.ok && anteriores.length > 0 && leitura.novas.length > 0;
-  const falhouDeNovo = !leitura.ok && anteriores.length > 0 && falhasSeguidas >= 2;
-  const precisaAvisar =
-    opcoes.avisar !== false && ((mudou && leitura.avisoPreciso) || (leitura.loginRecusado && falhasSeguidas > 0) || falhouDeNovo);
+  // Um aviso por SEQUÊNCIA de falhas (na terceira seguida), nunca a cada leitura.
+  const falhouDeNovo = !leitura.ok && !leitura.loginRecusado && !leitura.captcha && falhasSeguidas === 2;
+  const precisaAvisar = opcoes.avisar !== false && ((mudou && leitura.avisoPreciso) || falhouDeNovo);
 
-  if (precisaAvisar) {
+  if (gravada.pausado) {
+    if (opcoes.avisar !== false) aviso = await avisarAcessoPausado(motoristaId, gravada.id);
+  } else if (precisaAvisar) {
     const liberado = await cotaDeAvisoLiberada(motoristaId);
     if (!liberado) {
       aviso = { enviado: false, motivo: "cota" };
     } else {
-      const corpo = leitura.loginRecusado
-        ? "O portal recusou o CPF/senha cadastrados. Abra o app em Portal do motorista e cadastre a senha de novo."
-        : leitura.captcha
-          ? "O portal pediu captcha e a leitura automática parou."
-          : leitura.ok
-            ? resumoAviso(leitura.novas)
-            : "A leitura do portal falhou. Abra o app em Portal do motorista.";
+      const corpo = leitura.ok
+        ? resumoAviso(leitura.novas)
+        : "A leitura do portal falhou três vezes seguidas. Abra o app em Portal do motorista para ver o motivo.";
       const r = await enviarPush(
         {
-          title: leitura.loginRecusado ? "🔒 Portal: senha recusada" : leitura.ok ? "🚦 Portal do motorista: novidade" : "⚠️ Portal do motorista",
+          title: leitura.ok ? "🚦 Portal do motorista: novidade" : "⚠️ Portal do motorista",
           body: corpo.slice(0, 180),
-          tag: `PORTAL_${motoristaId}_${gravada?.id ?? Date.now()}`,
+          tag: `PORTAL_${motoristaId}_${gravada.id ?? Date.now()}`,
           acao: "portal",
           url: "/",
         },
         { motoristaId, unica: true },
       ).catch(() => null);
       aviso = { enviado: Boolean(r && r.enviadas > 0), ...(r && r.enviadas === 0 ? { motivo: "sem_aparelho" } : {}) };
-      if (aviso.enviado) {
-        await comBanco(() => db.update(portalLeituras).set({ avisado: 1 }).where(eq(portalLeituras.id, gravada!.id)));
+      if (aviso.enviado && gravada.id != null) {
+        const id = gravada.id;
+        await comBanco(() => db.update(portalLeituras).set({ avisado: 1 }).where(eq(portalLeituras.id, id)));
       }
     }
   }
 
   return {
-    rodou: true,
+    rodou: true as const,
     ok: leitura.ok,
     loginRecusado: leitura.loginRecusado,
     captcha: leitura.captcha,
@@ -770,9 +1185,414 @@ export async function monitorarMotorista(
     novas: leitura.novas,
     diagnostico: leitura.diagnostico,
     aviso,
-    leituraId: gravada?.id ?? null,
-    quando: gravada?.criadoEm?.toISOString() ?? new Date().toISOString(),
+    pausado: gravada.pausado,
+    leituraId: gravada.id,
+    quando: gravada.criadoEm?.toISOString() ?? new Date().toISOString(),
   };
+}
+
+/** O que uma ida ao portal precisa deixar guardado (nunca CPF, senha ou cookie). */
+export type LeituraParaGuardar = Pick<
+  LeituraPortal,
+  "ok" | "loginRecusado" | "captcha" | "statusHttp" | "titulo" | "totalLinhas" | "secoes" | "sinais" | "hash" | "novas" | "removidas" | "diagnostico" | "ms"
+>;
+
+/**
+ * Guarda o resultado de UMA ida ao portal (leitura periódica ou consulta na
+ * saída do ponto), limpa o histórico com mais de 7 dias e pausa o acesso
+ * quando o login foi recusado `RECUSAS_PARA_PAUSAR` vezes seguidas.
+ */
+export async function registrarLeituraPortal(
+  motoristaId: number,
+  leitura: LeituraParaGuardar,
+  opcoes: { /** Leitura repetida (mesmo conteúdo): atualiza a linha anterior em vez de criar outra. */ compactar?: boolean } = {},
+) {
+  await garantirTabelasPortal();
+  const valores = {
+    motoristaId,
+    ok: leitura.ok ? 1 : 0,
+    loginRecusado: leitura.loginRecusado ? 1 : 0,
+    captcha: leitura.captcha ? 1 : 0,
+    statusHttp: leitura.statusHttp,
+    titulo: leitura.titulo.slice(0, 160),
+    totalLinhas: leitura.totalLinhas,
+    secoes: leitura.secoes,
+    sinais: leitura.sinais,
+    hash: leitura.hash,
+    novas: leitura.novas,
+    removidas: leitura.removidas,
+    diagnostico: leitura.diagnostico.join("\n").slice(0, 1_500),
+    ms: leitura.ms,
+  };
+
+  let gravada: { id: number; criadoEm: Date } | undefined;
+  if (opcoes.compactar && leitura.ok) {
+    // Leitura de minuto em minuto: quando a página mostra o MESMO da leitura
+    // anterior (só o “há N min” andou), a linha anterior é atualizada — o
+    // histórico guarda as mudanças, não mil cópias iguais por dia.
+    const [ultima] = await comBanco(() =>
+      db
+        .select({ id: portalLeituras.id, ok: portalLeituras.ok, secoes: portalLeituras.secoes })
+        .from(portalLeituras)
+        .where(eq(portalLeituras.motoristaId, motoristaId))
+        .orderBy(desc(portalLeituras.id))
+        .limit(1),
+    );
+    if (
+      ultima &&
+      ultima.ok === 1 &&
+      Array.isArray(ultima.secoes) &&
+      hashEstavel(ultima.secoes as SecaoPortal[]) === hashEstavel(leitura.secoes)
+    ) {
+      [gravada] = await comBanco(() =>
+        db
+          .update(portalLeituras)
+          .set({ ...valores, criadoEm: sql`now()` })
+          .where(eq(portalLeituras.id, ultima.id))
+          .returning({ id: portalLeituras.id, criadoEm: portalLeituras.criadoEm }),
+      );
+    }
+  }
+  if (!gravada) {
+    [gravada] = await comBanco(() =>
+      db.insert(portalLeituras).values(valores).returning({ id: portalLeituras.id, criadoEm: portalLeituras.criadoEm }),
+    );
+
+    // Só apaga histórico antigo deste motorista: 7 dias bastam para diagnóstico.
+    await comBanco(() =>
+      db.delete(portalLeituras).where(
+        and(
+          eq(portalLeituras.motoristaId, motoristaId),
+          sql`${portalLeituras.criadoEm} < now() - interval '7 days'`,
+        ),
+      ),
+    );
+    // E nunca mais que `MAX_LEITURAS_GUARDADAS` por motorista: com uma leitura
+    // por minuto, uma página que muda toda hora não pode encher o banco.
+    await comBanco(() =>
+      db.delete(portalLeituras).where(
+        and(
+          eq(portalLeituras.motoristaId, motoristaId),
+          sql`${portalLeituras.id} < (
+            select l.id from portal_leituras l
+            where l.motorista_id = ${motoristaId}
+            order by l.id desc offset ${MAX_LEITURAS_GUARDADAS} limit 1
+          )`,
+        ),
+      ),
+    );
+  }
+
+  // Cada tentativa é um login na conta do motorista: senha recusada em
+  // seguida para as tentativas, até ele cadastrar a senha de novo no app.
+  let pausado = false;
+  if (leitura.loginRecusado && (await contarRecusasSeguidas(motoristaId)) >= RECUSAS_PARA_PAUSAR) {
+    const pausados = await comBanco(() =>
+      db
+        .update(portalMotoristaAcessos)
+        .set({ ativo: 0, sessaoCifrada: null })
+        .where(and(eq(portalMotoristaAcessos.motoristaId, motoristaId), eq(portalMotoristaAcessos.ativo, 1)))
+        .returning({ id: portalMotoristaAcessos.motoristaId }),
+    );
+    pausado = pausados.length > 0;
+  }
+  return { id: gravada?.id ?? null, criadoEm: gravada?.criadoEm ?? null, pausado };
+}
+
+/* ------------------------------------------- sessão guardada e leitura curta */
+
+/** De onde veio a leitura: decide o freio dos logins automáticos. */
+export type OrigemLeitura = "periodica" | "manual";
+
+/**
+ * Intervalo do freio dos logins AUTOMÁTICOS na mesma conta (a regra está em
+ * `esperaParaLoginAutomatico`). Com a sessão guardada o login é raro (só
+ * quando o portal encerra a sessão), e uma queda isolada é refeita na leitura
+ * seguinte. O freio existe para o caso ruim: se o portal derrubar a sessão a
+ * toda hora, a leitura de minuto em minuto viraria um login por minuto — mais
+ * de mil por dia na conta do motorista. Com o freio, depois de
+ * `LOGINS_SEGUIDOS` logins em seguida vale um login automático a cada 10 min
+ * (e 10 min de espera depois de um login que não abriu a conta). A leitura
+ * pedida por uma pessoa (“Ler agora”) não tem freio.
+ */
+export const ESPERA_ENTRE_LOGINS_MS: Record<OrigemLeitura, number> = {
+  periodica: INTERVALO_FREIO_LOGINS_MS,
+  manual: 0,
+};
+
+/** Máximo de leituras guardadas por motorista (as mais antigas saem). */
+export const MAX_LEITURAS_GUARDADAS = 300;
+
+/** Abre a sessão guardada do motorista (vazia quando não há ou não abre mais). */
+async function abrirSessaoGuardada(cifrada: string | null): Promise<SessaoGuardada> {
+  if (!cifrada) return sessaoVazia();
+  try {
+    const bruto = JSON.parse(await decifrarDeColuna(cifrada)) as { c?: unknown; u?: unknown; l?: unknown; f?: unknown; t?: unknown };
+    const cookies: Record<string, string> = {};
+    if (bruto.c && typeof bruto.c === "object") {
+      for (const [nome, valor] of Object.entries(bruto.c as Record<string, unknown>)) {
+        if (typeof valor === "string" && valor && nome.length <= 80 && valor.length <= 2_000) cookies[nome] = valor;
+      }
+    }
+    const agora = Date.now();
+    return {
+      cookies,
+      statusUrl: typeof bruto.u === "string" && bruto.u ? bruto.u : null,
+      logins: Array.isArray(bruto.l)
+        ? bruto.l.filter((t): t is number => typeof t === "number" && t <= agora && agora - t < 3_600_000)
+        : [],
+      falhouEm: typeof bruto.f === "number" && bruto.f <= agora && agora - bruto.f < 3_600_000 ? bruto.f : null,
+      // Sem o número guardado, vale o mais cauteloso: nenhuma ficha sobrando.
+      fichas: typeof bruto.t === "number" && bruto.t >= 0 ? Math.min(LOGINS_SEGUIDOS, bruto.t) : 0,
+    };
+  } catch {
+    // Chave mestra trocada ou valor estragado: recomeça sem sessão.
+    return sessaoVazia();
+  }
+}
+
+/**
+ * Guarda a sessão do motorista, cifrada como a senha (nunca em texto). Só
+ * grava se a senha cadastrada ainda é a mesma da leitura: quem trocou a senha
+ * no meio da visita não herda a sessão (nem o freio) da senha antiga.
+ */
+async function guardarSessao(motoristaId: number, sessao: SessaoGuardada, senhaCifrada: string) {
+  const vazia = !Object.keys(sessao.cookies).length && !sessao.statusUrl && !sessao.logins.length;
+  const cifrada = vazia
+    ? null
+    : await cifrarParaColuna(JSON.stringify({ c: sessao.cookies, u: sessao.statusUrl, l: sessao.logins, f: sessao.falhouEm, t: sessao.fichas }));
+  await comBanco(() =>
+    db
+      .update(portalMotoristaAcessos)
+      .set({ sessaoCifrada: cifrada })
+      .where(and(eq(portalMotoristaAcessos.motoristaId, motoristaId), eq(portalMotoristaAcessos.senhaCifrada, senhaCifrada))),
+  );
+}
+
+/**
+ * Uma visita ao portal com a sessão guardada do motorista: abre a sessão,
+ * entrega para `usar` (que a atualiza) e guarda de volta o que mudou. Devolve
+ * `null` quando o motorista não tem acesso ativo.
+ */
+async function comSessaoGuardada<T>(
+  motoristaId: number,
+  usar: (credenciais: CredenciaisPortal, sessao: SessaoGuardada) => Promise<T>,
+): Promise<T | null> {
+  await garantirTabelasPortal();
+  const acesso = await acessoPortalDoMotorista(motoristaId);
+  if (!acesso || acesso.ativo !== 1) return null;
+  let credenciais: CredenciaisPortal;
+  try {
+    credenciais = { cpf: await decifrarDeColuna(acesso.cpf), senha: await decifrarDeColuna(acesso.senhaCifrada) };
+  } catch {
+    return null;
+  }
+  const sessao = await abrirSessaoGuardada(acesso.sessaoCifrada);
+  const antes = JSON.stringify(sessao);
+  try {
+    return await usar(credenciais, sessao);
+  } finally {
+    if (JSON.stringify(sessao) !== antes) await guardarSessao(motoristaId, sessao, acesso.senhaCifrada).catch(() => null);
+  }
+}
+
+export type LeituraGuardada =
+  | { rodou: false; motivo: "sem_acesso" }
+  | {
+      rodou: true;
+      leitura: LeituraPortal;
+      /** A tela trouxe a situação de pelo menos um dos pontos pedidos. */
+      temSituacao: boolean;
+      /**
+       * A visita nem tentou o login: a sessão guardada venceu e o último login
+       * automático é recente demais. Não é uma leitura e não entra no histórico
+       * (não pode quebrar a contagem de senhas recusadas em seguida).
+       */
+      freio: boolean;
+      id: number | null;
+      criadoEm: Date | null;
+      pausado: boolean;
+    };
+
+/**
+ * UMA olhada no Status do motorista, reaproveitando a sessão guardada: com a
+ * sessão aberta é um pedido só; o login só se repete quando o portal pedir.
+ * Grava a leitura (sem empilhar cópias iguais), guarda a sessão de volta e
+ * conta a recusa de login — duas seguidas pausam o acesso.
+ *
+ * É a leitura usada quando o Status do portal é a fonte do monitoramento.
+ */
+export function lerEGuardarPortal(
+  motoristaId: number,
+  opcoes: {
+    buscar?: typeof fetch;
+    /** Pontos do motorista, como o portal escreve (A032). */
+    codigos?: string[];
+    origem: OrigemLeitura;
+  },
+): Promise<LeituraGuardada> {
+  return umPorVez(motoristaId, async () => {
+    const codigos = (opcoes.codigos ?? []).map((c) => normalizarCodigoPortal(c)).filter(Boolean);
+    const leitura = await comSessaoGuardada(motoristaId, (credenciais, sessao) =>
+      lerPortalDoMotorista(credenciais, null, {
+        buscar: opcoes.buscar,
+        codigo: codigos[0] ?? null,
+        sessao,
+        esperaEntreLoginsMs: ESPERA_ENTRE_LOGINS_MS[opcoes.origem],
+      }),
+    );
+    if (!leitura) return { rodou: false as const, motivo: "sem_acesso" as const };
+
+    if (!leitura.ok && leitura.tentarEmMs != null && !leitura.fezLogin) {
+      return { rodou: true as const, leitura, temSituacao: false, freio: true, id: null, criadoEm: null, pausado: false };
+    }
+
+    // A leitura só serve ao monitoramento se trouxe a situação de um ponto DESTE
+    // motorista: o cartão de outro ponto nunca conta.
+    const temSituacao =
+      leitura.ok &&
+      (codigos.length
+        ? codigos.some((codigo) => {
+            const status = interpretarStatus(leitura.secoes, codigo);
+            return Boolean(status?.turno) && status?.codigo === codigo;
+          })
+        : Boolean(interpretarStatus(leitura.secoes)?.turno));
+
+    const diagnostico = [
+      opcoes.origem === "manual" ? "Leitura do Status pedida agora." : "Leitura periódica do Status.",
+      ...leitura.diagnostico,
+      ...(leitura.ok && !temSituacao
+        ? [
+            codigos.length
+              ? `O portal abriu, mas a tela de Status não mostrou a situação do ponto ${codigos.join(", ")} (ATIVO / ESCALADO / EM DISPENSA). Sem ela não há como avisar a saída.`
+              : "O portal abriu, mas a tela de Status não mostrou a situação de nenhum ponto (ATIVO / ESCALADO / EM DISPENSA).",
+          ]
+        : []),
+    ];
+    // Para o histórico, leitura boa é a que trouxe a situação: é ela que conta
+    // nas falhas seguidas e é ela que o motorista vê em “Última leitura”.
+    const gravada = await registrarLeituraPortal(
+      motoristaId,
+      { ...leitura, ok: temSituacao, diagnostico },
+      { compactar: true },
+    );
+    return { rodou: true as const, leitura: { ...leitura, diagnostico }, temSituacao, freio: false, ...gravada };
+  });
+}
+
+/**
+ * Todas as telas do motorista (Status + as abas do menu) na sessão guardada.
+ * É a leitura da HORA DO AVISO: com mais de uma tela dá para tirar do texto o
+ * que é moldura do site (menu, rodapé) e juntar o tipo de trabalho da aba de
+ * fila. Não grava leitura e respeita o freio de logins. `null` = sem acesso.
+ */
+export function lerTelasNaSessaoGuardada(
+  motoristaId: number,
+  opcoes: {
+    buscar?: typeof fetch;
+    codigo?: string | null;
+    caminhos?: string[];
+    /** `manual` (alguém pediu agora) não espera o freio de logins. */
+    origem?: OrigemLeitura;
+    /** Quem chama já está dentro do `umPorVez` deste motorista. */
+    jaNaFila?: boolean;
+  } = {},
+): Promise<TelasDoMotorista | null> {
+  const ler = () =>
+    comSessaoGuardada(motoristaId, (credenciais, sessao) =>
+      lerTelasDoMotorista(credenciais, opcoes.caminhos ?? [], {
+        buscar: opcoes.buscar,
+        codigo: opcoes.codigo,
+        sessao,
+        esperaEntreLoginsMs: ESPERA_ENTRE_LOGINS_MS[opcoes.origem ?? "periodica"],
+      }),
+    );
+  return opcoes.jaNaFila ? ler() : umPorVez(motoristaId, ler);
+}
+
+/**
+ * Reserva os motoristas cuja leitura periódica do Status já pode começar e
+ * marca a próxima para daqui a `esperaMs`. A reserva é atômica (`SKIP LOCKED`):
+ * duas funções rodando juntas nunca olham a mesma conta no mesmo ciclo. Só
+ * entra quem tem acesso ativo e pelo menos um ponto cadastrado; quem espera há
+ * mais tempo vem primeiro.
+ */
+export async function reservarLeiturasDevidas(limite: number, esperaMs: number, somente?: number): Promise<number[]> {
+  if (!temBancoConfigurado) return [];
+  await garantirTabelasPortal();
+  const linhas = await comBanco(() =>
+    db
+      .update(portalMotoristaAcessos)
+      .set({ proximaLeituraEm: sql`now() + (${Math.max(0, Math.round(esperaMs))} * interval '1 millisecond')` })
+      .where(
+        sql`${portalMotoristaAcessos.motoristaId} in (
+          select c.motorista_id from portal_motorista_acessos c
+          where c.ativo = 1
+            and (c.proxima_leitura_em is null or c.proxima_leitura_em <= now())
+            and exists (select 1 from pontos p where p.motorista_id = c.motorista_id)
+            ${somente != null ? sql`and c.motorista_id = ${somente}` : sql``}
+          order by c.proxima_leitura_em asc nulls first, c.motorista_id
+          limit ${Math.max(1, Math.round(limite))}
+          for update skip locked
+        )`,
+      )
+      .returning({ motoristaId: portalMotoristaAcessos.motoristaId }),
+  );
+  return linhas.map((l) => l.motoristaId);
+}
+
+/** Marca a próxima leitura periódica de um motorista para daqui a `emMs`. */
+export async function marcarProximaLeitura(motoristaId: number, emMs: number) {
+  if (!temBancoConfigurado) return;
+  await comBanco(() =>
+    db
+      .update(portalMotoristaAcessos)
+      .set({ proximaLeituraEm: sql`now() + (${Math.max(0, Math.round(emMs))} * interval '1 millisecond')` })
+      .where(eq(portalMotoristaAcessos.motoristaId, motoristaId)),
+  );
+}
+
+/** Avisa o motorista, uma única vez, que a leitura do portal foi pausada. */
+export async function avisarAcessoPausado(motoristaId: number, leituraId: number | null) {
+  const r = await enviarPush(
+    {
+      title: "🔒 Portal: senha recusada",
+      body: "O portal recusou o CPF/senha cadastrados. Pausei a leitura para não bloquear a sua conta: abra Portal do motorista no app e cadastre a senha de novo.",
+      tag: `PORTAL_PAUSA_${motoristaId}_${leituraId ?? Date.now()}`,
+      acao: "portal",
+      url: "/",
+    },
+    { motoristaId, unica: true },
+  ).catch(() => null);
+  const enviado = Boolean(r && r.enviadas > 0);
+  if (enviado && leituraId != null) {
+    await comBanco(() => db.update(portalLeituras).set({ avisado: 1 }).where(eq(portalLeituras.id, leituraId)));
+  }
+  return { enviado, ...(r && r.enviadas === 0 ? { motivo: "sem_aparelho" } : {}) };
+}
+
+/**
+ * Avisa o motorista que o Status não está sendo lido — e que, enquanto isso,
+ * não há aviso de saída. Quem chama decide QUANDO (uma vez por sequência de
+ * falhas); aqui valem a tag única e a cota de avisos do portal.
+ */
+export async function avisarLeituraParada(motoristaId: number, leituraId: number | null) {
+  if (!(await cotaDeAvisoLiberada(motoristaId))) return { enviado: false, motivo: "cota" };
+  const r = await enviarPush(
+    {
+      title: "⚠️ Portal do motorista",
+      body: "Não consegui ler o Status do seu ponto 3 vezes seguidas. Enquanto isso o aviso de saída fica parado. Abra Portal do motorista no app para ver o motivo.",
+      tag: `PORTAL_PARADA_${motoristaId}_${leituraId ?? Date.now()}`,
+      acao: "portal",
+      url: "/",
+    },
+    { motoristaId, unica: true },
+  ).catch(() => null);
+  const enviado = Boolean(r && r.enviadas > 0);
+  if (enviado && leituraId != null) {
+    await comBanco(() => db.update(portalLeituras).set({ avisado: 1 }).where(eq(portalLeituras.id, leituraId)));
+  }
+  return { enviado, ...(r && r.enviadas === 0 ? { motivo: "sem_aparelho" } : {}) };
 }
 
 /** Primeira linha nova, curta, para o corpo do aviso. */
@@ -913,7 +1733,109 @@ export type PainelMotoristaPortal = {
 };
 
 /**
- * Uma rodada do monitoramento para TODOS os motoristas com acesso ativo.
+ * A leitura PERIÓDICA de um motorista é devida agora? (função pura, testada)
+ *
+ * Cada leitura é um login de verdade na conta do motorista, então ela só
+ * acontece quando serve para alguma coisa:
+ *   - um ponto dele está FORA do quadro (SAIU) há menos de
+ *     `JANELA_LEITURA_APOS_SAIDA_H` horas. Com o ponto na fila, o quadro
+ *     público já mostra a posição e ninguém precisa entrar no portal;
+ *   - a última leitura tem mais de `INTERVALO_LEITURA_MS`;
+ *   - depois de 3 falhas seguidas, só a cada `ESPERA_APOS_FALHAS_MS`;
+ *   - a última leitura boa é ANTERIOR à saída (ainda não se sabe a situação)
+ *     ou mostra o ponto EM DISPENSA — é a releitura que mantém o selo
+ *     “DISPENSA” do app em dia. Ponto ESCALADO não é relido: o motorista está
+ *     trabalhando e a volta à fila aparece no quadro público.
+ */
+export function leituraPeriodicaDevida(e: {
+  agora: number;
+  /** Pontos do motorista fora do quadro, dentro da janela. */
+  pontosFora: { codigo: string; saidaEm: number }[];
+  ultima: { ok: boolean; em: number; secoes: SecaoPortal[] } | null;
+  falhasSeguidas: number;
+}): boolean {
+  const limite = e.agora - JANELA_LEITURA_APOS_SAIDA_H * 3_600_000;
+  const fora = e.pontosFora.filter((p) => p.saidaEm > limite);
+  if (!fora.length) return false;
+  const ultima = e.ultima;
+  if (!ultima) return true;
+  const idade = e.agora - ultima.em;
+  if (idade < INTERVALO_LEITURA_MS) return false;
+  if (!ultima.ok) return e.falhasSeguidas < 3 || idade >= ESPERA_APOS_FALHAS_MS;
+  return fora.some((p) => {
+    if (ultima.em < p.saidaEm) return true;
+    const status = interpretarStatus(ultima.secoes, p.codigo);
+    return status?.codigo === p.codigo && status.turno === "EM DISPENSA";
+  });
+}
+
+/**
+ * Quem precisa de uma leitura periódica agora: acesso ativo, sem aviso de
+ * saída esperando a consulta (ela já vai ao portal) e com a leitura devida
+ * pela regra de `leituraPeriodicaDevida`. Quem está há mais tempo sem leitura
+ * vem primeiro (ninguém fica para trás).
+ */
+async function motoristasComLeituraDevida(limite: number, somente?: number): Promise<number[]> {
+  await garantirTabelasPortal();
+  const linhas = await comBanco(() =>
+    db
+      .select({ motoristaId: portalMotoristaAcessos.motoristaId })
+      .from(portalMotoristaAcessos)
+      .where(
+        and(
+          eq(portalMotoristaAcessos.ativo, 1),
+          ...(somente != null ? [eq(portalMotoristaAcessos.motoristaId, somente)] : []),
+          sql`exists (select 1 from pontos p where p.motorista_id = ${portalMotoristaAcessos.motoristaId}
+                and p.status = 'SAIU'
+                and p.saida_em > now() - (${JANELA_LEITURA_APOS_SAIDA_H} * interval '1 hour'))`,
+          sql`not exists (select 1 from portal_saidas_pendentes s where s.motorista_id = ${portalMotoristaAcessos.motoristaId})`,
+          sql`not exists (select 1 from portal_leituras l where l.motorista_id = ${portalMotoristaAcessos.motoristaId}
+                and l.criado_em > now() - (${Math.round(INTERVALO_LEITURA_MS / 1000)} * interval '1 second'))`,
+        ),
+      )
+      .orderBy(
+        sql`(select max(l.criado_em) from portal_leituras l where l.motorista_id = ${portalMotoristaAcessos.motoristaId}) asc nulls first`,
+        asc(portalMotoristaAcessos.motoristaId),
+      )
+      // Margem: parte dos candidatos cai na regra fina (ESCALADO, falhas seguidas).
+      .limit(Math.max(1, limite) * 4),
+  );
+
+  const devidos: number[] = [];
+  for (const { motoristaId } of linhas) {
+    if (devidos.length >= Math.max(1, limite)) break;
+    const fora = await comBanco(() =>
+      db
+        .select({ livro: pontos.livro, numero: pontos.numero, saidaEm: pontos.saidaEm })
+        .from(pontos)
+        .where(and(eq(pontos.motoristaId, motoristaId), eq(pontos.status, "SAIU"))),
+    );
+    const ultima = await ultimaLeituraPortal(motoristaId);
+    const devida = leituraPeriodicaDevida({
+      agora: Date.now(),
+      pontosFora: fora
+        .filter((p): p is typeof p & { saidaEm: Date } => p.saidaEm instanceof Date)
+        .map((p) => ({ codigo: `${p.livro}${String(p.numero).padStart(3, "0")}`, saidaEm: p.saidaEm.getTime() })),
+      ultima: ultima
+        ? { ok: ultima.ok === 1, em: ultima.criadoEm.getTime(), secoes: Array.isArray(ultima.secoes) ? (ultima.secoes as SecaoPortal[]) : [] }
+        : null,
+      falhasSeguidas: ultima && ultima.ok !== 1 ? await contarFalhasSeguidas(motoristaId) : 0,
+    });
+    if (devida) devidos.push(motoristaId);
+  }
+  return devidos;
+}
+
+/** Leitura periódica de UM motorista, só se ela for devida agora (app aberto). */
+export async function monitorarSeDevido(motoristaId: number) {
+  if (!temBancoConfigurado) return { rodou: false as const, motivo: "sem_banco" as const };
+  const [devido] = await motoristasComLeituraDevida(1, motoristaId);
+  if (devido == null) return { rodou: false as const, motivo: "sem_necessidade" as const };
+  return monitorarMotorista(motoristaId);
+}
+
+/**
+ * Uma rodada do monitoramento para os motoristas com leitura devida.
  * O cron chama isto; a fila da Copadubo continua no caminho dela.
  * Cada motorista tem `INTERVALO_LEITURA_MS` de folga, para o portal não ser
  * martelado a cada minuto.
@@ -921,35 +1843,18 @@ export type PainelMotoristaPortal = {
 export async function monitorarTodos(limite = 3, prazoMs = 25_000) {
   const inicio = Date.now();
   if (!temBancoConfigurado) return { motoristas: 0, lidos: 0, falhas: 0, avisos: 0 };
-  await garantirTabelasPortal();
-  const acessiveis = await comBanco(() =>
-    db
-      .select({ motoristaId: portalMotoristaAcessos.motoristaId })
-      .from(portalMotoristaAcessos)
-      .where(eq(portalMotoristaAcessos.ativo, 1))
-      .orderBy(asc(portalMotoristaAcessos.motoristaId))
-      .limit(Math.max(1, limite)),
-  );
+  const devidos = await motoristasComLeituraDevida(limite);
 
   let lidos = 0;
   let falhas = 0;
   let avisos = 0;
   let pulados = 0;
-  for (const { motoristaId } of acessiveis) {
+  for (const motoristaId of devidos) {
     // O ciclo do cron tem 60 s para fila + navios + portal: nunca estoura aqui.
     if (Date.now() - inicio > prazoMs) {
       pulados++;
       continue;
     }
-    const [ultima] = await comBanco(() =>
-      db
-        .select({ em: portalLeituras.criadoEm })
-        .from(portalLeituras)
-        .where(eq(portalLeituras.motoristaId, motoristaId))
-        .orderBy(desc(portalLeituras.id))
-        .limit(1),
-    );
-    if (ultima && Date.now() - new Date(ultima.em).getTime() < INTERVALO_LEITURA_MS) continue;
     try {
       const r = await monitorarMotorista(motoristaId);
       if (!r.rodou) continue;
@@ -961,7 +1866,7 @@ export async function monitorarTodos(limite = 3, prazoMs = 25_000) {
       console.error("[portal-copadubo] leitura falhou:", e instanceof Error ? e.message : e);
     }
   }
-  return { motoristas: acessiveis.length, lidos, falhas, avisos, ...(pulados ? { pulados } : {}) };
+  return { motoristas: devidos.length, lidos, falhas, avisos, ...(pulados ? { pulados } : {}) };
 }
 
 /** Resumo textual do último status para o administrador (sem segredo). */
@@ -997,19 +1902,47 @@ export function semCredenciais(texto: string, credenciais: CredenciaisPortal | n
 /** Campos que NUNCA podem sair do servidor (checados pelo teste). */
 export const CHAVES_SENSIVEIS = ["cpf", "senha", "senhaCifrada", "cookies"];
 
+/** Quantas idas ao portal FALHARAM em seguida, da mais recente para trás. */
 export async function contarFalhasSeguidas(motoristaId: number): Promise<number> {
   if (!temBancoConfigurado) return 0;
   const linhas = await comBanco(() =>
     db
       .select({ ok: portalLeituras.ok })
       .from(portalLeituras)
-      .where(and(eq(portalLeituras.motoristaId, motoristaId), ne(portalLeituras.hash, "")))
+      .where(eq(portalLeituras.motoristaId, motoristaId))
       .orderBy(desc(portalLeituras.id))
       .limit(10),
   );
   let n = 0;
   for (const l of linhas) {
     if (l.ok === 1) break;
+    n++;
+  }
+  return n;
+}
+
+/** Quantas vezes SEGUIDAS o portal recusou o login, da mais recente para trás. */
+export async function contarRecusasSeguidas(motoristaId: number): Promise<number> {
+  if (!temBancoConfigurado) return 0;
+  const linhas = await comBanco(() =>
+    db
+      .select({ recusado: portalLeituras.loginRecusado })
+      .from(portalLeituras)
+      .where(
+        and(
+          eq(portalLeituras.motoristaId, motoristaId),
+          // Senha cadastrada de novo zera a contagem.
+          sql`${portalLeituras.criadoEm} >= coalesce(
+            (select a.atualizado_em from portal_motorista_acessos a where a.motorista_id = ${motoristaId}),
+            '-infinity'::timestamptz)`,
+        ),
+      )
+      .orderBy(desc(portalLeituras.id))
+      .limit(RECUSAS_PARA_PAUSAR + 1),
+  );
+  let n = 0;
+  for (const l of linhas) {
+    if (l.recusado !== 1) break;
     n++;
   }
   return n;
