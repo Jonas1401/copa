@@ -21,7 +21,7 @@ import { telaTicket, telaTickets, valorDoPontoFalso, type LancamentoFalso, type 
 /**
  * A ABA “TICKET” DO PORTAL (a “2ª Via de Ticket”) — só a interpretação.
  *
- * É de onde sai a “Consulta de Ponto” do app: viagens, valor bruto e comissão
+ * É de onde sai o “Saldo de Ganhos” do app: viagens, valor bruto e comissão
  * da semana. Vira dinheiro na tela do motorista, então o que não está completo
  * e coerente é RECUSADO — nunca vira “nenhuma viagem” nem uma soma pela metade.
  *

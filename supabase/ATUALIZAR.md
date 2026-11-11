@@ -35,7 +35,7 @@ O arquivo é **100% idempotente** (`IF NOT EXISTS` / `IF EXISTS` em tudo):
 | Monitor WhatsApp (Android) | `monitor_codes`, `monitor_pair_codes`, `monitor_devices`, `monitor_messages`, `monitor_deliveries` |
 | Navios / clima | `navios_monitor_fontes`, `navios_monitor_eventos`, `navios_avisos`, `clima_mudancas` |
 | Banner do motorista | `banners_motorista`, `banner_fontes` |
-| Portal do motorista | `portal_motorista_acessos` (CPF/senha cifrados), `portal_leituras` (leitura + diagnóstico), `portal_eventos` (avisos de saída/dispensa), `portal_saidas_pendentes` (saídas aguardando a consulta ao portal), `portal_situacoes` (situação de cada ponto no portal: ATIVO / ESCALADO / EM DISPENSA), `portal_fila` (a fila geral lida na aba “Fila”), `portal_ticket_config` (a porcentagem de cada motorista na Consulta de Ponto) e `portal_tickets` (as viagens da semana lidas na aba “Ticket”) |
+| Portal do motorista | `portal_motorista_acessos` (CPF/senha cifrados), `portal_leituras` (leitura + diagnóstico), `portal_eventos` (avisos de saída/dispensa), `portal_saidas_pendentes` (saídas aguardando a consulta ao portal), `portal_situacoes` (situação de cada ponto no portal: ATIVO / ESCALADO / EM DISPENSA), `portal_fila` (a fila geral lida na aba “Fila”), `portal_ticket_config` (a porcentagem de cada motorista no Saldo de Ganhos) e `portal_tickets` (as viagens da semana lidas na aba “Ticket”) |
 | Internet/eSIM | `esim_users`, `esim_plans`, `esim_orders`, `esim_payments`, `esims`, `esim_usage`, `esim_topups`, `esim_webhook_events`, `esim_api_errors`, `esim_settings` |
 
 As migrações antigas (`monitor.sql`, `20261008_navios_composio.sql`,

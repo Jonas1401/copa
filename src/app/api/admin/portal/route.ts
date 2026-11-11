@@ -23,7 +23,7 @@ const CAB = { "Cache-Control": "no-store" };
  * `monitor`: quem decide a saída do ponto (o Status do portal ou o quadro), o
  * intervalo da leitura e a situação guardada de cada ponto.
  *
- * `ticket`: a leitura da aba “Ticket” (card “Consulta de Ponto”) está
+ * `ticket`: a leitura da aba “Ticket” (card “Saldo de Ganhos”) está
  * funcionando? Só a saúde da leitura — as viagens, os valores, a porcentagem e
  * a comissão são do motorista e NÃO aparecem no painel.
  */

@@ -88,7 +88,7 @@ const SIMULTANEOS = 3;
  */
 export const CARONA_DA_FILA_ATE_MS = { periodica: 12_000, manual: 25_000 } as const;
 /**
- * A aba “Ticket” (Consulta de Ponto) vem DEPOIS da rodada do Status, com a
+ * A aba “Ticket” (Saldo de Ganhos) vem DEPOIS da rodada do Status, com a
  * sessão que ela deixou guardada, e só enquanto sobra tempo na função: cada
  * leitura leva até 12 s. Contado a partir do começo do cron (60 s no total) e
  * da rodada do app aberto. O que não couber fica para a próxima rodada.
@@ -499,7 +499,7 @@ export async function monitorarTodos(limite = 3, prazoMs = PRAZO_RODADA_MS) {
 }
 
 /**
- * Consulta de Ponto: as viagens da semana (aba “Ticket”) de quem cadastrou a
+ * Saldo de Ganhos: as viagens da semana (aba “Ticket”) de quem cadastrou a
  * porcentagem, de 5 em 5 minutos por motorista. Roda depois da rodada do
  * Status — que é quem avisa a saída e quem mantém a sessão aberta — e nunca
  * faz login. `desde`: quando a função (cron) começou.
@@ -564,7 +564,7 @@ export async function monitorarStatusEmSegundoPlano() {
   ultimaRodadaEm = Date.now();
   try {
     await monitorarStatusDeTodos({ prazoMs: 8_000, simultaneos: 2, esperaMs: intervaloStatusMs() });
-    // Com tempo sobrando, a Consulta de Ponto de quem está com a leitura vencida.
+    // Com tempo sobrando, o Saldo de Ganhos de quem está com a leitura vencida.
     await monitorarTickets(ultimaRodadaEm, { comecaAteMs: TICKET_COMECA_ATE_MS.appAberto, limite: 2 });
   } catch {
     /* O cron (ou a próxima chamada) retoma. */

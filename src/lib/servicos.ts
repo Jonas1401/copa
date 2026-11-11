@@ -45,7 +45,9 @@ export const SERVICOS: Servico[] = [
   },
   {
     id: "consulta-ponto",
-    titulo: "Consulta de Ponto",
+    // Até 11/11/2026 o card se chamava “Consulta de Ponto”: o `id` e a rota
+    // (`consulta-ponto`) ficaram, para não quebrar nada que já aponta para eles.
+    titulo: "Saldo de Ganhos",
     // Sem leitura, o card mostra este texto; com leitura, três números:
     // viagens, valor bruto e comissão da semana (ver `ticket-card.ts`).
     subtitulo: "Viagens da semana",

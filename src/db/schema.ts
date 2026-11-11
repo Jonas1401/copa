@@ -343,7 +343,7 @@ export const portalFila = pgTable("portal_fila", {
   proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
 });
 
-// CONSULTA DE PONTO — as viagens da semana, lidas na aba “Ticket” do portal
+// SALDO DE GANHOS — as viagens da semana, lidas na aba “Ticket” do portal
 // (a 2ª Via de Ticket) com a conta do próprio motorista. Quem liga é ele, ao
 // cadastrar a porcentagem da comissão; sem esta linha, o Ticket não é aberto.
 export const portalTicketConfig = pgTable("portal_ticket_config", {

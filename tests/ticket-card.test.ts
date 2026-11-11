@@ -15,7 +15,7 @@ import {
 } from "../src/lib/ticket-card";
 
 /**
- * O card “Consulta de Ponto” (SERVIÇOS) e os textos da página: viagens, valor
+ * O card “Saldo de Ganhos” (SERVIÇOS) e os textos da página: viagens, valor
  * bruto e comissão da semana, lidos na aba “Ticket” do Portal do Motorista.
  * Só regras de tela — sem rede e sem banco. Dados inventados.
  */
@@ -151,10 +151,10 @@ test("nenhum aviso de tela traz peso ou valor", () => {
 
 /* ------------------------------------------------------------- a tela ligada */
 
-test("o card “Consulta de Ponto” abre a página do app (o quadro antigo foi desligado)", () => {
+test("o card “Saldo de Ganhos” abre a página do app (o quadro antigo foi desligado)", () => {
   const card = SERVICOS.find((s) => s.id === "consulta-ponto");
   assert.equal(card?.href, "/consulta-ponto");
-  assert.equal(card?.titulo, "Consulta de Ponto");
+  assert.equal(card?.titulo, "Saldo de Ganhos");
   assert.equal(card?.subtitulo, "Viagens da semana");
   // Continua entre os dois cards visíveis sem tocar em “Ver todos”.
   assert.ok(SERVICOS.findIndex((s) => s.id === "consulta-ponto") < 2);
@@ -162,10 +162,34 @@ test("o card “Consulta de Ponto” abre a página do app (o quadro antigo foi 
   assert.match(ler("src/app/consulta-ponto/page.tsx"), /ConsultaPontoApp/);
 });
 
+test("o nome que aparece é “Saldo de Ganhos”: no card, na página, na aba do navegador e no /admin", () => {
+  assert.equal(SERVICOS.find((s) => s.id === "consulta-ponto")?.titulo, "Saldo de Ganhos");
+  const tela = ler("src/components/consulta/ConsultaPontoApp.tsx");
+  assert.match(tela, /<h1 [^>]*>Saldo de Ganhos<\/h1>/);
+  assert.match(tela, /"Saldo de Ganhos desligado\./);
+  assert.match(ler("src/app/consulta-ponto/page.tsx"), /title: "Saldo de Ganhos · Viagens da semana · CopaLinks"/);
+  assert.match(ler("src/components/admin/CartaoPortalAdmin.tsx"), /Saldo de Ganhos · aba “Ticket” do portal/);
+  // O nome antigo não aparece em nenhuma tela (o `id` e a rota `consulta-ponto` são internos e ficaram).
+  for (const arquivo of [
+    "src/components/consulta/ConsultaPontoApp.tsx",
+    "src/app/consulta-ponto/page.tsx",
+    "src/components/inicio/Servicos.tsx",
+    "src/components/admin/CartaoPortalAdmin.tsx",
+    "src/components/MonitorApp.tsx",
+    "src/lib/ticket-card.ts",
+    "src/app/api/tickets/route.ts",
+  ]) {
+    assert.ok(!/consulta de ponto/i.test(ler(arquivo)), `${arquivo} ainda fala em “Consulta de Ponto”`);
+  }
+  assert.ok(!/Desligar a consulta|Consulta desligada/.test(tela), "a página ainda chama o serviço de “consulta”");
+  // Em `servicos.ts`, o nome antigo só aparece na nota que explica o `id`.
+  assert.equal((ler("src/lib/servicos.ts").match(/Consulta de Ponto/g) ?? []).length, 1);
+});
+
 test("o card dos SERVIÇOS mostra os três números do motorista logado", () => {
   const servicos = ler("src/components/inicio/Servicos.tsx");
   assert.match(servicos, /useResumoDoTicket\(logado\)/);
-  assert.match(servicos, /ticket=\{s\.id === "consulta-ponto" \? ticket : undefined\}/, "só o card da Consulta de Ponto recebe os números");
+  assert.match(servicos, /ticket=\{s\.id === "consulta-ponto" \? ticket : undefined\}/, "só o card do Saldo de Ganhos recebe os números");
   for (const rotulo of [">Viagens<", ">Bruto<", ">Comissão<"]) assert.ok(servicos.includes(rotulo), `o card sem ${rotulo}`);
   // Dinheiro nunca é cortado com “…”: em card estreito o valor desce para a linha de baixo.
   const numeros = servicos.slice(servicos.indexOf("function NumerosDoTicket"), servicos.indexOf("function CartaoServico"));
@@ -187,7 +211,7 @@ test("o card dos SERVIÇOS mostra os três números do motorista logado", () => 
 
 test("a página: porcentagem, atualizar, desligar — e os três números", () => {
   const tela = ler("src/components/consulta/ConsultaPontoApp.tsx");
-  for (const trecho of ["Sua porcentagem", "Atualizar", "Desligar a consulta", "Valor bruto", "Comissão", "textoDeViagens(resumo.conta.viagens)"]) {
+  for (const trecho of ["Sua porcentagem", "Atualizar", "Desligar o Saldo de Ganhos", "Valor bruto", "Comissão", "textoDeViagens(resumo.conta.viagens)"]) {
     assert.ok(tela.includes(trecho), `a página sem “${trecho}”`);
   }
   // As três ações da API, e nenhuma credencial do portal nesta tela.
