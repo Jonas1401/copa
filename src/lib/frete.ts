@@ -99,8 +99,10 @@ export function lerNumero(texto: string): number | null {
 const FORMATO_QUANT = /^\d{1,2}[.,]\d{3}$/;
 /** Valor no ticket: 17.29 (R$ por tonelada, 1 ou 2 casas). */
 const FORMATO_VALOR = /^\d{1,3}[.,]\d{1,2}$/;
-const valorPlausivel = (v: number) => v >= 1 && v <= 150;
-const quantPlausivel = (q: number) => q >= 0.5 && q <= 80;
+/** R$ por tonelada que faz sentido num ticket (a aba “Ticket” do portal usa o mesmo limite). */
+export const valorPlausivel = (v: number) => v >= 1 && v <= 150;
+/** Toneladas de UMA carga que fazem sentido num ticket. */
+export const quantPlausivel = (q: number) => q >= 0.5 && q <= 80;
 
 const ehData = (t: string) => /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(t);
 const ehHora = (t: string) => /^\d{1,2}:\d{2}/.test(t);

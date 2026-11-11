@@ -343,6 +343,42 @@ export const portalFila = pgTable("portal_fila", {
   proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
 });
 
+// CONSULTA DE PONTO — as viagens da semana, lidas na aba “Ticket” do portal
+// (a 2ª Via de Ticket) com a conta do próprio motorista. Quem liga é ele, ao
+// cadastrar a porcentagem da comissão; sem esta linha, o Ticket não é aberto.
+export const portalTicketConfig = pgTable("portal_ticket_config", {
+  motoristaId: integer("motorista_id").primaryKey(),
+  porcentagemCentesimos: integer("porcentagem_centesimos").notNull(), // 18,5 % → 1850
+  // A semana que o portal mostrou como a de hoje na última leitura (aaaa-mm-dd).
+  semanaInicio: text("semana_inicio"),
+  semanaFim: text("semana_fim"),
+  tentativaEm: timestamp("tentativa_em", { withTimezone: true }), // última tentativa, boa ou não
+  erro: text("erro"), // por que a última tentativa não chegou às viagens (null = chegou)
+  diagnostico: text("diagnostico"), // nunca traz peso nem valor
+  // A partir de quando a próxima leitura pode começar (null = já). É também a
+  // reserva: duas funções não abrem o Ticket da mesma conta ao mesmo tempo.
+  proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).defaultNow().notNull(),
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// As viagens (lançamentos) de cada ponto do motorista, por semana, como a tela
+// “Tickets” mostrou na última leitura boa. É dado do PRÓPRIO motorista: só ele
+// vê, e sai do banco quando ele desliga a consulta ou tira o acesso ao portal.
+export const portalTickets = pgTable("portal_tickets", {
+  id: serial("id").primaryKey(),
+  motoristaId: integer("motorista_id").notNull(),
+  codigo: text("codigo").notNull(), // A032
+  semanaInicio: text("semana_inicio").notNull(), // aaaa-mm-dd
+  semanaFim: text("semana_fim").notNull(),
+  lancamentos: jsonb("lancamentos"), // [{ quant, valor, servico, data, hora }] — null = ainda não leu
+  lidoEm: timestamp("lido_em", { withTimezone: true }), // última leitura BOA
+  tentativaEm: timestamp("tentativa_em", { withTimezone: true }).defaultNow().notNull(), // última tentativa, boa ou não
+  erro: text("erro"), // por que a última tentativa não serviu (null = serviu)
+}, (t) => [
+  unique("portal_tickets_ponto_semana").on(t.motoristaId, t.codigo, t.semanaInicio),
+]);
+
 // Último resultado do "Testar conexão" de cada integração.
 export const integracoesStatus = pgTable("integracoes_status", {
   id: text("id").primaryKey(), // composio | clima | whatsapp | ia | notificacoes | banco

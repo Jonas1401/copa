@@ -15,7 +15,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **figurinhas com imagem** em categorias (Caminhões, Motoristas, Porto e CopaLinks), grade de 4 por linha, publicadas pelo admin; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos por HTTP direto com Composio de reserva; mensagens dos motoristas continuam funcionando |
-| **Serviços** | links: login do aplicativo, tela de caminhões, cálculo de frete e contatos operacionais |
+| **Serviços** | login do aplicativo, **Consulta de Ponto** (viagens, valor bruto e comissão da semana, lidos na aba **Ticket** do portal), cálculo de frete e contatos operacionais |
 | **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
 | **Portal do motorista** | o motorista digita no próprio celular (menu ⋮) o **CPF e a senha do `portal.copadubo.com.br`**; o servidor olha o **Status do ponto** dele de minuto em minuto e avisa quando o ponto for **ESCALADO**, entrar **EM DISPENSA** ou voltar a **ATIVO** — é o portal que decide a saída (ver abaixo) |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria, o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) e o cartão **Divulgação do app** (QR Code, mensagem pronta e artes da campanha) |
@@ -402,6 +402,78 @@ A leitura da aba “Fila” depende da rodada do Status: com
 Testes: `tests/portal-fila.test.ts` (a leitura da tela, sem rede e sem banco),
 `tests/fila-card.test.ts` (o card) e `tests/portal-fila-cron.test.ts` (o ciclo
 inteiro, com PostgreSQL local).
+
+
+## Consulta de Ponto: as viagens da semana (aba “Ticket” do portal)
+
+O card **Consulta de Ponto** (SERVIÇOS) apontava para o quadro público que a
+Copadubo desligou. Agora ele abre `/consulta-ponto` e mostra, para o motorista
+logado, só três números da semana: **viagens, valor bruto e comissão**.
+
+**De onde vem.** Da aba **“Ticket”** do Portal do Motorista (“2ª Via de
+Ticket”): o servidor escolhe o ponto na lista PONTO, a semana de hoje na lista
+SEMANA, envia o “Gerar” e lê o cartão “Lançamentos” (PONTO · QUANT · VALOR ·
+SERVIÇO · DATA · HORA). O “Gerar PDF” nunca é aberto.
+
+**A conta** é a do Cálculo de Frete (`src/lib/frete.ts`, a mesma função
+`calcular`): frete da viagem = Quant (t) × Valor (R$/t); valor bruto = soma das
+viagens; comissão = bruto × a porcentagem do motorista.
+
+**Quem é lido.** Só o motorista que **cadastrou a própria porcentagem** na
+página (é isso que liga a consulta) e que tem o acesso ao portal e um ponto no
+app. A porcentagem fica no servidor (`portal_ticket_config`, em centésimos),
+para o card valer em qualquer aparelho dele. “Desligar a consulta” apaga a
+porcentagem e as viagens guardadas; remover o acesso ao portal apaga as viagens.
+
+**Como é lida** (`src/lib/portal-ticket.ts`, `monitorarTickets` em
+`src/lib/portal-monitor.ts`):
+
+- **nunca faz login**: usa a sessão que a olhada do Status deixou guardada. Se o
+  portal pedir o login de novo, a leitura para e espera a próxima olhada do
+  Status reabrir a sessão;
+- é uma passada **separada, depois da rodada do Status** — o aviso de saída do
+  ponto nunca espera o Ticket. No cron, uma leitura nova só começa até 36 s
+  depois do início; na rodada de quem abre o app, até 20 s e no máximo dois
+  motoristas;
+- a cada **5 minutos por motorista** (`PORTAL_TICKET_INTERVALO_MIN`, 2 a 60); a
+  reserva em `portal_ticket_config.proxima_leitura_em` é atômica. Depois de uma
+  leitura que não trouxe nada, tenta de novo em 1 minuto. O botão **Atualizar**
+  lê na hora (no máximo um toque a cada 20 s);
+- os pontos são os **cadastrados no app**, até 3 por leitura, em rodízio (quem
+  nunca foi lido primeiro, depois a tentativa mais antiga). Uma leitura são
+  normalmente de 2 a 7 pedidos ao portal (mais quando a lista repete o código),
+  com 12 s de prazo no total: o que não couber fica para a leitura seguinte;
+- a semana é a que contém **hoje (Brasília)** na lista do portal; na segunda-feira
+  em que duas semanas contêm o dia, vale a que o portal deixa marcada. As
+  viagens ficam guardadas por semana (`portal_tickets`) por 70 dias;
+- código que aparece **duas vezes** na lista PONTO: cada opção é lida (até 3) e
+  os lançamentos iguais contam uma vez só.
+
+**Leitura rígida** (`src/lib/portal-ticket-parse.ts`). O HTML de verdade da aba
+nunca foi visto — só as telas, e nunca uma linha de lançamento. Uma leitura só
+vale se a tela é a de “Tickets”, o período é o da semana pedida, cada linha tem
+o ponto pedido, Quant e Valor nos formatos do ticket (toneladas com até três
+casas; R$ por tonelada com centavos) e dentro das faixas da calculadora, e a
+data cai dentro da semana. Sem lançamento, só vale o “Nenhum lançamento
+encontrado para este período”. Tela diferente, página cortada ou linha fora do
+padrão: a leitura é **recusada**, com o motivo, e continua valendo a última boa
+— com a hora dela na tela. Um número errado de dinheiro é pior do que nenhum.
+
+**O que aparece.** No card: Viagens / Bruto / Comissão; leitura antiga leva a
+hora (“Lido 09:10”) e soma parcial diz “1 de 3 pontos” (`src/lib/ticket-card.ts`).
+Na página: os três números, a lista de viagens por ponto, a porcentagem, o
+“Atualizar” e o motivo quando a leitura não veio. `/admin → Portal do motorista
+→ “Consulta de Ponto”` mostra só a **saúde** da leitura (quantos pontos lidos, a
+hora, o motivo da recusa): viagens, valores, porcentagem e comissão são do
+motorista e não aparecem no painel nem no diagnóstico.
+
+`PORTAL_TICKET=desligado` desliga a leitura. Com `PORTAL_FONTE_SAIDA=quadro` não
+existe a rodada do Status e o Ticket também não é lido sozinho.
+
+Testes: `tests/portal-ticket-parse.test.ts` (a tela), `tests/portal-ticket.test.ts`
+(a leitura contra um portal de mentira, sem rede), `tests/ticket-card.test.ts`
+(o card e a página) e `tests/portal-ticket-cron.test.ts` (o ciclo inteiro, com
+PostgreSQL local).
 
 
 ## Saída do ponto: quem decide é o Status do portal
@@ -823,6 +895,8 @@ no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
 | `FONTE_FILA` | não | de onde vem a fila: vazio/`portal` = a aba “Fila” do Portal do Motorista (padrão); `quadro` = o quadro público antigo, desligado pela Copadubo em 10/11/2026 |
 | `PORTAL_FILA_LIVROS` | não | livros lidos na aba “Fila” (padrão `A`); ex.: `A,B,M` — cada livro a mais é uma página a mais por ciclo |
 | `PORTAL_INTERVALO_MIN` | não | de quantos em quantos minutos o Status de cada motorista é lido (1 a 60; padrão 1) |
+| `PORTAL_TICKET` | não | Consulta de Ponto: vazio = a aba “Ticket” é lida para quem cadastrou a porcentagem (padrão); `desligado` = nenhuma leitura do Ticket |
+| `PORTAL_TICKET_INTERVALO_MIN` | não | de quantos em quantos minutos o Ticket de cada motorista é lido (2 a 60; padrão 5) |
 | `PORTAL_MOTORISTA_URL` | não | base do portal, só para teste/homologação; em produção fica vazia |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
@@ -910,7 +984,7 @@ contatos, sempre com a camada escura por cima para o texto continuar legível.
 ## Estrutura
 
 ```
-src/app        rotas e páginas (/, /tempo, /frete, /contatos, /divulgacao, /admin, /api)
+src/app        rotas e páginas (/, /tempo, /frete, /consulta-ponto, /contatos, /divulgacao, /admin, /api)
 src/components telas (início, tempo, frete, chat, divulgação, admin)
 src/lib        monitoramento do ponto, push, clima, integrações
 scripts        exportar/importar o banco, gerar logo/fundo/artes

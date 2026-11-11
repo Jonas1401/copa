@@ -3,6 +3,7 @@ import { auditar, exigirAdmin, ipDe } from "@/lib/admin/auth";
 import { garantirTabelas } from "@/lib/estado";
 import { garantirTabelasPortal, painelPortalAdmin, removerAcessoPortal } from "@/lib/portal-copadubo";
 import { monitorarMotorista, resumoDoMonitor } from "@/lib/portal-monitor";
+import { saudeDoTicket } from "@/lib/portal-ticket";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,9 +22,15 @@ const CAB = { "Cache-Control": "no-store" };
  *
  * `monitor`: quem decide a saída do ponto (o Status do portal ou o quadro), o
  * intervalo da leitura e a situação guardada de cada ponto.
+ *
+ * `ticket`: a leitura da aba “Ticket” (card “Consulta de Ponto”) está
+ * funcionando? Só a saúde da leitura — as viagens, os valores, a porcentagem e
+ * a comissão são do motorista e NÃO aparecem no painel.
  */
 async function painel() {
-  return { ...(await painelPortalAdmin()), monitor: await resumoDoMonitor() };
+  // Uma falha no bloco do Ticket nunca derruba o painel do portal.
+  const [acessos, monitor, ticket] = await Promise.all([painelPortalAdmin(), resumoDoMonitor(), saudeDoTicket().catch(() => null)]);
+  return { ...acessos, monitor, ticket };
 }
 
 export async function GET() {

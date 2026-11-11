@@ -53,8 +53,58 @@ export type EscolhaFalsa = {
   vazioComZero?: boolean;
 };
 
+/** Uma viagem na tela “Tickets”, escrita como a tela escreve. */
+export type LancamentoFalso = { quant: string; valor: string; servico: string; data: string; hora: string };
+
+/**
+ * A aba “Ticket” (“2ª Via de Ticket”) de uma conta: a lista de pontos, a lista
+ * de semanas e o que o “Gerar” mostra. Do site real só se conhece a TELA (em
+ * foto, 11/11/2026): as duas listas, o botão “Gerar” e, no resultado, o
+ * período, o botão “Gerar PDF” e o quadro “Lançamentos” (PONTO · QUANT · VALOR
+ * · SERVIÇO · DATA · HORA) ou “Nenhum lançamento encontrado para este período.”
+ * Endereços, nomes dos campos e HTML são suposição — o leitor os descobre na
+ * própria tela, e os testes cobrem as variações.
+ */
+export type TicketFalso = {
+  /** Pontos da conta, na ordem da lista (o código pode se repetir). */
+  pontos: string[];
+  /** Semanas da lista, como a tela escreve: “09/11/2026 - 16/11/2026”. */
+  semanas: string[];
+  /** Índice da semana que vem marcada (padrão: a primeira). */
+  marcada?: number;
+  /** Viagens por opção de ponto e semana: a chave é `"índiceDoPonto|índiceDaSemana"`. */
+  lancamentos: Record<string, LancamentoFalso[]>;
+  /** Como o quadro é montado (padrão: `tabela`). */
+  forma?: "tabela" | "linhas" | "celulas";
+  metodo?: "POST" | "GET";
+  /** Endereço que recebe o “Gerar”, relativo a `/moto/` (padrão `ticket_lista.php`). */
+  acao?: string;
+  campoPonto?: string;
+  campoSemana?: string;
+  /** O formulário leva um código escondido de uso único. */
+  comCodigoOculto?: boolean;
+  /** O botão “Gerar” tem nome (alguns PHP exigem o nome dele no pedido). */
+  botaoComNome?: boolean;
+  /** As listas vêm fora de um formulário (a tela enviaria por JavaScript). */
+  semFormulario?: boolean;
+  /** O formulário traz também um campo para digitar. */
+  comCampoDeTexto?: boolean;
+  /** O resultado escreve “TOTAL GERAL: N VIAGENS - X TONS” (como o PDF). */
+  comTotal?: boolean;
+  /** …com uma viagem a mais do que as linhas. */
+  totalErrado?: boolean;
+  /** A resposta chega pela metade: corta no meio das linhas. */
+  cortada?: boolean;
+  /** O resultado não escreve o período. */
+  semPeriodo?: boolean;
+  /** O portal ignora a semana pedida e mostra a deste índice. */
+  mostraSemana?: number;
+  /** As linhas do resultado vêm com este código de ponto, e não com o pedido. */
+  mostraPonto?: string;
+};
+
 /** Outra conta do portal de mentira: cada login só enxerga as próprias telas. */
-export type ContaFalsa = { senha: string; telas?: Record<string, string>; escolha?: EscolhaFalsa };
+export type ContaFalsa = { senha: string; telas?: Record<string, string>; escolha?: EscolhaFalsa; tickets?: TicketFalso };
 
 /** Um quadro da “Tela de Ativos”: o último escalado e a fila, na ordem. */
 export type QuadroFalso = { ultimo: string | null; pontos: { codigo: string; tipo: string }[] };
@@ -92,6 +142,8 @@ export type OpcoesPortalFalso = {
   telas?: Record<string, string>;
   /** A conta principal mostra um ponto por vez (tela “Trocar Ponto”). */
   escolha?: EscolhaFalsa;
+  /** A aba “Ticket” da conta principal (sem isto, a aba é só uma tela de texto). */
+  tickets?: TicketFalso;
   /** Tudo responde 503 (portal fora do ar). */
   foraDoAr?: boolean;
   /** A tela de login traz captcha. */
@@ -287,6 +339,79 @@ ${MENU_FALSO}
 <h1>Ticket</h1><p>Nenhum ticket emitido hoje.</p>
 ${RODAPE_FALSO}</body></html>`;
 
+/** Valor que a lista de pontos envia para a opção `i` (o portal de verdade deve usar um número interno). */
+export const valorDoPontoFalso = (i: number) => String(501 + i);
+/** Valor que a lista de semanas envia: o primeiro dia, em aaaa-mm-dd. */
+export const valorDaSemanaFalsa = (semana: string) => {
+  const m = /(\d{2})\/(\d{2})\/(\d{4})/.exec(semana);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : semana;
+};
+
+/** Tela “2ª Via de Ticket”: as duas listas e o botão “Gerar”. */
+export function telaTicket(t: TicketFalso, codigoOculto?: string): string {
+  const marcada = t.marcada ?? 0;
+  const listas = `<label for="p">PONTO</label>
+  <select id="p" name="${t.campoPonto ?? "id_ponto"}">${t.pontos.map((c, i) => `<option value="${valorDoPontoFalso(i)}"${i === 0 ? " selected" : ""}>${c}</option>`).join("")}</select>
+  <label for="s">SEMANA</label>
+  <select id="s" name="${t.campoSemana ?? "semana"}">${t.semanas.map((s, i) => `<option value="${valorDaSemanaFalsa(s)}"${i === marcada ? " selected" : ""}>${s}</option>`).join("")}</select>`;
+  const corpo = t.semFormulario
+    ? `<div class="card"><h2>Selecione o período</h2>${listas}<button type="button" onclick="gerar()">Gerar</button></div>
+<script>function gerar(){ /* a tela de verdade poderia enviar por JavaScript */ }</script>`
+    : `<form class="card" method="${(t.metodo ?? "POST").toLowerCase()}" action="${t.acao ?? "ticket_lista.php"}">
+  <h2>Selecione o período</h2>
+  ${codigoOculto ? `<input type="hidden" name="_token" value="${codigoOculto}">` : ""}
+  ${listas}
+  ${t.comCampoDeTexto ? '<input type="text" name="observacao">' : ""}
+  <button type="submit"${t.botaoComNome ? ' name="gerar" value="1"' : ""}>Gerar</button>
+</form>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Ticket</title></head><body>
+<header><img alt="COPADUBO"></header>
+<h1>2ª Via de Ticket</h1>
+${corpo}
+${MENU_FALSO}
+${RODAPE_FALSO}</body></html>`;
+}
+
+/** Tela “Tickets”: o que o “Gerar” mostra para um ponto e uma semana. */
+export function telaTickets(t: TicketFalso, iPonto: number, iSemana: number): string {
+  const semana = t.semanas[t.mostraSemana ?? iSemana] ?? "";
+  const codigo = t.mostraPonto ?? t.pontos[iPonto] ?? "";
+  const linhas = t.lancamentos[`${iPonto}|${iSemana}`] ?? [];
+  const celulas = (l: LancamentoFalso) => [codigo, l.quant, l.valor, l.servico, l.data, l.hora];
+  const cabecalho = ["PONTO", "QUANT", "VALOR", "SERVIÇO", "DATA", "HORA"];
+  const vazio = "Nenhum lançamento encontrado para este período.";
+  const forma = t.forma ?? "tabela";
+  let quadro: string;
+  if (forma === "tabela") {
+    quadro = `<table><thead><tr>${cabecalho.map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>
+${linhas.length ? linhas.map((l) => `<tr>${celulas(l).map((c) => `<td>${c}</td>`).join("")}</tr>`).join("\n") : `<tr><td colspan="6">${vazio}</td></tr>`}
+</tbody></table>`;
+  } else if (forma === "linhas") {
+    quadro = `<div class="cab">${cabecalho.join(" ")}</div>
+${linhas.length ? linhas.map((l) => `<div class="linha">${celulas(l).join(" ")}</div>`).join("\n") : `<p>${vazio}</p>`}`;
+  } else {
+    quadro = `<div class="grade">${cabecalho.map((c) => `<div class="cab">${c}</div>`).join("")}
+${linhas.length ? linhas.map((l) => celulas(l).map((c) => `<div>${c}</div>`).join("")).join("\n") : `<p>${vazio}</p>`}</div>`;
+  }
+  const toneladas = linhas.reduce((s, l) => s + Number(l.quant.replace(",", ".")), 0);
+  const total = t.comTotal ? `<p class="total">TOTAL GERAL: ${linhas.length + (t.totalErrado ? 1 : 0)} VIAGENS - ${toneladas.toFixed(3)} TONS</p>` : "";
+  const pagina = `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Tickets</title></head><body>
+<header><img alt="COPADUBO"></header>
+<h1>Tickets</h1>
+<div class="card">${t.semPeriodo ? "" : `<div><span>Período</span> <strong>${semana}</strong></div>`}
+  <a class="botao" href="/moto/ticket_pdf.php?p=${valorDoPontoFalso(iPonto)}&s=${valorDaSemanaFalsa(semana)}" target="_blank">Gerar PDF</a></div>
+<div class="card"><h2>Lançamentos</h2>
+${quadro}
+${total}</div>
+${MENU_FALSO}
+${RODAPE_FALSO}</body></html>`;
+  if (!t.cortada) return pagina;
+  // Corta no meio da última linha (ou, sem linhas, antes do aviso de vazio).
+  const marca = linhas.length ? linhas[linhas.length - 1].data : vazio;
+  const corte = pagina.lastIndexOf(marca);
+  return corte > 0 ? pagina.slice(0, corte) : pagina.slice(0, Math.floor(pagina.length / 2));
+}
+
 export const TELA_PONTO_FALSA = `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Ponto</title></head><body>
 ${MENU_FALSO}
 <h1>Meu ponto</h1><p>Escolha uma aba para ver os detalhes.</p>
@@ -308,13 +433,19 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
     escolha: opcoes.escolha,
     /** A aba “Fila” (igual para todas as contas); o teste pode mudar a fila entre as leituras. */
     fila: opcoes.fila,
+    /** A aba “Ticket” da conta principal; o teste pode mudar as viagens entre as leituras. */
+    tickets: opcoes.tickets,
+    /** Consultas de ticket recebidas (“Gerar”), na ordem: `A032 2026-11-09`. */
+    consultasDeTicket: [] as string[],
+    /** Consultas de ticket recusadas (código escondido errado, ponto ou semana que não existem). */
+    ticketsRecusados: 0,
     /** Demais contas, por CPF. */
     contas: Object.fromEntries(
       Object.entries(opcoes.contas ?? {}).map(([c, conta]) => [
         c,
-        { senha: conta.senha, telas: { ...telasPadrao(), ...(conta.telas ?? {}) }, escolha: conta.escolha },
+        { senha: conta.senha, telas: { ...telasPadrao(), ...(conta.telas ?? {}) }, escolha: conta.escolha, tickets: conta.tickets },
       ]),
-    ) as Record<string, { senha: string; telas: Record<string, string>; escolha?: EscolhaFalsa }>,
+    ) as Record<string, { senha: string; telas: Record<string, string>; escolha?: EscolhaFalsa; tickets?: TicketFalso }>,
     /** Ponto escolhido em cada sessão (cookie → código). */
     pontoDaSessao: new Map<string, string>(),
     /** Escolhas de ponto recebidas (“Trocar Ponto” → Confirmar), na ordem. */
@@ -347,6 +478,8 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
   const visitantes = new Set<string>();
   /** Código escondido (uso único) do formulário de “Trocar Ponto”, por sessão. */
   const codigosOcultos = new Map<string, string>();
+  /** Código escondido (uso único) do formulário do Ticket, por sessão. */
+  const codigosDoTicket = new Map<string, string>();
   let serie = 0;
   let emAndamento = 0;
 
@@ -361,6 +494,11 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
       estado.acoes.push(caminho);
       estado.sessoes.delete(sessao);
       return { status: 302, cabecalhos: { location: "/login" } };
+    }
+    // “Gerar PDF”: o leitor nunca pode abrir.
+    if (/pdf/i.test(caminho)) {
+      estado.acoes.push(caminho);
+      return { status: 200, corpo: "%PDF-1.4 de mentira" };
     }
     if (caminho === "login.php") return { status: 302, cabecalhos: { location: "/login" } };
     if (caminho === "login") {
@@ -422,6 +560,32 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
           const escolhido = e.cartoes.find((c) => c.codigo === estado.pontoDaSessao.get(sessao));
           // Sem ponto escolhido nesta sessão, o portal manda escolher.
           return escolhido ? { status: 200, corpo: telaStatusDeUmPonto(escolhido) } : { status: 302, cabecalhos: { location: "/moto/" } };
+        }
+      }
+      const tk = dono === cpf ? estado.tickets : estado.contas[dono]?.tickets;
+      if (tk) {
+        if (caminho === "moto/ticket") {
+          let codigo: string | undefined;
+          if (tk.comCodigoOculto) {
+            codigo = `tq${++serie}x`;
+            codigosDoTicket.set(sessao, codigo);
+          }
+          return { status: 200, corpo: telaTicket(tk, codigo) };
+        }
+        if (caminho === `moto/${tk.acao ?? "ticket_lista.php"}`) {
+          if (metodo !== (tk.metodo ?? "POST")) return { status: 302, cabecalhos: { location: "/moto/ticket" } };
+          const campos = metodo === "POST" ? new URLSearchParams(corpo) : url.searchParams;
+          const iPonto = Number(campos.get(tk.campoPonto ?? "id_ponto")) - 501;
+          const iSemana = tk.semanas.findIndex((s) => valorDaSemanaFalsa(s) === campos.get(tk.campoSemana ?? "semana"));
+          const codigoCerto = !tk.comCodigoOculto || (campos.get("_token") ?? "") === codigosDoTicket.get(sessao);
+          const botaoCerto = !tk.botaoComNome || campos.get("gerar") === "1";
+          codigosDoTicket.delete(sessao);
+          if (!Number.isInteger(iPonto) || !tk.pontos[iPonto] || iSemana < 0 || !codigoCerto || !botaoCerto) {
+            estado.ticketsRecusados += 1;
+            return { status: 302, cabecalhos: { location: "/moto/ticket" } };
+          }
+          estado.consultasDeTicket.push(`${tk.pontos[iPonto]} ${valorDaSemanaFalsa(tk.semanas[iSemana])}`);
+          return { status: 200, corpo: telaTickets(tk, iPonto, iSemana) };
         }
       }
       if (caminho === "moto/fila" && estado.fila) {

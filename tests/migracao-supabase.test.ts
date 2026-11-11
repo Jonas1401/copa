@@ -54,9 +54,9 @@ const tabelas = Object.values(schema).filter(
 );
 const configs = tabelas.map((t) => getTableConfig(t as never));
 
-test("migração cria as 50 tabelas do schema.ts (e nenhuma sobra)", () => {
+test("migração cria as 52 tabelas do schema.ts (e nenhuma sobra)", () => {
   const criadas = [...ddl.matchAll(/CREATE TABLE IF NOT EXISTS public\.([a-z0-9_]+) \(/g)].map((m) => m[1]);
-  assert.equal(configs.length, 50);
+  assert.equal(configs.length, 52);
   assert.deepEqual([...criadas].sort(), configs.map((c) => c.name).sort());
   assert.equal(new Set(criadas).size, criadas.length, "nenhuma tabela repetida");
 });

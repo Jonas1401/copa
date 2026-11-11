@@ -732,6 +732,36 @@ CREATE TABLE IF NOT EXISTS public.portal_fila (
   proxima_leitura_em TIMESTAMPTZ
 );
 
+-- CONSULTA DE PONTO: as viagens da semana, lidas na aba “Ticket” do portal (a
+-- 2ª Via de Ticket) com a conta do próprio motorista. `portal_ticket_config`
+-- existe para quem LIGOU a consulta (cadastrou a porcentagem da comissão);
+-- `portal_tickets` guarda as viagens de cada ponto, por semana. É dado do
+-- próprio motorista: só ele vê.
+CREATE TABLE IF NOT EXISTS public.portal_ticket_config (
+  motorista_id INTEGER PRIMARY KEY,
+  porcentagem_centesimos INTEGER NOT NULL,
+  semana_inicio TEXT,
+  semana_fim TEXT,
+  tentativa_em TIMESTAMPTZ,
+  erro TEXT,
+  diagnostico TEXT,
+  proxima_leitura_em TIMESTAMPTZ,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.portal_tickets (
+  id SERIAL PRIMARY KEY,
+  motorista_id INTEGER NOT NULL,
+  codigo TEXT NOT NULL,
+  semana_inicio TEXT NOT NULL,
+  semana_fim TEXT NOT NULL,
+  lancamentos JSONB,
+  lido_em TIMESTAMPTZ,
+  tentativa_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  erro TEXT,
+  CONSTRAINT portal_tickets_ponto_semana UNIQUE (motorista_id, codigo, semana_inicio)
+);
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend
@@ -786,6 +816,8 @@ ALTER TABLE public.portal_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_saidas_pendentes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_situacoes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_fila ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_ticket_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_tickets ENABLE ROW LEVEL SECURITY;
 
 -- Sem policy, RLS já bloqueia; o REVOKE é a segunda tranca para o PostgREST.
 -- Os papéis anon/authenticated só existem no Supabase — num PostgreSQL comum
@@ -808,7 +840,7 @@ END $$;
 
 COMMIT;
 
--- Conferência rápida: todas as tabelas do app devem aparecer abaixo (50).
+-- Conferência rápida: todas as tabelas do app devem aparecer abaixo (52).
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'

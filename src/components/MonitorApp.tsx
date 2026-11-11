@@ -765,9 +765,15 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     const abrirSePedido = () => {
       try {
         const url = new URL(window.location.href);
-        if (url.searchParams.get("chat") !== "1") return;
-        setChatAberto(true);
+        // `/?portal=1`: a página “Consulta de Ponto” manda para o cadastro do
+        // acesso ao Portal do Motorista (a tela só aparece para quem está logado).
+        const pedeChat = url.searchParams.get("chat") === "1";
+        const pedePortal = url.searchParams.get("portal") === "1";
+        if (!pedeChat && !pedePortal) return;
+        if (pedeChat) setChatAberto(true);
+        if (pedePortal) setPortalAberto(true);
         url.searchParams.delete("chat");
+        url.searchParams.delete("portal");
         window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
       } catch {
         /* URL inválida: ignora */
@@ -1601,7 +1607,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               transition={{ duration: 0.45, delay: 0.12 }}
               className="mt-4"
             >
-              <Servicos onSemLink={semLink} />
+              <Servicos onSemLink={semLink} logado={Boolean(motorista)} />
             </motion.div>
           </>
         )}
