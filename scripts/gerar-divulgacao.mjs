@@ -51,6 +51,14 @@ const TEMA = {
 
 const FONTE_TITULO = "Archivo, DejaVu Sans, sans-serif";
 const FONTE_TEXTO = "Space Grotesk, DejaVu Sans, sans-serif";
+/*
+ * Os .ttf do @fontsource registram os pesos 800 e 900 como famílias à parte
+ * (“Archivo ExtraBold” e “Archivo Black”): pedir “Archivo” com peso 900 devolve
+ * o Bold (700). O cartão do celular desenhado usa as duas pelo nome, para o
+ * número e o valor saírem com o peso que têm no app.
+ */
+const FONTE_NUMERO = "Archivo Black, Archivo, DejaVu Sans, sans-serif";
+const FONTE_FORTE = "Archivo ExtraBold, Archivo, DejaVu Sans, sans-serif";
 
 /* ---------------------------------------- fontes (@fontsource -> .ttf) */
 
@@ -176,8 +184,19 @@ const ICONES_SVG = {
     `<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10Z" fill="none" stroke="${cor}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="10" r="1.1" fill="${cor}"/><circle cx="12" cy="10" r="1.1" fill="${cor}"/><circle cx="15" cy="10" r="1.1" fill="${cor}"/>`,
   navios: (cor) =>
     `<path d="M2 20c2 0 3-1 5-1s3 1 5 1 3-1 5-1 3 1 5 1" fill="none" stroke="${cor}" stroke-width="2" stroke-linecap="round"/><path d="M4 17 3 11l9-4 9 4-1 6" fill="none" stroke="${cor}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 3v4M8 9V6h8v3" fill="none" stroke="${cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+  saldo: (cor) =>
+    `<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" fill="none" stroke="${cor}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" fill="none" stroke="${cor}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>`,
+  caminhao: (cor) =>
+    `<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" fill="none" stroke="${cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 18H9" fill="none" stroke="${cor}" stroke-width="2" stroke-linecap="round"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" fill="none" stroke="${cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="18" r="2" fill="none" stroke="${cor}" stroke-width="2"/><circle cx="7" cy="18" r="2" fill="none" stroke="${cor}" stroke-width="2"/>`,
+  seta: (cor) =>
+    `<path d="m9 18 6-6-6-6" fill="none" stroke="${cor}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`,
 };
 
+/**
+ * Os nove recursos, na mesma ordem da mensagem (`BENEFICIOS` em src/lib/compartilhar.ts).
+ * `rotulo` vai nas artes 1200×630, `longo` na arte de status; `detalhe` aparece ao lado
+ * do rótulo quando o recurso ocupa a largura das duas colunas (ver `gradeRecursosSvg`).
+ */
 const RECURSOS_ARTE = [
   { icone: "ponto", cor: TEMA.ciano, fundo: TEMA.painel, rotulo: "Pontos da Copadubo", longo: "Monitoramento dos pontos da Copadubo" },
   { icone: "alerta", cor: TEMA.ouro, fundo: TEMA.painel, rotulo: "Alertas de chamadas", longo: "Alertas de chamadas no celular" },
@@ -187,10 +206,43 @@ const RECURSOS_ARTE = [
   { icone: "contatos", cor: TEMA.verde, fundo: TEMA.verdeEscuro, rotulo: "Contatos úteis", longo: "Contatos e informações úteis" },
   { icone: "chat", cor: TEMA.ouro, fundo: TEMA.painel, rotulo: "Chat de motoristas", longo: "Chat entre motoristas do porto" },
   { icone: "navios", cor: TEMA.azul, fundo: TEMA.painel, rotulo: "Navios fertilizantes", longo: "Atracação dos navios de fertilizantes" },
+  {
+    icone: "saldo",
+    cor: TEMA.ouro,
+    fundo: TEMA.painel,
+    rotulo: "Saldo de Ganhos",
+    longo: "Saldo de Ganhos: quanto você vai receber",
+    detalhe: "viagens da semana e quanto você vai receber",
+  },
 ];
 
 function iconeEm(nome, cor, x, y, escala = 1) {
   return `<g transform="translate(${x} ${y}) scale(${escala})">${ICONES_SVG[nome](cor)}</g>`;
+}
+
+/**
+ * Grade dos recursos em duas colunas (artes 1200×630). Com número ímpar de recursos,
+ * o último ocupa a largura das duas colunas e mostra o `detalhe` ao lado do rótulo.
+ * `caixa` é o quadradinho do ícone, `icone` a posição e a escala do desenho de 24 px,
+ * `texto` a posição e o tamanho do rótulo — tudo medido a partir do canto da pílula.
+ */
+function gradeRecursosSvg({ x, y, colW, pillH, gapX, gapY, raio, caixa, icone, texto }) {
+  return RECURSOS_ARTE.map((r, i) => {
+    const sozinho = i === RECURSOS_ARTE.length - 1 && RECURSOS_ARTE.length % 2 === 1;
+    const largura = sozinho ? colW * 2 + gapX : colW;
+    const px = x + (i % 2) * (colW + gapX);
+    const py = y + Math.floor(i / 2) * (pillH + gapY);
+    const detalhe =
+      sozinho && r.detalhe
+        ? `<tspan dx="${texto.vao}" font-weight="500" font-size="${texto.tamanho - 0.5}" fill="${TEMA.aco}">${esc(r.detalhe)}</tspan>`
+        : "";
+    return `<g transform="translate(${px} ${py})">
+      <rect width="${largura}" height="${pillH}" rx="${raio}" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.5"/>
+      <rect x="${caixa.x}" y="${caixa.y}" width="${caixa.lado}" height="${caixa.lado}" rx="${caixa.raio}" fill="${r.fundo}"/>
+      ${iconeEm(r.icone, r.cor, icone.x, icone.y, icone.escala)}
+      <text x="${texto.x}" y="${texto.y}" font-family="${FONTE_TEXTO}" font-weight="700" font-size="${texto.tamanho}" fill="${TEMA.gelo}">${esc(r.rotulo)}${detalhe}</text>
+    </g>`;
+  }).join("\n  ");
 }
 
 /* --------------------- mockup fiel do celular com a interface Dark Navy */
@@ -242,53 +294,52 @@ function mockupAparelhoSvg({ x, y, banner, logo }) {
       <image x="${telaX + 12}" y="${telaY + bannerH - 36}" width="46" height="22" xlink:href="data:image/png;base64,${logo}"/>
       <text x="${telaX + 64}" y="${telaY + bannerH - 20}" font-family="${FONTE_TITULO}" font-weight="800" font-size="14" fill="${TEMA.gelo}">Olá, <tspan fill="${TEMA.ciano}">Motorista!</tspan></text>
 
-      <!-- 2. Cartão principal do monitor (.cartao-monitor) -->
+      <!-- 2. Cartão do número (.cartao-monitor), nas proporções da tela de 412 px (× 300/388):
+              número, status ao lado e o Saldo de Ganhos (“Você vai receber”) -->
       <g transform="translate(${telaX + 10} ${telaY + bannerH - 10})">
-        <rect width="300" height="132" rx="18" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.5"/>
+        <rect width="300" height="152" rx="18" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.5"/>
         <text x="274" y="22" text-anchor="end" font-family="${FONTE_TITULO}" font-weight="700" font-size="11" fill="${TEMA.gelo}">TRUCK - LIVRO A</text>
         <path d="M280 16 l4 4 l4 -4" fill="none" stroke="${TEMA.azul}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 
         <!-- Número gigante em ciano -->
-        <text x="14" y="82" font-family="${FONTE_TITULO}" font-weight="900" font-size="52" fill="${TEMA.ciano}" letter-spacing="-1">A042</text>
+        <text x="16" y="67.5" font-family="${FONTE_NUMERO}" font-weight="900" font-size="49.5" letter-spacing="-2" fill="${TEMA.ciano}">A042</text>
 
-        <!-- Selo ATIVO com LED verde -->
-        <g transform="translate(154 42)">
-          <rect width="132" height="46" rx="23" fill="${TEMA.fundo}" fill-opacity="0.55" stroke="${TEMA.borda}" stroke-width="1.2"/>
-          <circle cx="21" cy="23" r="8" fill="${TEMA.verde}" fill-opacity="0.24"/>
-          <circle cx="21" cy="23" r="4.8" fill="${TEMA.verde}"/>
-          <text x="36" y="21" font-family="${FONTE_TITULO}" font-weight="800" font-size="14.5" fill="${TEMA.verde}">ATIVO</text>
-          <text x="36" y="36" font-family="${FONTE_TEXTO}" font-weight="700" font-size="10.5" fill="${TEMA.aco}">3 na frente</text>
+        <!-- Selo ATIVO com LED verde, ao lado do número -->
+        <g transform="translate(156 36)">
+          <rect width="92" height="36" rx="18" fill="${TEMA.fundo}" fill-opacity="0.55" stroke="${TEMA.borda}" stroke-width="1.2"/>
+          <circle cx="17" cy="18" r="7.6" fill="${TEMA.verde}" fill-opacity="0.24"/>
+          <circle cx="17" cy="18" r="5" fill="${TEMA.verde}"/>
+          <text x="32.5" y="17" font-family="${FONTE_TITULO}" font-weight="700" font-size="13.2" fill="${TEMA.verde}">ATIVO</text>
+          <text x="32.5" y="29.3" font-family="${FONTE_TEXTO}" font-weight="700" font-size="8.9" fill="${TEMA.gelo}" fill-opacity="0.75">3 na frente</text>
         </g>
 
-        <!-- Barra de progresso -->
-        <rect x="14" y="101" width="272" height="6" rx="3" fill="${TEMA.progresso}"/>
-        <rect x="14" y="101" width="208" height="6" rx="3" fill="${TEMA.verde}"/>
-        <text x="14" y="121" font-family="${FONTE_TEXTO}" font-weight="500" font-size="10" fill="${TEMA.aco}">Copadubo · atualizado a cada 5s</text>
+        <!-- Saldo de Ganhos dentro do cartão -->
+        <line x1="10" y1="83" x2="290" y2="83" stroke="${TEMA.borda}" stroke-width="1"/>
+        ${iconeEm("saldo", TEMA.ouro, 13.1, 89.3, 0.775)}
+        <text x="40" y="102.3" font-family="${FONTE_TEXTO}" font-weight="500" font-size="10.8" fill="${TEMA.gelo}" fill-opacity="0.85">Você vai receber</text>
+        <text x="19" y="139" font-family="${FONTE_NUMERO}" font-weight="900" font-size="38.2" fill="${TEMA.ouro}">R$ 507,92</text>
       </g>
 
-      <!-- 3. Seção de Serviços (Dark Navy) -->
-      <g transform="translate(${telaX + 10} ${telaY + bannerH + 132})">
-        <rect width="300" height="142" rx="18" fill="${TEMA.cartao}" fill-opacity="0.88" stroke="${TEMA.borda}" stroke-width="1.3"/>
-        <text x="14" y="24" font-family="${FONTE_TITULO}" font-weight="800" font-size="13" fill="${TEMA.gelo}" letter-spacing="0.5">SERVIÇOS</text>
-        <text x="286" y="24" text-anchor="end" font-family="${FONTE_TITULO}" font-weight="700" font-size="11" fill="${TEMA.ciano}">Ver todos ›</text>
+      <!-- 3. Os dois quadros da fila, cada um no seu cartão -->
+      <g transform="translate(${telaX + 10} ${telaY + bannerH + 153})">
+        <rect width="300" height="52" rx="18" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.3"/>
+        <circle cx="30.2" cy="26" r="18.5" fill="${TEMA.ouro}" fill-opacity="0.1" stroke="${TEMA.ouro}" stroke-opacity="0.7" stroke-width="1"/>
+        ${iconeEm("caminhao", TEMA.ouro, 20.95, 16.75, 0.77)}
+        <text x="60.3" y="21.8" font-family="${FONTE_FORTE}" font-weight="800" font-size="11.2" fill="${TEMA.gelo}">Pontos no quadro <tspan fill="${TEMA.ouro}">TRUCK</tspan></text>
+        <text x="60.3" y="37.9" font-family="${FONTE_TEXTO}" font-weight="400" font-size="10" fill="${TEMA.gelo}" fill-opacity="0.75">último escalado A038</text>
+        <text x="261.3" y="34.5" text-anchor="end" font-family="${FONTE_FORTE}" font-weight="800" font-size="25.8" fill="${TEMA.ouro}">21</text>
+        ${iconeEm("seta", TEMA.gelo, 267.6, 15.95, 0.838)}
+      </g>
 
-        <!-- Card Cálculo de Frete -->
-        <g transform="translate(12 36)">
-          <rect width="134" height="94" rx="14" fill="${TEMA.fundo}" fill-opacity="0.6" stroke="${TEMA.borda}" stroke-width="1.2"/>
-          <circle cx="26" cy="24" r="14" fill="${TEMA.verde}"/>
-          ${iconeEm("frete", TEMA.fundo, 16.4, 14.4, 0.8)}
-          <text x="12" y="62" font-family="${FONTE_TITULO}" font-weight="800" font-size="12.5" fill="${TEMA.gelo}">Cálculo de Frete</text>
-          <text x="12" y="79" font-family="${FONTE_TEXTO}" font-weight="500" font-size="10.5" fill="${TEMA.aco}">Foto do ticket</text>
-        </g>
-
-        <!-- Card Assistente Mecânico IA -->
-        <g transform="translate(154 36)">
-          <rect width="134" height="94" rx="14" fill="${TEMA.fundo}" fill-opacity="0.6" stroke="${TEMA.borda}" stroke-width="1.2"/>
-          <circle cx="26" cy="24" r="14" fill="${TEMA.ciano}"/>
-          ${iconeEm("mecanico", TEMA.fundo, 16.4, 14.4, 0.8)}
-          <text x="12" y="62" font-family="${FONTE_TITULO}" font-weight="800" font-size="12.5" fill="${TEMA.gelo}">Mecânico IA</text>
-          <text x="12" y="79" font-family="${FONTE_TEXTO}" font-weight="500" font-size="10.5" fill="${TEMA.aco}">Diagnóstico rápido</text>
-        </g>
+      <g transform="translate(${telaX + 10} ${telaY + bannerH + 215})">
+        <rect width="300" height="58" rx="18" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.3"/>
+        <circle cx="30.2" cy="29" r="18.5" fill="${TEMA.verde}" fill-opacity="0.1" stroke="${TEMA.verde}" stroke-opacity="0.7" stroke-width="1"/>
+        ${iconeEm("caminhao", TEMA.verde, 20.95, 19.75, 0.77)}
+        <text x="60.3" y="17.7" font-family="${FONTE_FORTE}" font-weight="800" font-size="11.2" fill="${TEMA.gelo}">Pontos no</text>
+        <text x="60.3" y="31.7" font-family="${FONTE_FORTE}" font-weight="800" font-size="11.2" fill="${TEMA.gelo}">quadro <tspan fill="${TEMA.verde}">CAVALO/C</tspan></text>
+        <text x="60.3" y="47.9" font-family="${FONTE_TEXTO}" font-weight="400" font-size="10" fill="${TEMA.gelo}" fill-opacity="0.75">último escalado A025</text>
+        <text x="261.3" y="37.5" text-anchor="end" font-family="${FONTE_FORTE}" font-weight="800" font-size="25.8" fill="${TEMA.verde}">46</text>
+        ${iconeEm("seta", TEMA.gelo, 267.6, 18.95, 0.838)}
       </g>
 
       <!-- 4. Barra de navegação inferior (Início · Chat · Navios) -->
@@ -333,25 +384,19 @@ async function gerarCompartilhar() {
   const logo = await logoBase64();
   const banner = await bannerBase64(640, 408);
 
-  const colW = 324;
-  const pillH = 47;
-  const gapX = 14;
-  const gapY = 11;
-  const gridX = 54;
-  const gridY = 304;
-
-  const gradeRecursos = RECURSOS_ARTE.map((r, i) => {
-    const col = i % 2;
-    const lin = Math.floor(i / 2);
-    const px = gridX + col * (colW + gapX);
-    const py = gridY + lin * (pillH + gapY);
-    return `<g transform="translate(${px} ${py})">
-      <rect width="${colW}" height="${pillH}" rx="13" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.5"/>
-      <rect x="8" y="7.5" width="32" height="32" rx="9" fill="${r.fundo}"/>
-      ${iconeEm(r.icone, r.cor, 14.4, 13.9, 0.8)}
-      <text x="50" y="29.5" font-family="${FONTE_TEXTO}" font-weight="700" font-size="16" fill="${TEMA.gelo}">${esc(r.rotulo)}</text>
-    </g>`;
-  }).join("\n  ");
+  // Cinco linhas no espaço que era de quatro: 4 × 2 recursos + o Saldo de Ganhos na largura toda.
+  const gradeRecursos = gradeRecursosSvg({
+    x: 54,
+    y: 298,
+    colW: 324,
+    pillH: 41,
+    gapX: 14,
+    gapY: 8,
+    raio: 12,
+    caixa: { x: 8, y: 6, lado: 29, raio: 8.5 },
+    icone: { x: 13.6, y: 11.6, escala: 0.74 },
+    texto: { x: 47, y: 26, tamanho: 15.5, vao: 10 },
+  });
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${L}" height="${A}">
   <defs>
@@ -407,11 +452,11 @@ async function gerarCompartilhar() {
   <!-- Filete de destaque -->
   <rect x="54" y="274" width="160" height="4" rx="2" fill="url(#fileteOuro)"/>
 
-  <!-- Grade 2×4 com os 8 recursos do aplicativo -->
+  <!-- Grade com os 9 recursos do aplicativo -->
   ${gradeRecursos}
 
-  <!-- Rodapé esquerdo: link oficial + assinatura alinhados às 2 colunas -->
-  <g transform="translate(54 544)">
+  <!-- Rodapé esquerdo: link oficial + assinatura alinhados às 2 colunas (a base bate com a do celular) -->
+  <g transform="translate(54 552)">
     <rect width="324" height="46" rx="23" fill="${TEMA.painel}" stroke="${TEMA.ciano}" stroke-opacity="0.65" stroke-width="1.5"/>
     <circle cx="26" cy="23" r="13" fill="${TEMA.cartao}"/>
     <path d="M22.5 24.5 l3 -3 M21 26 a2.8 2.8 0 0 1 0 -4 l1.5 -1.5 a2.8 2.8 0 0 1 4 0 M27 20 a2.8 2.8 0 0 1 0 4 l-1.5 1.5 a2.8 2.8 0 0 1 -4 0" fill="none" stroke="${TEMA.ouro}" stroke-width="1.8" stroke-linecap="round"/>
@@ -440,25 +485,18 @@ async function gerarCard() {
   const logo = await logoBase64();
   const qr = await qrBase64(236);
 
-  const colW = 376;
-  const pillH = 44;
-  const gapX = 14;
-  const gapY = 10;
-  const gridX = 58;
-  const gridY = 304;
-
-  const gradeRecursos = RECURSOS_ARTE.map((r, i) => {
-    const col = i % 2;
-    const lin = Math.floor(i / 2);
-    const px = gridX + col * (colW + gapX);
-    const py = gridY + lin * (pillH + gapY);
-    return `<g transform="translate(${px} ${py})">
-      <rect width="${colW}" height="${pillH}" rx="12" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.5"/>
-      <rect x="8" y="6.5" width="31" height="31" rx="8.5" fill="${r.fundo}"/>
-      ${iconeEm(r.icone, r.cor, 14, 12.5, 0.78)}
-      <text x="48" y="27.5" font-family="${FONTE_TEXTO}" font-weight="700" font-size="16" fill="${TEMA.gelo}">${esc(r.rotulo)}</text>
-    </g>`;
-  }).join("\n  ");
+  const gradeRecursos = gradeRecursosSvg({
+    x: 58,
+    y: 302,
+    colW: 376,
+    pillH: 40,
+    gapX: 14,
+    gapY: 8,
+    raio: 12,
+    caixa: { x: 8, y: 6, lado: 28, raio: 8 },
+    icone: { x: 13.4, y: 11.4, escala: 0.72 },
+    texto: { x: 46, y: 25.5, tamanho: 15.5, vao: 10 },
+  });
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${L}" height="${A}">
   <defs>
@@ -514,13 +552,14 @@ async function gerarStatus() {
   const logo = await logoBase64();
   const qr = await qrBase64(310);
 
+  // Nove linhas no espaço que era de oito (de 650 a 1340; o painel do QR começa em 1372).
   const listaRecursos = RECURSOS_ARTE.map((r, i) => {
-    const py = 650 + i * 86;
+    const py = 650 + i * 78;
     return `<g transform="translate(84 ${py})">
-      <rect width="912" height="72" rx="18" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.8"/>
-      <rect x="14" y="13" width="46" height="46" rx="13" fill="${r.fundo}"/>
-      ${iconeEm(r.icone, r.cor, 23, 22, 1.18)}
-      <text x="78" y="45" font-family="${FONTE_TEXTO}" font-weight="700" font-size="27" fill="${TEMA.gelo}">${esc(r.longo)}</text>
+      <rect width="912" height="66" rx="17" fill="${TEMA.cartao}" stroke="${TEMA.borda}" stroke-width="1.8"/>
+      <rect x="13" y="12" width="42" height="42" rx="12" fill="${r.fundo}"/>
+      ${iconeEm(r.icone, r.cor, 21, 20, 1.08)}
+      <text x="72" y="42" font-family="${FONTE_TEXTO}" font-weight="700" font-size="25.5" fill="${TEMA.gelo}">${esc(r.longo)}</text>
     </g>`;
   }).join("\n  ");
 
@@ -550,7 +589,7 @@ async function gerarStatus() {
 
   <rect x="370" y="588" width="340" height="5" rx="2.5" fill="url(#fileteStatus)"/>
 
-  <!-- 8 recursos em cartões Dark Navy -->
+  <!-- 9 recursos em cartões Dark Navy -->
   ${listaRecursos}
 
   <!-- Painel QR Code + chamada -->

@@ -7,8 +7,11 @@ import {
   BENEFICIOS,
   CABECALHO_PROMO,
   CHAMADA_LINK_PROMO,
+  DESCRICAO_CURTA,
   FECHO_PROMO,
   IMAGEM_COMPARTILHAR,
+  IMAGEM_DIVULGACAO,
+  IMAGEM_STATUS,
   TITULO_PROMO,
   compartilharAplicativo,
   linhasDaMensagem,
@@ -23,6 +26,9 @@ const ler = (p: string) => readFileSync(p, "utf8");
 const LINK = "https://copa-links.vercel.app";
 
 const MENSAGEM_ESPERADA = [
+  "🔗 *Acesse e conheça:*",
+  "https://copa-links.vercel.app/",
+  "",
   "🚛💙 *Conheça o CopaLinks!*",
   "",
   "Um aplicativo desenvolvido para facilitar o dia a dia dos motoristas no Porto de Paranaguá.",
@@ -35,11 +41,9 @@ const MENSAGEM_ESPERADA = [
   "📲 Contatos e informações úteis",
   "💬 Chat para compartilhar informações com outros motoristas",
   "🚢 Informações sobre a atracação dos navios de fertilizantes",
+  "💰 Saldo de Ganhos: viagens da semana e quanto você vai receber",
   "",
   "Tudo isso em um só aplicativo, gratuito e pensado para quem vive a rotina do porto!",
-  "",
-  "🔗 *Acesse e conheça:*",
-  "https://copa-links.vercel.app/",
   "",
   "💙 *CopaLinks — Conectar • Facilitar • Evoluir.*",
 ].join("\n");
@@ -50,7 +54,7 @@ test("a mensagem de compartilhamento corresponde exatamente ao texto oficial do 
   const msg = mensagemCompartilhar(LINK);
   assert.equal(msg, MENSAGEM_ESPERADA);
   assert.equal(mensagemCompartilhar(`${LINK}/`), MENSAGEM_ESPERADA);
-  assert.ok(msg.startsWith("🚛💙 *Conheça o CopaLinks!*"));
+  assert.ok(msg.includes("\n\n🚛💙 *Conheça o CopaLinks!*\n\n"));
   assert.ok(msg.includes(CABECALHO_PROMO));
   assert.ok(msg.includes(TITULO_PROMO));
   assert.ok(msg.includes(FECHO_PROMO));
@@ -59,9 +63,33 @@ test("a mensagem de compartilhamento corresponde exatamente ao texto oficial do 
   assert.ok(msg.endsWith("💙 *CopaLinks — Conectar • Facilitar • Evoluir.*"));
 });
 
-test("a mensagem lista os oito recursos do aplicativo no Porto de Paranaguá", () => {
+test("a mensagem começa pelo link do app, que aparece uma vez só", () => {
+  const linhas = mensagemCompartilhar(LINK).split("\n");
+  // O endereço tem de estar à vista logo de cara, sem ninguém precisar ler a mensagem até o fim.
+  assert.deepEqual(linhas.slice(0, 3), ["🔗 *Acesse e conheça:*", "https://copa-links.vercel.app/", ""]);
+  assert.equal(linhas.filter((l) => l.includes("http")).length, 1, "o link aparece mais de uma vez (ou sumiu)");
+  assert.equal(linhas.filter((l) => l.includes(CHAMADA_LINK_PROMO)).length, 1);
+  // …e vale para qualquer endereço (o domínio próprio, a prévia da Vercel, o teste local).
+  const outra = mensagemCompartilhar("http://localhost:3000").split("\n");
+  assert.deepEqual(outra.slice(0, 2), ["🔗 *Acesse e conheça:*", "http://localhost:3000/"]);
+  assert.equal(outra.at(-1), "💙 *CopaLinks — Conectar • Facilitar • Evoluir.*");
+});
+
+test("a mensagem lista os nove recursos do aplicativo, com o Saldo de Ganhos", () => {
   const msg = mensagemCompartilhar(LINK);
-  assert.equal(BENEFICIOS.length, 8);
+  assert.equal(BENEFICIOS.length, 9);
+  assert.equal(BENEFICIOS.at(-1)?.titulo, "Saldo de Ganhos: viagens da semana e quanto você vai receber");
+  assert.ok(msg.includes("💰 Saldo de Ganhos: viagens da semana e quanto você vai receber"));
+  assert.ok(DESCRICAO_CURTA.includes("saldo de ganhos"), "a descrição da prévia do link não fala do Saldo de Ganhos");
+  // cada recurso numa linha só, na ordem da lista, entre a chamada e o fecho
+  const linhas = msg.split("\n");
+  const primeiro = linhas.indexOf(`${BENEFICIOS[0].emoji} ${BENEFICIOS[0].titulo}`);
+  assert.deepEqual(
+    linhas.slice(primeiro, primeiro + BENEFICIOS.length),
+    BENEFICIOS.map((b) => `${b.emoji} ${b.titulo}`),
+  );
+  assert.equal(linhas[primeiro - 2], TITULO_PROMO);
+  assert.equal(linhas[primeiro + BENEFICIOS.length + 1], FECHO_PROMO);
   for (const b of BENEFICIOS) {
     assert.ok(
       msg.includes(`${b.emoji} ${b.titulo}`),
@@ -84,7 +112,7 @@ test("a mensagem usa o negrito do WhatsApp (asterisco simples) e mostra o link c
 test("as linhas da mensagem carregam os trechos em negrito", () => {
   const linhas = linhasDaMensagem(LINK);
   const negrito = linhas.flat().filter((t) => t.negrito).map((t) => t.texto);
-  assert.deepEqual(negrito, [CABECALHO_PROMO, CHAMADA_LINK_PROMO, ASSINATURA_PROMO]);
+  assert.deepEqual(negrito, [CHAMADA_LINK_PROMO, CABECALHO_PROMO, ASSINATURA_PROMO]);
 });
 
 test("o link de WhatsApp abre a mensagem preenchida", () => {
@@ -164,6 +192,44 @@ test("a página de divulgação usa a lista única de benefícios", () => {
     );
   }
   assert.ok(comp.includes("PASSOS"), "a página não usa a lista de passos");
+});
+
+test("cada recurso da lista tem o seu ícone na página e a sua linha nas artes", () => {
+  // A página casa ícone e recurso pela posição: lista com um a mais e ícones com um a menos = ícone errado.
+  const comp = ler("src/components/divulgacao/DivulgacaoApp.tsx");
+  const icones = /const ICONES_BENEFICIO = \[([^\]]*)\]/.exec(comp)?.[1] ?? "";
+  const nomes = icones.split(",").map((n) => n.trim()).filter(Boolean);
+  assert.equal(nomes.length, BENEFICIOS.length, `ícones da página: ${nomes.join(", ")}`);
+  assert.equal(nomes.at(-1), "Wallet", "o Saldo de Ganhos (último da lista) sem a carteira");
+  assert.equal(new Set(nomes).size, nomes.length, "ícone repetido na lista");
+
+  // As artes têm a lista delas (rótulos curtos), na mesma ordem e com o mesmo tamanho.
+  const script = ler("scripts/gerar-divulgacao.mjs");
+  const arte = /const RECURSOS_ARTE = \[([\s\S]*?)\n\];/.exec(script)?.[1] ?? "";
+  const rotulos = [...arte.matchAll(/rotulo: "([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(rotulos.length, BENEFICIOS.length, `recursos nas artes: ${rotulos.join(" | ")}`);
+  assert.equal(rotulos.at(-1), "Saldo de Ganhos");
+  assert.equal([...arte.matchAll(/longo: "([^"]+)"/g)].length, BENEFICIOS.length);
+  for (const icone of [...arte.matchAll(/icone: "([^"]+)"/g)].map((m) => m[1])) {
+    assert.ok(script.includes(`\n  ${icone}: (cor) =>`), `as artes usam um ícone que não foi desenhado: ${icone}`);
+  }
+  // O celular desenhado mostra o cartão novo do início, com o saldo.
+  assert.ok(script.includes(">Você vai receber</text>"), "o celular das artes sem o “Você vai receber”");
+  assert.ok(!script.includes("atualizado a cada 5s"), "o celular das artes voltou ao cartão antigo");
+});
+
+test("as três artes levam o mesmo carimbo de versão, também na prévia do link", () => {
+  // O `?v=` muda quando as artes são geradas de novo; se um endereço fica para trás,
+  // aquela tela continua mostrando a imagem antiga guardada no celular.
+  const versao = (url: string) => /\?v=(\d+)$/.exec(url)?.[1];
+  const v = versao(IMAGEM_COMPARTILHAR);
+  assert.ok(v, "a imagem de compartilhar sem carimbo de versão");
+  assert.ok(Number(v) >= 3, "as artes com o Saldo de Ganhos são a versão 3 em diante");
+  assert.equal(versao(IMAGEM_DIVULGACAO), v);
+  assert.equal(versao(IMAGEM_STATUS), v);
+  const page = ler("src/app/divulgacao/page.tsx");
+  const naPagina = [...page.matchAll(/\/images\/divulgacao-card\.jpg\?v=(\d+)/g)].map((m) => m[1]);
+  assert.deepEqual(naPagina, [v, v], "a prévia do link da /divulgacao com outra versão do cartão");
 });
 
 test("a página de divulgação instala o app e mostra o QR Code", () => {

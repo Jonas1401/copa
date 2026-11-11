@@ -7,21 +7,28 @@
  * (/divulgacao): no WhatsApp o negrito sai com `*`, na página ele vira
  * <b>. Assim o texto que o motorista manda no grupo nunca diverge do que a
  * página promete.
+ *
+ * O endereço do app abre a mensagem (as duas primeiras linhas), para ficar à
+ * vista sem ninguém precisar ler até o fim. Aparece uma vez só.
  */
 
 export const NOME_APP = "Monitor Ponto CopaLinks";
 
 export const LINK_OFICIAL_APP = "https://copa-links.vercel.app/";
 
-export const IMAGEM_COMPARTILHAR = "/images/compartilhar.jpg?v=2";
+/**
+ * O `?v=` é o carimbo do conteúdo: mude o número sempre que a arte for gerada de
+ * novo, senão o celular (e o WhatsApp) continuam com a imagem antiga guardada.
+ */
+export const IMAGEM_COMPARTILHAR = "/images/compartilhar.jpg?v=3";
 
 /** Imagem usada na página de divulgação (cartão de link e status do WhatsApp). */
-export const IMAGEM_DIVULGACAO = "/images/divulgacao-card.jpg?v=2";
-export const IMAGEM_STATUS = "/images/divulgacao-status.jpg?v=2";
+export const IMAGEM_DIVULGACAO = "/images/divulgacao-card.jpg?v=3";
+export const IMAGEM_STATUS = "/images/divulgacao-status.jpg?v=3";
 
 /** Descrição curta: aparece embaixo do título na prévia do link. */
 export const DESCRICAO_CURTA =
-  "Um aplicativo desenvolvido para facilitar o dia a dia dos motoristas no Porto de Paranaguá: monitoramento dos pontos da Copadubo, alertas, tempo, frete, assistente mecânico com IA, contatos, chat e navios de fertilizantes.";
+  "Um aplicativo desenvolvido para facilitar o dia a dia dos motoristas no Porto de Paranaguá: monitoramento dos pontos da Copadubo, alertas, tempo, frete, assistente mecânico com IA, contatos, chat, navios de fertilizantes e saldo de ganhos.";
 
 /** Cabeçalho da mensagem. */
 export const CABECALHO_PROMO = "Conheça o CopaLinks!";
@@ -34,13 +41,17 @@ export const TITULO_PROMO =
 export const FECHO_PROMO =
   "Tudo isso em um só aplicativo, gratuito e pensado para quem vive a rotina do porto!";
 
-/** Rótulo em negrito antes do endereço na mensagem. */
+/** Rótulo em negrito antes do endereço, na primeira linha da mensagem. */
 export const CHAMADA_LINK_PROMO = "Acesse e conheça:";
 
 /** Assinatura no fim da mensagem. */
 export const ASSINATURA_PROMO = "CopaLinks — Conectar • Facilitar • Evoluir.";
 
-/** Os oito recursos do app (emoji + título na mensagem + descrição na página de divulgação). */
+/**
+ * Os nove recursos do app (emoji + título na mensagem + descrição na página de
+ * divulgação). A ordem é a da mensagem; as artes (`scripts/gerar-divulgacao.mjs`)
+ * e os ícones da página (`ICONES_BENEFICIO`) seguem a mesma ordem.
+ */
 export const BENEFICIOS = [
   {
     emoji: "📍",
@@ -82,6 +93,11 @@ export const BENEFICIOS = [
     titulo: "Informações sobre a atracação dos navios de fertilizantes",
     texto: "Acompanhe navios atracados, saldo, manobras previstas e programação dos berços.",
   },
+  {
+    emoji: "💰",
+    titulo: "Saldo de Ganhos: viagens da semana e quanto você vai receber",
+    texto: "Cadastre a sua porcentagem: o app lê os seus tickets no Portal do Motorista e faz a conta da comissão.",
+  },
 ] as const;
 
 /** Os três passos para começar (usados na página de divulgação). */
@@ -118,11 +134,18 @@ export function normalizarLinkCompartilhar(link: string) {
 }
 
 /**
- * A mensagem de divulgação, linha a linha.
+ * A mensagem de divulgação, linha a linha. Começa pelo endereço do app (rótulo
+ * e link, cada um na sua linha) e termina na assinatura; o link aparece uma vez só.
  */
 export function linhasDaMensagem(link: string): Linha[] {
   const endereco = normalizarLinkCompartilhar(link);
   return [
+    [
+      { texto: "🔗 ", negrito: false },
+      { texto: CHAMADA_LINK_PROMO, negrito: true },
+    ],
+    [{ texto: endereco, negrito: false }],
+    [],
     [{ texto: "🚛💙 ", negrito: false }, { texto: CABECALHO_PROMO, negrito: true }],
     [],
     [{ texto: TITULO_PROMO, negrito: false }],
@@ -130,12 +153,6 @@ export function linhasDaMensagem(link: string): Linha[] {
     ...BENEFICIOS.map((b): Linha => [{ texto: `${b.emoji} ${b.titulo}`, negrito: false }]),
     [],
     [{ texto: FECHO_PROMO, negrito: false }],
-    [],
-    [
-      { texto: "🔗 ", negrito: false },
-      { texto: CHAMADA_LINK_PROMO, negrito: true },
-    ],
-    [{ texto: endereco, negrito: false }],
     [],
     [
       { texto: "💙 ", negrito: false },

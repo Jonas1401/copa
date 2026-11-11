@@ -1034,11 +1034,15 @@ O texto que o motorista manda no WhatsApp (botão **Compartilhar** na tela de
 início) e a página pública **/divulgacao** saem da **mesma lista** — em
 `src/lib/compartilhar.ts`:
 
-- `BENEFICIOS` — os oito recursos do app (monitoramento, alertas, fila em
-  tempo real, tempo, frete, assistente IA, chat e contatos). É a fonte
-  única: a mensagem e os cartões da página nunca divergem.
+- `BENEFICIOS` — os nove recursos do app (monitoramento dos pontos, alertas,
+  tempo, frete, assistente mecânico com IA, contatos, chat, navios e Saldo de
+  Ganhos). É a fonte única: a mensagem e os cartões da página nunca divergem.
+  Recurso novo entra aqui, ganha um ícone em `ICONES_BENEFICIO` (na página, na
+  mesma posição) e uma linha em `RECURSOS_ARTE` (no script das artes).
 - `linhasDaMensagem(link)` — a mensagem linha a linha, com os trechos em
-  negrito. No WhatsApp o negrito sai com `*` (o WhatsApp não entende `**`
+  negrito. **Começa pelo endereço do app** (rótulo e link nas duas primeiras
+  linhas), para ficar à vista sem ninguém precisar ler até o fim. O link
+  aparece uma vez só; a assinatura fecha a mensagem. No WhatsApp o negrito sai com `*` (o WhatsApp não entende `**`
   nem link em markdown `[]( )`), e na página o mesmo trecho vira `<b>`.
 - `mensagemCompartilhar(link)` — o texto pronto (copiar, enviar pelo
   WhatsApp ou pela folha de compartilhamento do aparelho).
@@ -1063,8 +1067,15 @@ administrador.
 
 **Artes:** `node scripts/gerar-divulgacao.mjs` (aceita
 `--url=https://copa-links.vercel.app`) gera
-`public/images/divulgacao-status.jpg` (1080×1920, status do WhatsApp) e
-`public/images/divulgacao-card.jpg` (1200×630, prévia do link). Para o texto
+`public/images/compartilhar.jpg` (1200×630, a imagem que vai com a mensagem do
+botão Compartilhar e a prévia do link do app, com o celular mostrando a tela
+inicial), `public/images/divulgacao-status.jpg` (1080×1920, status do WhatsApp) e
+`public/images/divulgacao-card.jpg` (1200×630, prévia do link da /divulgacao).
+As três listam os recursos de `RECURSOS_ARTE`, na ordem de `BENEFICIOS`; com
+número ímpar, o último ocupa a largura das duas colunas. **Depois de gerar,
+aumente o `?v=`** das três imagens em `src/lib/compartilhar.ts` e em
+`src/app/divulgacao/page.tsx` — sem isso o celular e o WhatsApp continuam com a
+imagem antiga guardada. Para o texto
 sair com as fontes da marca (Archivo e Space Grotesk), converta os `.woff2` do
 `@fontsource` em `.ttf` e instale no sistema (ex.: em `~/.fonts`); sem isso o
 script usa a fonte padrão e as imagens continuam legíveis.
