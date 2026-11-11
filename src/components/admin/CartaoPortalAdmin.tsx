@@ -123,7 +123,23 @@ type Painel = {
   atualizadoEm: string | null;
   motoristas: MotoristaPortal[];
   /** Quem decide a saída do ponto e o que o monitor do Status tem guardado. */
-  monitor?: { fonte: "portal" | "quadro"; intervaloMin: number; situacoes: SituacaoPainel[] };
+  monitor?: { fonte: "portal" | "quadro"; intervaloMin: number; situacoes: SituacaoPainel[]; fila?: FilaPainel };
+};
+
+/** A fila geral do app: o que a aba “Fila” do portal trouxe (ou por que não veio). */
+type FilaPainel = {
+  fonte: "portal" | "quadro";
+  livros: {
+    livro: string;
+    lidoEm: string | null;
+    recente: boolean;
+    truck: { naFila: number; ultimo: number } | null;
+    carreta: { naFila: number; ultimo: number } | null;
+    erro: string | null;
+    tentativaEm: string | null;
+    motoristaId: number | null;
+    diagnostico: string[];
+  }[];
 };
 
 const CHAVE_TOKEN = "copalinks-admin-sessao";
@@ -397,6 +413,43 @@ export default function CartaoPortalAdmin() {
             <p role="status" className="mt-2 rounded-[14px] border border-ciano/40 px-3 py-2 text-[12.5px] text-ciano">
               {aviso}
             </p>
+          )}
+
+          {p?.monitor?.fila?.fonte === "portal" && (
+            <div className="mt-3 rounded-[14px] border border-[#183341]/60 bg-[#000D16]/40 px-3 py-2.5">
+              <p className="font-display text-[12.5px] font-bold tracking-[0.04em] text-gelo/85 uppercase">
+                Fila do app · aba “Fila” do portal
+              </p>
+              <p className="mt-1 text-[11.5px] leading-snug text-gelo/55">
+                O quadro público foi desligado pela Copadubo. A fila (card principal, posição e avisos de vez) é lida
+                na aba “Fila”, com a sessão de um dos motoristas acima, na carona da leitura do Status.
+              </p>
+              {p.monitor.fila.livros.map((f) => {
+                const cod = (n: number) => (n ? `${f.livro}${String(n).padStart(3, "0")}` : "—");
+                return (
+                  <div key={f.livro} className="mt-2 text-[12.5px] leading-snug">
+                    <p className={f.recente && !f.erro ? "text-verde" : "text-ambar"}>
+                      <b>Livro {f.livro}</b>{" "}
+                      {f.truck && f.carreta
+                        ? `· Truck ${f.truck.naFila} na fila (último ${cod(f.truck.ultimo)}) · Carreta ${f.carreta.naFila} na fila (último ${cod(f.carreta.ultimo)})`
+                        : "· ainda sem leitura"}
+                    </p>
+                    <p className="text-[11.5px] text-gelo/55">
+                      {f.lidoEm ? `Lida em ${horaMin(f.lidoEm)}${f.recente ? "" : " — leitura velha: o app mostra OFFLINE"}` : "Nunca lida."}
+                      {f.motoristaId ? ` · conta do motorista nº ${f.motoristaId}` : ""}
+                    </p>
+                    {f.erro && (
+                      <p className="mt-0.5 text-[11.5px] text-ambar">
+                        Última tentativa{f.tentativaEm ? ` (${horaMin(f.tentativaEm)})` : ""} não serviu: {f.erro}
+                      </p>
+                    )}
+                    {f.erro && f.diagnostico.length > 0 && (
+                      <p className="mt-0.5 text-[11px] leading-snug text-gelo/45">{f.diagnostico.join(" · ")}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
 
           {!lista.length && (

@@ -326,6 +326,23 @@ export const portalSituacoes = pgTable("portal_situacoes", {
   lidoEm: timestamp("lido_em", { withTimezone: true }).defaultNow().notNull(), // última leitura boa deste ponto
 }, (t) => [index("portal_situacoes_motorista_idx").on(t.motoristaId)]);
 
+// A FILA lida na aba “Fila” do portal (a “Tela de Ativos”), uma linha por livro.
+// O quadro público foi desligado; a fila agora só abre com a sessão de um
+// motorista. O que fica aqui é a fila geral (igual para todos): os pontos de
+// cada quadro, na ordem, e o último escalado. Nada da conta de quem leu.
+export const portalFila = pgTable("portal_fila", {
+  livro: text("livro").primaryKey(), // A | B | M
+  dados: jsonb("dados"), // { TRUCK: { ultimo, codigos }, CAVALO: { ultimo, codigos } }
+  lidoEm: timestamp("lido_em", { withTimezone: true }), // última leitura BOA
+  motoristaId: integer("motorista_id"), // conta que abriu a tela (só para o diagnóstico)
+  tentativaEm: timestamp("tentativa_em", { withTimezone: true }), // última tentativa, boa ou não
+  erro: text("erro"), // por que a última tentativa não serviu (null = serviu)
+  diagnostico: text("diagnostico"),
+  // A partir de quando a próxima leitura pode começar (null = já). É também a
+  // reserva: duas funções não leem a fila do mesmo livro ao mesmo tempo.
+  proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
+});
+
 // Último resultado do "Testar conexão" de cada integração.
 export const integracoesStatus = pgTable("integracoes_status", {
   id: text("id").primaryKey(), // composio | clima | whatsapp | ia | notificacoes | banco

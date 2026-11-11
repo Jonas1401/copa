@@ -12,6 +12,7 @@ import {
 import { cpfPlausivel, limparCpf } from "@/lib/portal-copadubo-parse";
 import { monitorarMotorista } from "@/lib/portal-monitor";
 import { fontePortal, intervaloStatusMs, situacaoFresca, situacoesDoMotorista } from "@/lib/portal-situacao";
+import { fonteDaFila } from "@/lib/portal-fila";
 
 export const dynamic = "force-dynamic";
 /** Um login no portal pode levar alguns segundos; o padrão de 10 s é curto. */
@@ -36,10 +37,13 @@ function podeLer(id: number) {
  */
 async function monitoramentoDe(motoristaId: number) {
   const fonte = fontePortal();
-  if (fonte !== "portal") return { fonte, intervaloMin: null, situacoes: [] };
+  if (fonte !== "portal") return { fonte, intervaloMin: null, situacoes: [], filaGeral: false };
   const situacoes = await situacoesDoMotorista(motoristaId).catch(() => []);
   return {
     fonte,
+    // A fila geral do app é lida na aba “Fila” do portal, com a sessão de quem
+    // cadastrou o acesso: a tela conta isso ao motorista antes de ele salvar.
+    filaGeral: fonteDaFila() === "portal",
     intervaloMin: Math.round(intervaloStatusMs() / 60_000),
     situacoes: situacoes
       .map((s) => ({

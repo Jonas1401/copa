@@ -37,6 +37,8 @@ test("app fechado: cron aguarda Push, NA VEZ não vira SAIU e uma página parcia
 
   process.env.CRON_SECRET = "segredo-isolado-do-cron";
   process.env.COMPOSIO_API_KEY = "";
+  // Este teste cobre a fila lida do quadro público antigo (hoje a fonte padrão é a aba “Fila” do portal).
+  process.env.FONTE_FILA = "quadro";
   // Este teste cobre a saída decidida pelo QUADRO (`PORTAL_FONTE_SAIDA=quadro`).
   // No padrão, quem decide é o Status do Portal do Motorista — e o quadro não
   // avisa a saída: ver tests/portal-status-monitor.test.ts.

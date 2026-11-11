@@ -34,6 +34,8 @@ test("contador mostra a hora da leitura real; falha no site não renova o horár
   const { pool } = await import("../src/db");
   const { garantirTabelas, varrer, montarEstado } = await import("../src/lib/estado");
   process.env.COMPOSIO_API_KEY = "";
+  // Este teste cobre a fila lida do quadro público antigo (hoje a fonte padrão é a aba “Fila” do portal).
+  process.env.FONTE_FILA = "quadro";
 
   let siteFora = false;
   const paginas: Record<string, string> = {

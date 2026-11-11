@@ -53,6 +53,8 @@ export type EstadoPortalMotorista = {
   fonte?: "portal" | "quadro";
   /** De quantos em quantos minutos o Status é olhado (fonte `portal`). */
   intervaloMin?: number | null;
+  /** A fila geral do app (aba “Fila” do portal) é lida com a sessão de quem cadastrou o acesso. */
+  filaGeral?: boolean;
   situacoes?: SituacaoDoPonto[];
 };
 
@@ -441,6 +443,9 @@ export default function PortalMotorista({
           mostra o que aparece nela. A única coisa que ele faz por você lá é escolher
           o seu ponto em “Trocar Ponto”, para ver o Status dele — nunca entra nem sai
           de dispensa por você.{" "}
+          {peloStatus && estado?.filaGeral !== false
+            ? "Ele também abre a aba “Fila”: a fila geral, que é igual para todos, aparece para todos os motoristas do app — nada da sua conta vai junto. "
+            : ""}
           {peloStatus
             ? "A leitura é feita na sua conta, com a sessão que fica aberta no servidor."
             : "Cada leitura é um login na sua conta."}

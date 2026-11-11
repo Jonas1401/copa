@@ -5,6 +5,7 @@ import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 import { limparMotoristasInativos } from "@/lib/motorista-inatividade";
 import { monitorarTodos } from "@/lib/portal-monitor";
+import { fonteDaFila } from "@/lib/portal-fila";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,7 +38,8 @@ export async function GET(req: Request) {
   // cadastrou o acesso (sessão guardada: um pedido por motorista) e avisa a
   // troca de situação — ESCALADO, EM DISPENSA, de volta a ATIVO. É a fonte do
   // aviso de saída; por isso este despertador precisa rodar a cada minuto.
-  // Um portal fora do ar nunca impede a fila nem os navios.
+  // Na mesma rodada, uma das contas abre a aba “Fila” (a fila geral do app).
+  // Um portal fora do ar nunca impede os navios.
   const tarefaPortal = monitorarTodos().catch(() => null);
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
@@ -54,6 +56,14 @@ export async function GET(req: Request) {
   let testes = { total: 0, enviados: 0 };
   let leitura: Awaited<ReturnType<typeof varrer>> | null = null;
   try {
+    // A fila vem da aba “Fila” do portal, lida na rodada acima: a varredura
+    // espera por ela (até 40 s) para conferir os pontos uma vez só, já com a
+    // fila nova — e não com a do minuto anterior ao mesmo tempo.
+    if (fonteDaFila() === "portal") {
+      let limite: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([tarefaPortal, new Promise((pronto) => (limite = setTimeout(pronto, 40_000)))]);
+      clearTimeout(limite);
+    }
     // `consultarPortal`: só tem trabalho com `PORTAL_FONTE_SAIDA=quadro` (o
     // ponto que saiu do quadro é conferido no portal antes do aviso). Com a
     // fonte padrão, a saída vem da leitura do Status acima.

@@ -11,7 +11,7 @@ código atual espera — sem apagar nenhum dado.
 2. Cole **todo** o conteúdo de
    [`supabase/migrations/20261106_atualizacao_completa.sql`](./migrations/20261106_atualizacao_completa.sql).
 3. Clique em **Run**.
-4. No fim ele mostra a lista de tabelas criadas/existentes (devem aparecer 49).
+4. No fim ele mostra a lista de tabelas criadas/existentes (devem aparecer 50).
 
 O arquivo é **100% idempotente** (`IF NOT EXISTS` / `IF EXISTS` em tudo):
 

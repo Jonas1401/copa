@@ -17,6 +17,7 @@ import { comBanco, db } from "@/db";
 import { amostras, eventos, pontos } from "@/db/schema";
 import { nomeDoMotorista, notificarEvento } from "@/lib/push";
 import { fontePortal } from "@/lib/portal-situacao";
+import { filaGuardada, fonteDaFila, livrosDaFila, validadeDaFilaMs, type FilaGuardada } from "@/lib/portal-fila";
 import { composioConfigurado, lerPaginas } from "@/lib/composio";
 
 export type Tipo = "TRUCK" | "CAVALO";
@@ -45,14 +46,29 @@ export type LinhaFila = {
   /** Quando o "Último Escalado" desta tabela mudou pela última vez. */
   ultimoDesde?: string | null;
   historico: number[];
+  /**
+   * Este quadro não tem leitura: a fila do livro dele não é lida na aba “Fila”
+   * do portal (só os livros de `PORTAL_FILA_LIVROS`) ou ainda não veio nenhuma
+   * vez. Os números ficam zerados e a tela mostra “—”, nunca um número velho.
+   */
+  semLeitura?: boolean;
 };
 
 export type FilaEstado = Record<string, LinhaFila>;
 
 export type Snapshot = {
-  /** intranet = leitura direta · composio = leitura de reserva pelo Composio */
-  origem: "intranet" | "composio" | "offline";
+  /**
+   * portal = a aba “Fila” do Portal do Motorista (a fonte de hoje) ·
+   * intranet = quadro público antigo, leitura direta · composio = o mesmo
+   * quadro, lido de reserva pelo Composio (só com `FONTE_FILA=quadro`)
+   */
+  origem: "portal" | "intranet" | "composio" | "offline";
   fila: FilaEstado;
+  /**
+   * Livros cuja fila foi lida há pouco no portal. Só existe nas varreduras
+   * feitas pela aba “Fila”; ausente = leitura do quadro antigo (os três).
+   */
+  livros?: Livro[];
   /** Quando esta tentativa de varredura foi gravada (com ou sem sucesso). */
   geradoEm: string;
   /**
@@ -86,6 +102,8 @@ export type PontoDTO = {
   saidaEm: string | null;
   criadoEm: string;
   motoristaId: number | null;
+  /** A fila do livro deste ponto não tem leitura: a posição não é conhecida. */
+  semFila?: boolean;
 };
 
 export type EventoDTO = {
@@ -431,6 +449,10 @@ export async function varrer(
     .orderBy(desc(amostras.id))
     .limit(1);
 
+  // A fila de hoje é a aba “Fila” do Portal do Motorista (o quadro público foi
+  // desligado). `FONTE_FILA=quadro` mantém o caminho antigo, abaixo.
+  if (fonteDaFila() === "portal") return varrerPeloPortal(ultima?.dados as Snapshot | undefined, opcoes);
+
   const anterior = (ultima?.dados as Snapshot | undefined)?.fila ?? null;
   const lido = await lerIntranet(opcoes.forcarRede);
 
@@ -488,6 +510,106 @@ export async function varrer(
     await processarSaidasPendentes(lido ? fila : null).catch(() => null);
   }
 
+  return snapshot;
+}
+
+const linhaSemLeitura = (tipo: Tipo, livro: Livro): LinhaFila => ({
+  tipo,
+  livro,
+  naFila: 0,
+  ultimo: 0,
+  codigos: [],
+  vermelhos: [],
+  ignorados: 0,
+  historico: [],
+  semLeitura: true,
+});
+
+/**
+ * A varredura quando a fila vem do PORTAL. Não há rede aqui: a aba “Fila” é
+ * aberta pelo `portal-monitor`, na carona da olhada do Status de um motorista,
+ * e fica guardada em `portal_fila`. Esta função só transforma o que está
+ * guardado na fila do app e confere os pontos.
+ *
+ *   - livro lido há pouco  → a fila dele vale: posição e avisos são conferidos;
+ *   - livro com leitura velha → os últimos números continuam na tela, mas
+ *     nada é conferido (fila velha nunca declara que alguém saiu);
+ *   - livro que não é lido (ou que nunca veio) → quadro “sem leitura”.
+ *
+ * Sem nenhum livro lido há pouco o monitor fica OFFLINE. O que o quadro antigo
+ * deixou guardado não é reaproveitado: ele parou de valer.
+ */
+async function varrerPeloPortal(
+  snapAnterior: Snapshot | undefined,
+  opcoes: { consultarPortal?: boolean },
+): Promise<Snapshot> {
+  // Só uma varredura feita pelo portal deixa `livros`: a fila dela continua valendo.
+  const anterior = snapAnterior?.livros !== undefined ? snapAnterior.fila : null;
+  const guardadas = await filaGuardada().catch(() => [] as FilaGuardada[]);
+  const configurados = livrosDaFila();
+  const agora = Date.now();
+  const validade = validadeDaFilaMs();
+
+  const fila: FilaEstado = {};
+  const frescos: Livro[] = [];
+  let lidoMaisVelho: number | null = null;
+  let lidoMaisNovo: number | null = null;
+  for (const livro of LIVROS) {
+    const guardada = configurados.includes(livro) ? guardadas.find((g) => g.livro === livro) : undefined;
+    const dados = guardada?.dados ?? null;
+    const lidoEm = dados ? (guardada?.lidoEm ?? null) : null;
+    for (const tipo of TIPOS) {
+      const k = chave(tipo, livro);
+      if (!dados || !lidoEm) {
+        fila[k] = linhaSemLeitura(tipo, livro);
+        continue;
+      }
+      const quadro = dados[tipo];
+      const ant = anterior?.[k] && !anterior[k].semLeitura ? anterior[k] : undefined;
+      fila[k] = {
+        tipo,
+        livro,
+        naFila: quadro.codigos.length,
+        ultimo: quadro.ultimo,
+        codigos: quadro.codigos,
+        // A tela do portal não marca linha em vermelho: o SEQ 1 é quem está na vez.
+        vermelhos: [],
+        ignorados: 0,
+        historico: historicoDe(ant, quadro.ultimo),
+        // O último escalado mudou entre uma leitura e outra: vale a hora da leitura.
+        ultimoDesde: ant && ant.ultimo !== quadro.ultimo ? lidoEm.toISOString() : (ant?.ultimoDesde ?? null),
+      };
+    }
+    if (!lidoEm) continue;
+    lidoMaisNovo = Math.max(lidoMaisNovo ?? 0, lidoEm.getTime());
+    if (agora - lidoEm.getTime() <= validade) {
+      frescos.push(livro);
+      lidoMaisVelho = Math.min(lidoMaisVelho ?? Infinity, lidoEm.getTime());
+    }
+  }
+
+  // O contador da tela mostra a idade da leitura REAL: com mais de um livro,
+  // a mais antiga entre as que valem; sem nenhuma valendo, a última que houve.
+  const lido = frescos.length ? lidoMaisVelho : lidoMaisNovo;
+  const snapshot: Snapshot = {
+    origem: frescos.length ? "portal" : "offline",
+    fila,
+    geradoEm: new Date(agora).toISOString(),
+    lidoEm: lido ? new Date(lido).toISOString() : null,
+    livros: frescos,
+  };
+
+  await db.insert(amostras).values({ origem: snapshot.origem, dados: snapshot });
+  await db.execute(
+    sql`delete from amostras where id < (select max(id) - 240 from amostras)`,
+  );
+
+  // Só os pontos dos livros lidos há pouco são conferidos: fila velha ou livro
+  // sem leitura nunca muda a situação de um ponto.
+  if (frescos.length) await conferirPontos(fila, frescos);
+  if (opcoes.consultarPortal) {
+    await processarSaidasPendentes(frescos.length ? fila : null).catch(() => null);
+  }
   return snapshot;
 }
 
@@ -649,8 +771,15 @@ export async function processarSaidasPendentes(
   return resumo;
 }
 
-async function conferirPontos(fila: FilaEstado) {
-  const todos = await db.select().from(pontos).orderBy(pontos.ordem, pontos.id);
+/**
+ * `livros`: os livros cuja fila acabou de ser lida. Com o quadro antigo eram
+ * sempre os três; com a aba “Fila” do portal, só os que vieram agora — ponto
+ * de livro sem leitura fica como está.
+ */
+async function conferirPontos(fila: FilaEstado, livros: readonly Livro[] = LIVROS) {
+  const todos = (await db.select().from(pontos).orderBy(pontos.ordem, pontos.id)).filter((p) =>
+    livros.includes(p.livro as Livro),
+  );
   // Fonte `portal` (o padrão): quem decide que o ponto saiu — e que voltou — é
   // o Status do Portal do Motorista, lido de minuto em minuto na conta do
   // próprio motorista (`portal-monitor`). O quadro continua guardando a posição
@@ -725,7 +854,7 @@ async function conferirPontos(fila: FilaEstado) {
       }
 
       if (posicao < 0) {
-        // Só chega aqui com a leitura completa dos seis quadros. O número
+        // Só chega aqui com a leitura completa dos quadros do livro. O número
         // saiu do quadro OU agora é o Último Escalado (último chamado).
         const saiuPorUltimo = fila[chave(tipo, p.livro as Livro)]?.ultimo === p.numero;
         if (p.status !== "SAIU") {
@@ -960,17 +1089,24 @@ async function lerEstado(dono: number | null): Promise<EstadoDTO> {
   const agoraMs = Date.now();
   const lidoEm = ultima ? lidoEmDe(snapshot) : null;
   const idadeLeitura = lidoEm ? agoraMs - new Date(lidoEm).getTime() : Infinity;
+  // A aba “Fila” do portal é lida de minuto em minuto (o quadro antigo era a
+  // cada 5 s): a leitura dela vale por mais tempo antes de contar como velha.
+  const leituraVelha = snapshot.origem === "portal" ? validadeDaFilaMs() : LEITURA_VELHA_MS;
+  // Ponto de um livro sem leitura da fila: a posição guardada não vale.
+  const semFila = (livro: string) => snapshot.livros !== undefined && snapshot.fila[chave("TRUCK", livro)]?.semLeitura === true;
 
   return {
     atualizadoEm: lidoEm ?? snapshot.geradoEm,
     temLeitura: Boolean(lidoEm),
     servidorAgora: new Date(agoraMs).toISOString(),
     origem: snapshot.origem,
-    online: snapshot.origem !== "offline" && idadeLeitura <= LEITURA_VELHA_MS,
+    online: snapshot.origem !== "offline" && idadeLeitura <= leituraVelha,
     // A interface usa contagens e último escalado; números individuais da
     // intranet não devem ir ao navegador (só o servidor precisa deles).
     fila: fila.map((l) => ({ ...l, codigos: [], vermelhos: [], historico: [] })),
-    pontos: lista.map(paraDTO),
+    pontos: lista
+      .map(paraDTO)
+      .map((p) => (semFila(p.livro) ? { ...p, semFila: true, detalhe: `sem leitura da fila do Livro ${p.livro}` } : p)),
     // O registro da operação traz números e nomes de todos os motoristas:
     // fica só no servidor e não vai para os aparelhos.
     eventos: [],

@@ -47,6 +47,7 @@ import {
 } from "@/lib/compartilhar";
 import { LOGO } from "@/lib/logo";
 import { chamadaDoAvisoDeSaida, foraDaFilaPeloPortal, seloDoPortal } from "@/lib/portal-selo";
+import { cardDaFila } from "@/lib/fila-card";
 
 
 /* ------------------------------------------------------------------ base */
@@ -209,15 +210,20 @@ function LinhaPonto({
           <span className="tabular font-display text-[19px] font-extrabold text-ciano">
             {p.codigo}
           </span>
-          {!foraDaFila && p.status !== "SAIU" && (
-            <span
-              className={`tabular text-[13px] font-medium ${
-                p.status === "NA VEZ" ? "text-ambar" : "text-verde"
-              }`}
-            >
-              fila nº {p.posicao} ·{" "}
-              {p.status === "NA VEZ" ? "na vez" : `${p.naFrente} na frente`}
-            </span>
+          {p.semFila ? (
+            <span className="text-[13px] font-medium text-aco">sem leitura da fila</span>
+          ) : (
+            !foraDaFila &&
+            p.status !== "SAIU" && (
+              <span
+                className={`tabular text-[13px] font-medium ${
+                  p.status === "NA VEZ" ? "text-ambar" : "text-verde"
+                }`}
+              >
+                fila nº {p.posicao} ·{" "}
+                {p.status === "NA VEZ" ? "na vez" : `${p.naFrente} na frente`}
+              </span>
+            )
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -1275,29 +1281,18 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const alvo = estado.pontos[idx];
 
   // --------------------------------------- informações do cartão do número
-  // "Quadro" = o quadro do livro do ponto mostrado (ex.: pontoa.php p/ Livro A).
-  const linhasQuadro = alvo
-    ? estado.fila.filter((l) => l.livro === alvo.livro)
-    : estado.fila;
-  const quadroTruck = linhasQuadro
-    .filter((l) => l.tipo === "TRUCK")
-    .reduce((s, l) => s + l.naFila, 0);
-  const quadroCavalo = linhasQuadro
-    .filter((l) => l.tipo === "CAVALO")
-    .reduce((s, l) => s + l.naFila, 0);
-  const linhaDoAlvo = alvo
-    ? estado.fila.find((l) => l.tipo === alvo.tipo && l.livro === alvo.livro)
-    : undefined;
-  // O quadro oficial escreve A183, B022, M069: conserva os três dígitos no
-  // último já chamado, mas não confunde esse número com o 1º da fila atual.
-  const ultimoEscalado = linhaDoAlvo?.ultimo
-    ? `${linhaDoAlvo.livro}${String(linhaDoAlvo.ultimo).padStart(3, "0")}`
-    : "—";
+  // A fila vem da aba “Fila” do Portal do Motorista. Com um ponto na tela, as
+  // faixas são do livro dele; quadro sem leitura mostra “—” (ver `cardDaFila`).
+  const cardFila = cardDaFila(estado.fila, alvo);
+  const linhaDoAlvo = cardFila.linhaDoAlvo;
+  const ultimoEscalado = cardFila.ultimoEscalado;
   const ultimoQuando = linhaDoAlvo?.ultimoDesde
     ? haQuanto(linhaDoAlvo.ultimoDesde, agora)
     : linhaDoAlvo
       ? "no quadro"
-      : "sem ponto";
+      : alvo
+        ? "sem leitura da fila"
+        : "sem ponto";
   // Selo do cartão: com o Status do portal lido há pouco, ele manda (ESCALADO,
   // DISPENSA); sem leitura recente vale o que o quadro mostra.
   const seloAlvo = alvo ? seloDoPortal(alvo) : null;
@@ -1480,7 +1475,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                           </span>
                           {!alvoForaDaFila && alvo.status === "AGUARDANDO" && (
                             <span className="tabular whitespace-nowrap text-[12px] leading-[14px] font-semibold text-gelo/75">
-                              {alvo.vistoEm ? `${alvo.naFrente} na frente` : "Varrendo…"}
+                              {alvo.semFila ? "sem leitura da fila" : alvo.vistoEm ? `${alvo.naFrente} na frente` : "Varrendo…"}
                             </span>
                           )}
                         </span>
@@ -1513,18 +1508,18 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     anel="border-[#FFB82E]/70 bg-[#FFB82E]/10 shadow-[0_0_20px_-6px_rgba(255, 184, 46, 0.9)]"
                     rotulo="Pontos no quadro"
                     destaque={{ texto: "TRUCK", cor: "text-[#FFB82E]" }}
-                    valor={String(quadroTruck)}
+                    valor={cardFila.truck.valor}
                     corValor="text-[#FFB82E]"
-                    sub="ponto ativo"
+                    sub={cardFila.truck.sub}
                   />
                   <FaixaInfo
                     icone={<Truck size={24} strokeWidth={2} className="text-[#00C853]" />}
                     anel="border-[#00C853]/70 bg-[#00C853]/10 shadow-[0_0_20px_-6px_rgba(0, 200, 83, 0.9)]"
                     rotulo="Pontos no quadro"
                     destaque={{ texto: "CAVALO/C", cor: "text-[#00C853]" }}
-                    valor={String(quadroCavalo)}
+                    valor={cardFila.cavalo.valor}
                     corValor="text-[#00C853]"
-                    sub="ponto ativo"
+                    sub={cardFila.cavalo.sub}
                   />
                 </div>
 
@@ -1532,7 +1527,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 <div className="mt-[22px] flex items-center justify-between gap-3 pl-1.5">
                   <span className="flex items-center gap-2 text-[15px] leading-6 text-gelo/90">
                     <Clock size={24} strokeWidth={2} className="shrink-0 text-[#00B8BC]" />
-                    <span className="tabular" title={estado.temLeitura ? `Última leitura real do quadro: ${hora(estado.atualizadoEm)}` : undefined}>
+                    <span className="tabular" title={estado.temLeitura ? `Última leitura real da fila: ${hora(estado.atualizadoEm)}` : undefined}>
                       {estado.temLeitura === false
                         ? "Aguardando 1ª leitura"
                         : `Atualizado há ${decorrido(estado.atualizadoEm, agora + desvioRelogio)}`}

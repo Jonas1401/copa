@@ -716,6 +716,22 @@ CREATE TABLE IF NOT EXISTS public.portal_situacoes (
 CREATE INDEX IF NOT EXISTS portal_situacoes_motorista_idx
   ON public.portal_situacoes (motorista_id);
 
+-- A fila lida na aba “Fila” do portal (a Tela de Ativos), uma linha por livro.
+-- O quadro público foi desligado: a fila do app (card principal, posição dos
+-- pontos, avisos de vez) vem daqui. Guarda só a fila geral — os pontos de cada
+-- quadro, na ordem, e o último escalado — e, para o diagnóstico, qual conta
+-- abriu a tela.
+CREATE TABLE IF NOT EXISTS public.portal_fila (
+  livro TEXT PRIMARY KEY,
+  dados JSONB,
+  lido_em TIMESTAMPTZ,
+  motorista_id INTEGER,
+  tentativa_em TIMESTAMPTZ,
+  erro TEXT,
+  diagnostico TEXT,
+  proxima_leitura_em TIMESTAMPTZ
+);
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend
@@ -769,6 +785,7 @@ ALTER TABLE public.portal_leituras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_saidas_pendentes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_situacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_fila ENABLE ROW LEVEL SECURITY;
 
 -- Sem policy, RLS já bloqueia; o REVOKE é a segunda tranca para o PostgREST.
 -- Os papéis anon/authenticated só existem no Supabase — num PostgreSQL comum
@@ -791,7 +808,7 @@ END $$;
 
 COMMIT;
 
--- Conferência rápida: todas as tabelas do app devem aparecer abaixo (49).
+-- Conferência rápida: todas as tabelas do app devem aparecer abaixo (50).
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'

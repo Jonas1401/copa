@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { comBanco, db, temBancoConfigurado } from "@/db";
 import { pontos, portalEventos, portalSituacoes } from "@/db/schema";
-import { codigoDe, registrarEvento, ROTULO_TIPO, type Livro, type Tipo } from "@/lib/estado";
+import { codigoDe, registrarEvento, ROTULO_TIPO, varrer, type Livro, type Tipo } from "@/lib/estado";
 import { nomeDoMotorista, notificarEvento } from "@/lib/push";
 import {
   avisarAcessoPausado,
@@ -9,6 +9,7 @@ import {
   CAMINHO_STATUS,
   contarFalhasSeguidas,
   lerEGuardarPortal,
+  lerFilaNaSessaoGuardada,
   lerTelasNaSessaoGuardada,
   marcarProximaLeitura,
   monitorarMotorista as lerPortalComLoginNovo,
@@ -17,6 +18,17 @@ import {
   type OrigemLeitura,
 } from "@/lib/portal-copadubo";
 import { normalizarCodigoPortal } from "@/lib/portal-copadubo-parse";
+import {
+  filaGuardada,
+  fonteDaFila,
+  guardarFilaLida,
+  livrosDaFila,
+  motivoDaFilaSumida,
+  registrarFalhaDaFila,
+  reservarLivrosDaFila,
+  resumoDaFila,
+} from "@/lib/portal-fila";
+import type { LivroDaFila } from "@/lib/portal-fila-parse";
 import { lerModoSaida, situacaoDoPontoNasTelas, type ConsultaPortal, type EventoSaida } from "@/lib/portal-saida";
 import {
   avisoDaTroca,
@@ -67,6 +79,13 @@ export const ESPERA_APOS_FALHAS_STATUS_MS = 5 * 60_000;
 const PRAZO_RODADA_MS = 25_000;
 /** Quantos motoristas são lidos ao mesmo tempo (cada um, sempre um por vez). */
 const SIMULTANEOS = 3;
+/**
+ * A aba “Fila” pega carona na leitura do Status (até 14 s a mais). Com o portal
+ * lento, a carona estouraria o tempo da função: se a conta levou mais do que
+ * isto para abrir, a fila fica para a próxima leitura. A rodada do cron tem
+ * 60 s (25 s para começar leituras); “Ler agora” e o cadastro do acesso, 45 s.
+ */
+export const CARONA_DA_FILA_ATE_MS = { periodica: 12_000, manual: 25_000 } as const;
 
 /** O que a leitura trouxe para UM ponto do motorista. */
 export type SituacaoLida = {
@@ -172,6 +191,61 @@ async function avisarTroca(dados: {
 }
 
 /**
+ * A FILA GERAL — a aba “Fila” do portal (a Tela de Ativos), na carona de uma
+ * olhada do Status.
+ *
+ * A conta de um motorista acabou de abrir: se a fila guardada já pode ser lida
+ * de novo (uma vez por ciclo, para todos os motoristas juntos), a mesma sessão
+ * abre a aba “Fila” — um pedido a mais — e o resultado fica guardado para o
+ * app inteiro: é dele que saem o card principal, a posição de cada ponto e os
+ * avisos de “perto da vez” e “na vez”. A reserva é atômica: com vários
+ * motoristas lidos no mesmo minuto, só um abre a fila.
+ *
+ * Da tela só se guarda a fila (igual para todos); nada da conta de quem abriu.
+ * `forcar`: alguém tocou em “Ler agora” — lê sem esperar a hora, e o que a
+ * tela trouxe (ou por que não serviu) volta no diagnóstico.
+ */
+export async function atualizarFilaDoPortal(
+  motoristaId: number,
+  opcoes: { buscar?: typeof fetch; forcar?: boolean } = {},
+): Promise<{ tentou: boolean; lidos: LivroDaFila[]; diagnostico: string[] }> {
+  const nada = { tentou: false, lidos: [] as LivroDaFila[], diagnostico: [] as string[] };
+  if (!temBancoConfigurado || fonteDaFila() !== "portal") return nada;
+  const devidos = await reservarLivrosDaFila(livrosDaFila(), { forcar: opcoes.forcar });
+  if (!devidos.length) return nada;
+
+  const lida = await lerFilaNaSessaoGuardada(motoristaId, { buscar: opcoes.buscar, livros: devidos });
+  if (!lida) {
+    const motivo = "a conta não tem mais acesso ativo ao portal";
+    for (const livro of devidos) await registrarFalhaDaFila(livro, motivo, motoristaId).catch(() => null);
+    return { tentou: true, lidos: [], diagnostico: [`Fila: ${motivo}.`] };
+  }
+  const lidos: LivroDaFila[] = [];
+  const diagnostico = [...lida.diagnostico];
+  const guardadas = await filaGuardada().catch(() => []);
+  for (const livro of devidos) {
+    const quadros = lida.livros[livro];
+    // Fila grande que “sumiu” de um minuto para o outro: não é aceita.
+    const sumiu = quadros ? motivoDaFilaSumida(guardadas.find((g) => g.livro === livro), quadros) : null;
+    if (quadros && sumiu) {
+      diagnostico.push(`Fila do Livro ${livro}: ${sumiu}.`);
+      await registrarFalhaDaFila(livro, sumiu, motoristaId, lida.diagnostico).catch(() => null);
+    } else if (quadros) {
+      await guardarFilaLida(livro, quadros, motoristaId);
+      lidos.push(livro);
+    } else {
+      await registrarFalhaDaFila(livro, lida.falhas[livro] ?? "a tela não trouxe a fila deste livro", motoristaId, lida.diagnostico).catch(
+        () => null,
+      );
+    }
+  }
+  // A fila nova já vale: a posição dos pontos e os avisos de “perto da vez” e
+  // “na vez” saem agora, sem esperar a próxima varredura.
+  if (lidos.length) await varrer().catch(() => null);
+  return { tentou: true, lidos, diagnostico };
+}
+
+/**
  * Olha o Status de UM motorista agora e avisa o que mudou.
  *
  * `origem`: `periodica` (o ciclo de 1 em 1 minuto, com o freio de logins) ou
@@ -181,8 +255,15 @@ async function avisarTroca(dados: {
  */
 export async function monitorarStatusDoMotorista(
   motoristaId: number,
-  opcoes: { buscar?: typeof fetch; origem?: OrigemLeitura; avisarFalha?: boolean } = {},
+  opcoes: {
+    buscar?: typeof fetch;
+    origem?: OrigemLeitura;
+    avisarFalha?: boolean;
+    /** Só para teste: a partir de quanto tempo de leitura a fila não pega carona. */
+    caronaDaFilaAteMs?: number;
+  } = {},
 ) {
+  const inicio = Date.now();
   const origem = opcoes.origem ?? "periodica";
   const meus: MeuPonto[] = await comBanco(() =>
     db
@@ -293,6 +374,28 @@ export async function monitorarStatusDoMotorista(
     await marcarProximaLeitura(motoristaId, Math.max(leitura.tentarEmMs, esperaEntreLeiturasMs())).catch(() => null);
   }
 
+  // A fila geral pega carona: a conta abriu agora (com ou sem a situação do
+  // ponto na tela), então a mesma sessão pode abrir a aba “Fila”. Vem depois
+  // dos avisos do Status, que não esperam por ela.
+  // Portal lento: a carona fica para a próxima leitura (nada é reservado, e
+  // outra conta — ou o próximo ciclo — abre a aba).
+  const gasto = Date.now() - inicio;
+  const semTempo = gasto > (opcoes.caronaDaFilaAteMs ?? CARONA_DA_FILA_ATE_MS[origem]);
+  const fila = !leitura.ok
+    ? null
+    : semTempo
+      ? {
+          lidos: [] as LivroDaFila[],
+          diagnostico:
+            fonteDaFila() === "portal"
+              ? [`Fila: não foi lida nesta visita (o portal levou ${Math.round(gasto / 1000)} s para abrir a conta); fica para a próxima leitura.`]
+              : [],
+        }
+      : await atualizarFilaDoPortal(motoristaId, { buscar: opcoes.buscar, forcar: origem === "manual" }).catch((e) => {
+          console.error("[portal-monitor] leitura da fila falhou:", e instanceof Error ? e.message : e);
+          return null;
+        });
+
   return {
     rodou: true as const,
     /** Leu a situação de pelo menos um ponto do motorista. */
@@ -303,7 +406,9 @@ export async function monitorarStatusDoMotorista(
     captcha: leitura.captcha,
     linhas: leitura.totalLinhas,
     novas: [] as string[],
-    diagnostico: leitura.diagnostico,
+    diagnostico: [...leitura.diagnostico, ...(fila?.diagnostico ?? [])],
+    /** Livros da aba “Fila” lidos nesta visita (vazio = não era a hora, ou não veio). */
+    filaLida: fila?.lidos ?? [],
     aviso,
     pausado: lida.pausado,
     leituraId: lida.id,
@@ -334,7 +439,8 @@ export async function monitorarStatusDeTodos(
   const inicio = Date.now();
   // `adiados`: contas sem sessão aberta em que o freio segurou o login
   // automático — voltam a ser lidas quando o login for permitido.
-  const resumo = { motoristas: 0, lidos: 0, falhas: 0, adiados: 0, avisos: 0, logins: 0 };
+  // `fila`: livros da aba “Fila” lidos nesta rodada (a fila geral do app).
+  const resumo = { motoristas: 0, lidos: 0, falhas: 0, adiados: 0, avisos: 0, logins: 0, fila: 0 };
   if (!temBancoConfigurado) return resumo;
   const prazo = opcoes.prazoMs ?? PRAZO_RODADA_MS;
   const espera = opcoes.esperaMs ?? esperaEntreLeiturasMs();
@@ -352,6 +458,7 @@ export async function monitorarStatusDeTodos(
         else resumo.falhas += 1;
         if (r.fezLogin) resumo.logins += 1;
         resumo.avisos += r.avisos;
+        resumo.fila += r.filaLida.length;
       } catch (e) {
         resumo.falhas += 1;
         console.error("[portal-monitor] leitura falhou:", e instanceof Error ? e.message : e);
@@ -402,7 +509,8 @@ export async function monitorarMotorista(motoristaId: number, opcoes: { buscar?:
 export async function resumoDoMonitor() {
   const fonte = fontePortal();
   const intervaloMin = Math.round(intervaloStatusMs() / 60_000);
-  if (!temBancoConfigurado || fonte !== "portal") return { fonte, intervaloMin, situacoes: [] };
+  const fila = await resumoDaFila().catch(() => ({ fonte: fonteDaFila(), livros: [] }));
+  if (!temBancoConfigurado || fonte !== "portal") return { fonte, intervaloMin, situacoes: [], fila };
   const linhas = await comBanco(() => db.select().from(portalSituacoes).orderBy(portalSituacoes.motoristaId, portalSituacoes.codigo)).catch(
     () => [],
   );
@@ -417,6 +525,7 @@ export async function resumoDoMonitor() {
       mudouEm: s.mudouEm.toISOString(),
       recente: situacaoFresca(s),
     })),
+    fila,
   };
 }
 
