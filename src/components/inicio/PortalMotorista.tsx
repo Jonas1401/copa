@@ -437,9 +437,10 @@ export default function PortalMotorista({
         )}
 
         <p className="mt-3 text-[11px] leading-snug text-gelo/45">
-          O portal é da Copadubo; o CopaLinks apenas abre a sua página com os seus
-          dados e mostra o que aparece nela — nunca toca em botão nenhum (não entra
-          nem sai de dispensa por você).{" "}
+          O portal é da Copadubo; o CopaLinks abre a sua página com os seus dados e
+          mostra o que aparece nela. A única coisa que ele faz por você lá é escolher
+          o seu ponto em “Trocar Ponto”, para ver o Status dele — nunca entra nem sai
+          de dispensa por você.{" "}
           {peloStatus
             ? "A leitura é feita na sua conta, com a sessão que fica aberta no servidor."
             : "Cada leitura é um login na sua conta."}

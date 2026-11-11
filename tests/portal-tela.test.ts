@@ -156,3 +156,12 @@ test("o botão “Salvar e ler o portal” é o amarelo do tema, com texto escur
   assert.match(ouro, /background: #FFB82E;/, ".ouro deixou de ser o amarelo da paleta");
   assert.match(ouro, /color: #000D16;/, ".ouro deixou de ter texto escuro (contraste)");
 });
+
+test("o rodapé da tela conta o que o app faz no portal: escolhe o ponto e mais nada", () => {
+  const t = tela();
+  // Desde que o leitor escolhe o ponto em “Trocar Ponto”, a tela não pode mais
+  // dizer que o app "nunca toca em botão nenhum".
+  assert.doesNotMatch(t, /nunca\s+toca\s+em\s+botão\s+nenhum/, "a tela ainda diz que o app não toca em botão nenhum");
+  assert.match(t, /escolher\s+o\s+seu\s+ponto\s+em\s+“Trocar\s+Ponto”/, "a tela não conta que o app escolhe o ponto em “Trocar Ponto”");
+  assert.match(t, /nunca\s+entra\s+nem\s+sai\s+de\s+dispensa\s+por\s+você/, "a tela deixou de dizer que o app não mexe na dispensa");
+});
