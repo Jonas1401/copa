@@ -15,6 +15,16 @@
  * responde ao login (por isso os testes cobrem redirecionamento, página direta,
  * `meta refresh` e `location.href`) e o HTML das telas logadas (por isso o
  * leitor é por linhas de texto, e não por seletor).
+ *
+ * O que se sabe pelas telas do site real (10/11/2026, mostradas pelo dono da
+ * conta): o portal mostra o Status de UM ponto por vez. Em “Trocar Ponto” há
+ * uma lista com os pontos da conta e o botão “Confirmar”; depois de confirmar,
+ * aparece “Status do Ponto” com o cartão daquele ponto (código, placa, selo
+ * ATIVO, “Ativado hoje, 19:50 · há 2 h 27 min”, nome e o botão “Entrar na
+ * dispensa”). O `assets/app.js` público diz que cada tela é um recarregamento
+ * completo e que os modais são abertos por `data-open-modal`. É o modo
+ * `escolha` deste portal de mentira; o endereço e o nome do campo do
+ * formulário são suposição (o leitor os descobre no próprio HTML).
  */
 
 export const BASE_FALSA = "https://portal.exemplo.test";
@@ -24,8 +34,27 @@ export const SENHA_FALSA = "senha-de-teste-9";
 
 export type PedidoFalso = { metodo: string; caminho: string; cookie: string; corpo: string };
 
+/**
+ * Conta em que o portal mostra UM ponto por vez, escolhido em “Trocar Ponto”
+ * (como o site real). A escolha vale para a sessão.
+ */
+export type EscolhaFalsa = {
+  cartoes: CartaoFalso[];
+  /** Nome do campo da lista (padrão `id_ponto`). */
+  campo?: string;
+  /** Endereço que recebe a escolha, relativo a `/moto/` (padrão `trocar_ponto.php`). */
+  acao?: string;
+  metodo?: "POST" | "GET";
+  /** O formulário leva um código escondido de uso único. */
+  comCodigoOculto?: boolean;
+  /** Depois da escolha o portal abre o Status (padrão) ou volta para a tela do ponto. */
+  aposEscolha?: "status" | "ponto";
+  /** A opção “Escolha o Ponto...” tem valor 0 em vez de vazio. */
+  vazioComZero?: boolean;
+};
+
 /** Outra conta do portal de mentira: cada login só enxerga as próprias telas. */
-export type ContaFalsa = { senha: string; telas?: Record<string, string> };
+export type ContaFalsa = { senha: string; telas?: Record<string, string>; escolha?: EscolhaFalsa };
 
 export type OpcoesPortalFalso = {
   cpf?: string;
@@ -36,6 +65,8 @@ export type OpcoesPortalFalso = {
   aposLogin?: "redireciona" | "pagina" | "meta" | "script";
   /** Telas da área logada, por caminho (`moto/`, `moto/status`, `moto/fila`…). */
   telas?: Record<string, string>;
+  /** A conta principal mostra um ponto por vez (tela “Trocar Ponto”). */
+  escolha?: EscolhaFalsa;
   /** Tudo responde 503 (portal fora do ar). */
   foraDoAr?: boolean;
   /** A tela de login traz captcha. */
@@ -101,6 +132,56 @@ ${corpo}
 ${RODAPE_FALSO}</body></html>`;
 }
 
+/** Tela “Trocar Ponto”: a lista de pontos da conta e o botão “Confirmar”. */
+export function telaTrocarPonto(e: EscolhaFalsa, codigoOculto?: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Trocar Ponto</title></head><body>
+${MENU_FALSO}
+<h1>Trocar Ponto</h1>
+<div class="card"><h2>Escolha seu ponto</h2>
+<form method="${e.metodo ?? "POST"}" action="${e.acao ?? "trocar_ponto.php"}">
+  ${codigoOculto ? `<input type="hidden" name="_token" value="${codigoOculto}">` : ""}
+  <label for="ponto">PONTO</label>
+  <select id="ponto" name="${e.campo ?? "id_ponto"}" required>
+    <option value="${e.vazioComZero ? "0" : ""}">Escolha o Ponto...</option>
+    ${e.cartoes.map((c, i) => `<option value="${101 + i}">${c.codigo}</option>`).join("\n    ")}
+  </select>
+  <button type="submit" class="btn">Confirmar</button>
+</form></div>
+${RODAPE_FALSO}<script src="assets/app.js"></script></body></html>`;
+}
+
+/**
+ * “Status do Ponto” do ponto escolhido: um cartão só, com o botão de dispensa
+ * no fim e o formulário de dispensa num modal (que o leitor nunca pode enviar).
+ */
+export function telaStatusDeUmPonto(c: CartaoFalso): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Status</title></head><body>
+${MENU_FALSO}
+<h1>Status do Ponto</h1>
+<div class="card">
+  <div class="card__topo"><span class="codigo">${c.codigo}</span> <span class="placa">${c.placa ?? "ABC-1D23"}</span> <span class="badge">${c.situacao}</span></div>
+  ${(c.linhas ?? []).map((l) => `<div class="linha">${l}</div>`).join("\n  ")}
+  <div class="linha">${c.nome ?? "FULANO DE TAL EXEMPLO"}</div>
+  <hr>
+  ${c.botao ? `<button type="button" class="btn" data-open-modal="modal-dispensa">${c.botao}</button>` : ""}
+</div>
+${
+  c.botao
+    ? `<div class="app-modal-backdrop" id="modal-dispensa"><div class="app-modal">
+  <h2>${c.botao}</h2>
+  <form method="POST" action="dispensa/alternar.php">
+    <input type="hidden" name="ponto" value="${c.codigo}">
+    <label for="motivo">Motivo</label>
+    <select id="motivo" name="motivo"><option value="">Selecione...</option><option value="1">001 - OFICINA</option><option value="2">002 - DESCANSO</option></select>
+    <button type="button" data-close-modal>Cancelar</button>
+    <button type="submit" class="btn">Confirmar</button>
+  </form>
+</div></div>`
+    : ""
+}
+${RODAPE_FALSO}<script src="assets/app.js"></script></body></html>`;
+}
+
 /** Aba “Fila” (tela de ativos): último escalado e a sequência de um livro. */
 export function telaFila(livro: string, ultimo: string, fila: { codigo: string; tipo: string }[]): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Fila</title></head><body>
@@ -135,10 +216,21 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
   const estado = {
     /** Telas da conta principal (`cpf`); o teste pode trocar entre uma leitura e outra. */
     telas: { ...telasPadrao(), ...(opcoes.telas ?? {}) } as Record<string, string>,
+    /** A conta principal mostra um ponto por vez; o teste pode mudar os cartões entre as leituras. */
+    escolha: opcoes.escolha,
     /** Demais contas, por CPF. */
     contas: Object.fromEntries(
-      Object.entries(opcoes.contas ?? {}).map(([c, conta]) => [c, { senha: conta.senha, telas: { ...telasPadrao(), ...(conta.telas ?? {}) } }]),
-    ) as Record<string, { senha: string; telas: Record<string, string> }>,
+      Object.entries(opcoes.contas ?? {}).map(([c, conta]) => [
+        c,
+        { senha: conta.senha, telas: { ...telasPadrao(), ...(conta.telas ?? {}) }, escolha: conta.escolha },
+      ]),
+    ) as Record<string, { senha: string; telas: Record<string, string>; escolha?: EscolhaFalsa }>,
+    /** Ponto escolhido em cada sessão (cookie → código). */
+    pontoDaSessao: new Map<string, string>(),
+    /** Escolhas de ponto recebidas (“Trocar Ponto” → Confirmar), na ordem. */
+    trocas: [] as string[],
+    /** Escolhas recusadas (código escondido errado, ponto que não é da conta…). */
+    trocasRecusadas: 0,
     aposLogin: opcoes.aposLogin ?? "redireciona",
     foraDoAr: Boolean(opcoes.foraDoAr),
     captcha: Boolean(opcoes.captcha),
@@ -163,6 +255,8 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
   };
   /** Cookies de visitante emitidos pelo portal (antes do login). */
   const visitantes = new Set<string>();
+  /** Código escondido (uso único) do formulário de “Trocar Ponto”, por sessão. */
+  const codigosOcultos = new Map<string, string>();
   let serie = 0;
   let emAndamento = 0;
 
@@ -210,6 +304,36 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
     }
     if (caminho === "moto" || caminho.startsWith("moto/")) {
       if (!logado) return { status: 302, cabecalhos: { location: "../login.php" } };
+      const e = dono === cpf ? estado.escolha : estado.contas[dono]?.escolha;
+      if (e) {
+        const novoCodigo = () => {
+          if (!e.comCodigoOculto) return undefined;
+          const valor = `tk${++serie}x`;
+          codigosOcultos.set(sessao, valor);
+          return valor;
+        };
+        if (caminho === `moto/${e.acao ?? "trocar_ponto.php"}`) {
+          if (metodo !== (e.metodo ?? "POST")) return { status: 302, cabecalhos: { location: "/moto/" } };
+          const campos = metodo === "POST" ? new URLSearchParams(corpo) : url.searchParams;
+          const i = Number(campos.get(e.campo ?? "id_ponto")) - 101;
+          const cartao = Number.isInteger(i) ? e.cartoes[i] : undefined;
+          const codigoCerto = !e.comCodigoOculto || (campos.get("_token") ?? "") === codigosOcultos.get(sessao);
+          codigosOcultos.delete(sessao);
+          if (!cartao || !codigoCerto) {
+            estado.trocasRecusadas += 1;
+            return { status: 302, cabecalhos: { location: "/moto/" } };
+          }
+          estado.pontoDaSessao.set(sessao, cartao.codigo);
+          estado.trocas.push(cartao.codigo);
+          return { status: 302, cabecalhos: { location: e.aposEscolha === "ponto" ? "/moto/" : "/moto/status" } };
+        }
+        if (caminho === "moto" || caminho === "moto/") return { status: 200, corpo: telaTrocarPonto(e, novoCodigo()) };
+        if (caminho === "moto/status") {
+          const escolhido = e.cartoes.find((c) => c.codigo === estado.pontoDaSessao.get(sessao));
+          // Sem ponto escolhido nesta sessão, o portal manda escolher.
+          return escolhido ? { status: 200, corpo: telaStatusDeUmPonto(escolhido) } : { status: 302, cabecalhos: { location: "/moto/" } };
+        }
+      }
       const tela = telasDe(dono)[caminho === "moto" ? "moto/" : caminho];
       return tela === undefined ? { status: 404, corpo: PAGINA_404 } : { status: 200, corpo: tela };
     }

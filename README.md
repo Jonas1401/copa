@@ -251,6 +251,19 @@ Ticket, Fila**) — não sai testando endereços; se `/moto/status` não existir
 tela é achada pela aba “Status”. E ele **só olha**: link ou botão de ação
 (“Sair”, “Entrar em dispensa”, “Sair da dispensa”…) nunca é aberto.
 
+**Um ponto por vez (“Trocar Ponto”).** A conta do motorista no portal pode ter
+vários pontos, e “Status do Ponto” mostra só o que foi escolhido em “Trocar
+Ponto” (uma lista com os pontos da conta e o botão “Confirmar”). O leitor faz
+esse caminho: para cada ponto que o motorista cadastrou no app e que não está na
+tela de Status, ele escolhe o ponto na lista e lê o Status de novo. Além do
+login, essa escolha é a única coisa que ele envia ao portal — o endereço e o
+nome do campo vêm do próprio formulário, e um formulário que fale de dispensa,
+motivo, exclusão, saída ou senha (ou que tenha algo para digitar) nunca é
+enviado. Com um ponto só, a escolha acontece uma vez por sessão e a leitura de
+cada minuto continua sendo um pedido; com dois ou mais, cada leitura troca de
+ponto (uns quatro pedidos por minuto). Se o ponto do app não estiver na lista da
+conta, o diagnóstico diz quais pontos ela tem.
+
 **Quando o app vai à conta do motorista** (o Status do portal é a fonte do
 aviso de saída — o padrão):
 

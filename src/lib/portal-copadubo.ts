@@ -19,10 +19,15 @@ import {
   limparCpf,
   linhasAlteradas,
   linhasDeInteresse,
+  destinoProibido,
+  extrairEscolhaDePonto,
+  montarCorpoEscolha,
   montarCorpoLogin,
   normalizarCodigoPortal,
   pareceMontadaPorScript,
   resolverUrl,
+  resumoFormularios,
+  type EscolhaDePonto,
   type FormularioPortal,
   type LinkPortal,
   type LivroAtivosPortal,
@@ -50,7 +55,10 @@ import {
  *   - a senha nunca vai para log, auditoria, aviso ou IA;
  *   - CPF e senha só são enviados para o endereço do próprio portal;
  *   - o leitor só OLHA: abre telas e abas de navegação, nunca um botão ou link
- *     de ação (“Sair da dispensa”, “Entrar em dispensa”…);
+ *     de ação (“Sair da dispensa”, “Entrar em dispensa”…). Além do login, a
+ *     única coisa que ele ENVIA é a escolha do ponto em “Trocar Ponto” (a lista
+ *     de pontos da conta + “Confirmar”): o portal mostra o Status de um ponto
+ *     por vez, e só é escolhido um ponto que o motorista cadastrou no app;
  *   - o conteúdo lido é do PRÓPRIO motorista e só ele (e o administrador,
  *     para diagnóstico) vê;
  *   - a sessão aberta no portal fica guardada CIFRADA (como a senha) para a
@@ -88,6 +96,23 @@ const AVISO_MAX_HORA = 6;
 const AVISO_MAX_DIA = 20;
 /** Abas do menu abertas, no máximo, numa mesma visita ao portal. */
 const MAX_ABAS = 4;
+/** Máximo de escolhas de ponto (“Trocar Ponto”) numa mesma visita. */
+const MAX_TROCAS_DE_PONTO = 6;
+
+/** Códigos pedidos, como o portal escreve (A032), sem repetição. */
+function codigosPedidos(opcoes: { codigo?: string | null; codigos?: string[] }): string[] {
+  const lista = opcoes.codigos?.length ? opcoes.codigos : opcoes.codigo ? [opcoes.codigo] : [];
+  return [...new Set(lista.map((c) => normalizarCodigoPortal(c)).filter(Boolean))];
+}
+
+/**
+ * As seções mostram a SITUAÇÃO do ponto pedido? Com um código, tem de ser o
+ * cartão DELE: o portal mostra um ponto por vez, e o cartão de outro não vale.
+ */
+export function mostraSituacao(secoes: SecaoPortal[], codigo: string | null): boolean {
+  const status = interpretarStatus(secoes, codigo);
+  return Boolean(status?.turno) && (!codigo || status?.codigo === codigo);
+}
 
 /** Endereço do portal, trocável por ambiente (teste/homologação). */
 export function urlPortal(caminho: string = CAMINHO_STATUS): string {
@@ -436,6 +461,11 @@ type OpcoesVisita = {
   extras?: string[];
   ateOStatus?: boolean;
   codigo?: string | null;
+  /**
+   * Todos os pontos do motorista (A032…). O portal mostra o Status de um ponto
+   * por vez: a visita escolhe cada um em “Trocar Ponto” e lê o Status dele.
+   */
+  codigos?: string[];
   /** Sessão guardada do motorista: a visita USA e ATUALIZA este objeto. */
   sessao?: SessaoGuardada | null;
   /**
@@ -460,6 +490,11 @@ type OpcoesVisita = {
  * (Ponto, Status, Ticket, Fila). Nenhum caminho é adivinhado: o que não está
  * aqui vem do menu.
  *
+ * O portal mostra o Status de UM ponto por vez — o escolhido na tela “Trocar
+ * Ponto” (uma lista com os pontos da conta e o botão “Confirmar”). Para cada
+ * ponto pedido que não apareceu na tela de Status, a visita faz essa escolha e
+ * lê o Status de novo. É a única coisa que ela envia além do login.
+ *
  * `ateOStatus`: para assim que a situação do ponto for lida (leitura periódica:
  * menos pedidos ao portal).
  */
@@ -480,7 +515,11 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
       fezLogin,
     };
   };
-  const temSituacaoEm = (html: string) => Boolean(interpretarStatus(analisarPortal(html).secoes, opcoes.codigo)?.turno);
+  const alvos = codigosPedidos(opcoes);
+  const mostraAlgum = (secoes: SecaoPortal[]) => (alvos.length ? alvos.some((c) => mostraSituacao(secoes, c)) : mostraSituacao(secoes, null));
+  // “É a tela de Status?” — o cartão de QUALQUER ponto responde: a sessão vale e
+  // a tela foi achada. Se o cartão é de outro ponto, quem resolve é “Trocar Ponto”.
+  const temSituacaoEm = (html: string) => mostraSituacao(analisarPortal(html).secoes, null);
 
   let sessao: SessaoPortal | null = null;
   /** Páginas já abertas antes da descoberta das telas, com o rótulo do diagnóstico. */
@@ -578,9 +617,14 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
       return url;
     }
   };
-  const temSituacao = () => telas.some((t) => Boolean(interpretarStatus(t.secoes, opcoes.codigo)?.turno));
+  /** A tela de Status já foi achada (o cartão de qualquer ponto): não há por que abrir mais abas. */
+  const temSituacao = () => telas.some((t) => mostraSituacao(t.secoes, null));
+  const mostraNasTelas = (codigo: string) => telas.some((t) => mostraSituacao(t.secoes, codigo));
+  /** HTML das páginas abertas nesta visita: é onde o formulário de “Trocar Ponto” é procurado. */
+  const paginas: { url: string; html: string }[] = [];
 
-  const guardar = (r: RespostaPortal, rotulo: string) => {
+  /** `marca`: a mesma tela lida de novo depois de escolher outro ponto é OUTRA leitura. */
+  const guardar = (r: RespostaPortal, rotulo: string, marca = "") => {
     if (!r.ok) {
       diagnostico.push(`${rotulo}: sem resposta (${(r.erro ?? "falha").slice(0, 80)}).`);
       return;
@@ -597,7 +641,12 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
       diagnostico.push(`${rotulo}: pediu login de novo.`);
       return;
     }
-    const chave = chaveDe(r.url);
+    // Para achar o formulário de “Trocar Ponto” vale sempre a cópia MAIS NOVA
+    // da página: um campo escondido pode mudar a cada vez que ela é servida.
+    const repetida = paginas.findIndex((x) => chaveDe(x.url) === chaveDe(r.url));
+    if (repetida >= 0) paginas.splice(repetida, 1);
+    paginas.push({ url: r.url, html: r.html });
+    const chave = `${chaveDe(r.url)}${marca ? `#${marca}` : ""}`;
     if (guardadas.has(chave)) return;
     guardadas.add(chave);
     const a = analisarPortal(r.html);
@@ -628,6 +677,137 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
   }
 
   if (!(opcoes.ateOStatus && temSituacao())) await abrirTela(urlPortal(CAMINHO_STATUS), CAMINHO_STATUS);
+
+  // ---- “Trocar Ponto”: o portal mostra o Status do ponto ESCOLHIDO ----
+  /** Endereços para onde uma escolha foi enviada: nunca viram “a tela de Status”. */
+  const destinosDeEscolha = new Set<string>();
+  let trocas = 0;
+  let escolhaGuardada: { url: string; escolha: EscolhaDePonto } | null = null;
+
+  const escolhaNasPaginas = () => {
+    for (let i = paginas.length - 1; i >= 0; i -= 1) {
+      const escolha = extrairEscolhaDePonto(paginas[i].html);
+      if (escolha) return { url: paginas[i].url, escolha };
+    }
+    return null;
+  };
+  /** Acha o formulário: numa página já aberta, na aba “Ponto” do menu ou na área do motorista. */
+  const acharEscolha = async (deNovo: boolean) => {
+    if (!deNovo) {
+      const achada = escolhaNasPaginas();
+      if (achada) return achada;
+    }
+    const ehAbaDoPonto = (a: LinkPortal) => /^(?:trocar\s+)?(?:meu\s+)?ponto$/i.test(a.texto);
+    const abaPonto = abas.find(ehAbaDoPonto);
+    // A aba pode ter ficado fora do menu por ter endereço com cara de ação
+    // (“alterar_ponto”): para a tela de ESCOLHA vale a regra mais estreita —
+    // só não se abre o que fala de sair, dispensa, exclusão ou senha.
+    const abaDeFora = abasIgnoradas.find((a) => {
+      if (!ehAbaDoPonto(a) || !visita.mesmoSite(a.url)) return false;
+      try {
+        const u = new URL(a.url);
+        return !destinoProibido(`${u.pathname}${u.search}`);
+      } catch {
+        return false;
+      }
+    });
+    const candidatos = [...new Set([abaPonto?.url, abaDeFora?.url, urlPortal(CAMINHO_AREA)].filter((u): u is string => Boolean(u)))];
+    for (const url of candidatos) {
+      // Página já aberta nesta visita e sem a lista: não adianta pedir de novo.
+      if (!deNovo && paginas.some((x) => chaveDe(x.url) === chaveDe(url))) continue;
+      const r = await abrir(visita, url);
+      pedidos.add(chaveDe(url));
+      // Mesma tela, lida de novo: só o formulário interessa (não vira outra leitura).
+      if (r.ok && r.status < 400 && !formularioDeEntrada(r.html)) {
+        const escolha = extrairEscolhaDePonto(r.html);
+        const aba = [abaPonto, abaDeFora].find((x) => x?.url === url);
+        guardar(r, aba ? `Aba “${aba.texto}” (${caminhoDe(r.url)})` : `Área do motorista (${caminhoDe(r.url)})`);
+        if (escolha) return { url: r.url, escolha };
+      }
+    }
+    return null;
+  };
+  const enderecosDoStatus = () => [
+    ...new Set(
+      [
+        ...telas.filter((t) => mostraSituacao(t.secoes, null)).map((t) => t.url),
+        ...abas.filter((a) => /^status\b/i.test(a.texto)).map((a) => a.url),
+        urlPortal(CAMINHO_STATUS),
+      ].filter((u) => !destinosDeEscolha.has(chaveDe(u))),
+    ),
+  ];
+
+  const escolherPonto = async (codigo: string) => {
+    if (!escolhaGuardada) escolhaGuardada = await acharEscolha(trocas > 0);
+    const achada = escolhaGuardada;
+    if (!achada) {
+      diagnostico.push(
+        `Não achei no portal a tela de escolha do ponto (“Trocar Ponto”: a lista de pontos e o botão Confirmar) para abrir o ${codigo}.`,
+      );
+      for (const pagina of paginas.slice(-2)) {
+        for (const linha of resumoFormularios(pagina.html)) diagnostico.push(`Formulário em ${caminhoDe(pagina.url)}: ${linha}.`);
+      }
+      return;
+    }
+    const opcao = achada.escolha.opcoes.find((o) => o.codigo === codigo);
+    if (!opcao) {
+      const lista = achada.escolha.opcoes.map((o) => o.codigo);
+      diagnostico.push(
+        `A lista de pontos desta conta no portal não tem o ${codigo} (tem: ${lista.slice(0, 12).join(", ")}${lista.length > 12 ? "…" : ""}).`,
+      );
+      return;
+    }
+    const destino = resolverUrl(achada.url, achada.escolha.action);
+    let caminhoDestino = "?";
+    try {
+      const u = new URL(destino);
+      caminhoDestino = `${u.pathname}${u.search}`;
+    } catch {
+      // endereço inválido: cai na recusa abaixo
+    }
+    if (caminhoDestino === "?" || !visita.mesmoSite(destino) || destinoProibido(caminhoDestino)) {
+      diagnostico.push(`A escolha do ponto ${codigo} não foi enviada: o endereço do formulário (${caminhoDe(destino)}) não é o de uma escolha de ponto.`);
+      return;
+    }
+    const corpo = montarCorpoEscolha(achada.escolha, opcao.valor);
+    let resposta: RespostaPortal;
+    if (achada.escolha.method === "post") {
+      resposta = await abrir(visita, destino, { metodo: "POST", corpo, referer: achada.url });
+    } else {
+      const u = new URL(destino);
+      u.search = corpo;
+      resposta = await abrir(visita, u.toString(), { referer: achada.url });
+    }
+    trocas += 1;
+    destinosDeEscolha.add(chaveDe(destino));
+    // Campo escondido pode ser um código de uso único: a próxima escolha relê o formulário.
+    if (achada.escolha.ocultos.length) escolhaGuardada = null;
+    diagnostico.push(
+      `Ponto ${codigo} escolhido em “Trocar Ponto” (${achada.escolha.method.toUpperCase()} ${caminhoDe(destino)}; a lista tem ${achada.escolha.opcoes.length} ponto(s)).`,
+    );
+    guardar(resposta, `Depois de escolher o ${codigo} (${resposta.ok ? caminhoDe(resposta.url) : "sem resposta"})`, `ponto ${codigo}`);
+    if (mostraNasTelas(codigo)) return;
+    // A resposta da escolha não foi a tela de Status: abre o Status de novo.
+    let n = 0;
+    for (const url of enderecosDoStatus()) {
+      n += 1;
+      guardar(await abrir(visita, url), `Status do ${codigo} (${caminhoDe(url)})`, `ponto ${codigo} · ${n}`);
+      if (mostraNasTelas(codigo)) return;
+    }
+    diagnostico.push(`Depois da escolha, o portal não mostrou a situação do ${codigo}.`);
+  };
+
+  if (telas.length) {
+    for (const codigo of alvos) {
+      if (mostraNasTelas(codigo)) continue;
+      if (trocas >= MAX_TROCAS_DE_PONTO) {
+        diagnostico.push(`Limite de ${MAX_TROCAS_DE_PONTO} escolhas de ponto por leitura: o ${codigo} fica para a próxima.`);
+        break;
+      }
+      await escolherPonto(codigo);
+    }
+  }
+
   for (const extra of (opcoes.extras ?? []).filter(Boolean).slice(0, 6)) {
     await abrirTela(urlPortal(extra), extra);
   }
@@ -655,7 +835,11 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
     // A sessão continua aberta para a próxima leitura; o endereço da tela que
     // mostrou a situação é guardado para ela ir direto (um pedido só).
     guardada.cookies = visita.exportarCookies();
-    guardada.statusUrl = telas.find((t) => Boolean(interpretarStatus(t.secoes, opcoes.codigo)?.turno))?.url ?? null;
+    const doStatus = telas.filter((t) => !destinosDeEscolha.has(chaveDe(t.url)));
+    guardada.statusUrl =
+      (alvos.length ? doStatus.find((t) => mostraSituacao(t.secoes, alvos[0])) : undefined)?.url ??
+      doStatus.find((t) => mostraAlgum(t.secoes))?.url ??
+      null;
   }
 
   return { ok: telas.some((t) => t.totalLinhas > 0), loginRecusado: false, captcha: false, telas, diagnostico, falha: null, fezLogin };
@@ -675,7 +859,7 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
 export async function lerPortalDoMotorista(
   credenciais: CredenciaisPortal,
   anteriores: SecaoPortal[] | null = [],
-  opcoes: Pick<OpcoesVisita, "buscar" | "codigo" | "sessao" | "esperaEntreLoginsMs"> = {},
+  opcoes: Pick<OpcoesVisita, "buscar" | "codigo" | "codigos" | "sessao" | "esperaEntreLoginsMs"> = {},
 ): Promise<LeituraPortal> {
   const inicio = Date.now();
   if (!cpfPlausivel(credenciais.cpf)) {
@@ -689,13 +873,21 @@ export async function lerPortalDoMotorista(
     buscar: opcoes.buscar,
     ateOStatus: true,
     codigo: opcoes.codigo,
+    codigos: opcoes.codigos,
     sessao: opcoes.sessao,
     esperaEntreLoginsMs: opcoes.esperaEntreLoginsMs,
   });
   if (visita.falha) return { ...visita.falha, ms: Date.now() - inicio };
 
+  // Uma tela por ponto pedido (o portal mostra um ponto por vez); sem nenhuma,
+  // a que mostra alguma situação, a de status ou a página em que o login caiu.
+  const alvos = codigosPedidos(opcoes);
+  const dosPontos = alvos
+    .map((codigo) => visita.telas.find((t) => mostraSituacao(t.secoes, codigo)) ?? null)
+    .filter((t): t is TelaLida => t !== null);
   const tela =
-    visita.telas.find((t) => Boolean(interpretarStatus(t.secoes, opcoes.codigo)?.turno)) ??
+    dosPontos[0] ??
+    visita.telas.find((t) => Boolean(interpretarStatus(t.secoes, alvos[0] ?? null)?.turno)) ??
     visita.telas.find((t) => t.totalLinhas > 0 && t.caminho.replace(/\/+$/, "") === CAMINHO_STATUS) ??
     visita.telas.find((t) => t.totalLinhas > 0) ??
     null;
@@ -710,8 +902,14 @@ export async function lerPortalDoMotorista(
     };
   }
 
-  const status = interpretarStatus(tela.secoes, opcoes.codigo);
-  const { novas, removidas } = anteriores?.length ? linhasAlteradas(anteriores, tela.secoes) : { novas: [], removidas: [] };
+  // A leitura junta as telas de Status de todos os pontos pedidos.
+  const telasDaLeitura = [...new Set([tela, ...dosPontos])];
+  const secoes = telasDaLeitura.flatMap((t) => t.secoes);
+  const totalLinhas = telasDaLeitura.reduce((n, t) => n + t.totalLinhas, 0);
+  const situacoes = (alvos.length ? alvos : [null])
+    .map((codigo) => (mostraSituacao(secoes, codigo) ? interpretarStatus(secoes, codigo) : null))
+    .filter((x): x is StatusPortal => x !== null);
+  const { novas, removidas } = anteriores?.length ? linhasAlteradas(anteriores, secoes) : { novas: [], removidas: [] };
 
   return {
     ok: true,
@@ -721,26 +919,26 @@ export async function lerPortalDoMotorista(
     statusHttp: tela.statusHttp,
     urlFinal: tela.url,
     titulo: tela.titulo,
-    secoes: tela.secoes,
-    totalLinhas: tela.totalLinhas,
-    hash: hashConteudo(tela.secoes),
-    sinais: linhasDeInteresse(tela.secoes),
+    secoes,
+    totalLinhas,
+    hash: hashConteudo(secoes),
+    sinais: linhasDeInteresse(secoes),
     novas,
     removidas,
     avisoPreciso: false,
     diagnostico: [
       ...visita.diagnostico,
-      `Página lida: ${tela.titulo || tela.caminho}`,
-      `${tela.secoes.length} seção(ões) · ${tela.totalLinhas} linha(s).`,
-      status?.turno
-        ? `Situação do ponto ${status.codigo ?? ""}: ${status.turnoTexto ?? status.turno}.`
-        : "A situação do ponto (ATIVO / ESCALADO / EM DISPENSA) não apareceu nesta página.",
+      `Página lida: ${tela.titulo || tela.caminho}${telasDaLeitura.length > 1 ? ` (${telasDaLeitura.length} telas, uma por ponto)` : ""}`,
+      `${secoes.length} seção(ões) · ${totalLinhas} linha(s).`,
+      ...(situacoes.length
+        ? situacoes.map((st) => `Situação do ponto ${st.codigo ?? ""}: ${st.turnoTexto ?? st.turno}.`)
+        : ["A situação do ponto (ATIVO / ESCALADO / EM DISPENSA) não apareceu nesta página."]),
       ...(anteriores === null
         ? []
         : [anteriores.length ? `${novas.length} linha(s) nova(s), ${removidas.length} removida(s).` : "Primeira leitura: nada é avisado ainda."]),
     ],
     ms: Date.now() - inicio,
-    texto: tela.secoes
+    texto: secoes
       .map((s) => `# ${s.titulo}\n${s.linhas.map((l) => `- ${l}`).join("\n")}`)
       .join("\n")
       .slice(0, 6_000),
@@ -756,12 +954,13 @@ export async function lerPortalDoMotorista(
 export async function lerTelasDoMotorista(
   credenciais: CredenciaisPortal,
   caminhos: string[] = [],
-  opcoes: Pick<OpcoesVisita, "buscar" | "codigo" | "sessao" | "esperaEntreLoginsMs"> = {},
+  opcoes: Pick<OpcoesVisita, "buscar" | "codigo" | "codigos" | "sessao" | "esperaEntreLoginsMs"> = {},
 ): Promise<TelasDoMotorista> {
   const visita = await visitarPortal(credenciais, {
     buscar: opcoes.buscar,
     extras: caminhos,
     codigo: opcoes.codigo,
+    codigos: opcoes.codigos,
     sessao: opcoes.sessao,
     esperaEntreLoginsMs: opcoes.esperaEntreLoginsMs,
   });
@@ -788,11 +987,14 @@ export function extrairStatusEAtivos(
   let secoesStatus: SecaoPortal[] = [];
   let livros: LivroAtivosPortal[] = [];
 
+  // O portal mostra um ponto por vez: entre as telas lidas pode haver o cartão
+  // de OUTRO ponto. Vale mais o cartão do ponto pedido; depois, a tela que diz
+  // a SITUAÇÃO (uma que só cita o código vale apenas se não houver outra).
+  const alvo = codigo ? normalizarCodigoPortal(codigo) : null;
+  const peso = (x: StatusPortal) => (alvo && x.codigo === alvo ? 2 : 0) + (x.turno ? 1 : 0);
   for (const tela of telas) {
     const s = interpretarStatus(tela.secoes, codigo);
-    // Fica com a primeira tela que diz a SITUAÇÃO; uma tela que só cita o
-    // código (sem ATIVO/ESCALADO/EM DISPENSA) vale apenas se não houver outra.
-    if (s && (!status || (!status.turno && s.turno))) {
+    if (s && (!status || peso(s) > peso(status))) {
       status = s;
       secoesStatus = tela.secoes;
     }
@@ -1437,6 +1639,7 @@ export function lerEGuardarPortal(
       lerPortalDoMotorista(credenciais, null, {
         buscar: opcoes.buscar,
         codigo: codigos[0] ?? null,
+        codigos,
         sessao,
         esperaEntreLoginsMs: ESPERA_ENTRE_LOGINS_MS[opcoes.origem],
       }),
@@ -1491,6 +1694,8 @@ export function lerTelasNaSessaoGuardada(
   opcoes: {
     buscar?: typeof fetch;
     codigo?: string | null;
+    /** Todos os pontos do motorista: cada um é escolhido em “Trocar Ponto” e lido. */
+    codigos?: string[];
     caminhos?: string[];
     /** `manual` (alguém pediu agora) não espera o freio de logins. */
     origem?: OrigemLeitura;
@@ -1503,6 +1708,7 @@ export function lerTelasNaSessaoGuardada(
       lerTelasDoMotorista(credenciais, opcoes.caminhos ?? [], {
         buscar: opcoes.buscar,
         codigo: opcoes.codigo,
+        codigos: opcoes.codigos,
         sessao,
         esperaEntreLoginsMs: ESPERA_ENTRE_LOGINS_MS[opcoes.origem ?? "periodica"],
       }),

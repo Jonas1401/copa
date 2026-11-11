@@ -222,7 +222,7 @@ export async function monitorarStatusDoMotorista(
       completa = null;
       try {
         const { caminhos } = await lerModoSaida();
-        const telas = await lerTelasNaSessaoGuardada(motoristaId, { buscar: opcoes.buscar, codigo: codigos[0] ?? null, caminhos });
+        const telas = await lerTelasNaSessaoGuardada(motoristaId, { buscar: opcoes.buscar, codigo: codigos[0] ?? null, codigos, caminhos });
         if (telas?.ok) {
           completa = {
             resultado: "lido",
