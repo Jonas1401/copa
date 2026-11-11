@@ -14,7 +14,7 @@ import {
 } from "@/lib/portal-ticket";
 
 /**
- * CONSULTA DE PONTO — as viagens da semana (aba “Ticket” do Portal do
+ * SALDO DE GANHOS — as viagens da semana (aba “Ticket” do Portal do
  * Motorista) e a comissão, só do PRÓPRIO motorista.
  *
  *   GET    → o que está guardado (não fala com o portal);

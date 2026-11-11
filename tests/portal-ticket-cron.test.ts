@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { BASE_FALSA, criarPortalFalso, telaStatus, type CartaoFalso, type LancamentoFalso, type TicketFalso } from "./portal-fixture";
 
 /**
- * CONSULTA DE PONTO — AS VIAGENS DA SEMANA, DE PONTA A PONTA, PELO CRON.
+ * SALDO DE GANHOS — AS VIAGENS DA SEMANA, DE PONTA A PONTA, PELO CRON.
  *
  * O motorista cadastra a porcentagem; a partir daí, de 5 em 5 minutos, depois
  * da rodada do Status, a sessão guardada dele abre a aba “Ticket” do portal,
@@ -57,7 +57,7 @@ function semanasDeHoje() {
   };
 }
 
-test("Consulta de Ponto: o cron lê o Ticket de quem cadastrou a porcentagem, e só dele", { skip: !local }, async () => {
+test("Saldo de Ganhos: o cron lê o Ticket de quem cadastrou a porcentagem, e só dele", { skip: !local }, async () => {
   process.env.PORTAL_MOTORISTA_URL = BASE_FALSA;
   process.env.CRON_SECRET = "segredo-isolado-do-cron";
   process.env.SECRETS_MASTER_KEY = "chave-mestra-so-para-este-teste-0123456789";
@@ -479,7 +479,7 @@ test("Consulta de Ponto: o cron lê o Ticket de quem cadastrou a porcentagem, e 
     await apagarDadosPortalDoMotorista(bravo.id);
     assert.equal((await db.select().from(portalTicketConfig)).length, 0);
 
-    /* 15 — “Desligar a consulta” com viagens guardadas: saem as viagens e a porcentagem — só as de quem desligou. */
+    /* 15 — “Desligar o Saldo de Ganhos” com viagens guardadas: saem as viagens e a porcentagem — só as de quem desligou. */
     await salvarPorcentagemDoTicket(charlie.id, 1500);
     await monitorarMotorista(charlie.id, { avisar: false });
     const doCharlieLido = await atualizarTicketsDoMotorista(charlie.id, { forcar: true });

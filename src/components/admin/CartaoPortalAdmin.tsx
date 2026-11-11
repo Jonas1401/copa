@@ -124,11 +124,11 @@ type Painel = {
   motoristas: MotoristaPortal[];
   /** Quem decide a saída do ponto e o que o monitor do Status tem guardado. */
   monitor?: { fonte: "portal" | "quadro"; intervaloMin: number; situacoes: SituacaoPainel[]; fila?: FilaPainel };
-  /** A leitura da aba “Ticket” (card “Consulta de Ponto”): só a saúde, sem valores. */
+  /** A leitura da aba “Ticket” (card “Saldo de Ganhos”): só a saúde, sem valores. */
   ticket?: TicketPainel | null;
 };
 
-/** Consulta de Ponto: a leitura da aba “Ticket” está funcionando? (Nenhuma viagem, valor ou porcentagem.) */
+/** Saldo de Ganhos: a leitura da aba “Ticket” está funcionando? (Nenhuma viagem, valor ou porcentagem.) */
 type TicketPainel = {
   ligado: boolean;
   intervaloMin: number;
@@ -474,7 +474,7 @@ export default function CartaoPortalAdmin() {
           {p?.ticket && (p.ticket.motoristas > 0 || !p.ticket.ligado) && (
             <div className="mt-3 rounded-[14px] border border-[#183341]/60 bg-[#000D16]/40 px-3 py-2.5" data-ticket="saude">
               <p className="font-display text-[12.5px] font-bold tracking-[0.04em] text-gelo/85 uppercase">
-                Consulta de Ponto · aba “Ticket” do portal
+                Saldo de Ganhos · aba “Ticket” do portal
               </p>
               <p className="mt-1 text-[11.5px] leading-snug text-gelo/55">
                 {p.ticket.ligado

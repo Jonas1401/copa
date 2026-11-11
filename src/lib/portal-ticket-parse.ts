@@ -5,7 +5,7 @@ import { linhasDaTela } from "@/lib/portal-fila-parse";
 /**
  * ABA “TICKET” DO PORTAL DO MOTORISTA — a “2ª Via de Ticket”.
  *
- * É de onde sai a “Consulta de Ponto” do app (viagens, valor bruto e comissão
+ * É de onde sai o “Saldo de Ganhos” do app (viagens, valor bruto e comissão
  * da semana). A tela, como o motorista vê:
  *
  *   2ª Via de Ticket

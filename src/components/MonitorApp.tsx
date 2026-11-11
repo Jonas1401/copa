@@ -765,7 +765,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     const abrirSePedido = () => {
       try {
         const url = new URL(window.location.href);
-        // `/?portal=1`: a página “Consulta de Ponto” manda para o cadastro do
+        // `/?portal=1`: a página “Saldo de Ganhos” manda para o cadastro do
         // acesso ao Portal do Motorista (a tela só aparece para quem está logado).
         const pedeChat = url.searchParams.get("chat") === "1";
         const pedePortal = url.searchParams.get("portal") === "1";

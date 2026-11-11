@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   // Na mesma rodada, uma das contas abre a aba “Fila” (a fila geral do app).
   // Um portal fora do ar nunca impede os navios.
   const tarefaPortal = monitorarTodos().catch(() => null);
-  // Consulta de Ponto: depois da rodada do Status (nunca antes, nunca junto),
+  // Saldo de Ganhos: depois da rodada do Status (nunca antes, nunca junto),
   // a aba “Ticket” de quem cadastrou a porcentagem e está com a leitura vencida
   // (5 em 5 min por motorista) — só enquanto sobra tempo nesta função.
   const tarefaTickets = tarefaPortal.then(() => monitorarTickets(inicio)).catch(() => null);

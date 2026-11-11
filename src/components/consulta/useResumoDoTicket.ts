@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ResumoDoTicket } from "@/lib/ticket-card";
 
 /**
- * O resumo da “Consulta de Ponto” do motorista logado (viagens, bruto e
+ * O resumo do “Saldo de Ganhos” do motorista logado (viagens, bruto e
  * comissão da semana), como o servidor guardou. O GET não fala com o portal:
  * só devolve a última leitura — por isso pode ser repetido a cada minuto
  * enquanto a tela está visível. Quem não ligou a consulta (não cadastrou a

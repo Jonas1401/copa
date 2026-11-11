@@ -1,7 +1,7 @@
 import { brl } from "@/lib/frete";
 
 /**
- * O CARD “CONSULTA DE PONTO” — viagens, valor bruto e comissão da semana.
+ * O CARD “SALDO DE GANHOS” — viagens, valor bruto e comissão da semana.
  *
  * Os números vêm da aba “Ticket” do Portal do Motorista, lida pelo servidor
  * com a conta do próprio motorista (`portal-ticket.ts`). Aqui fica só o que a

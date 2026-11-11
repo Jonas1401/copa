@@ -15,7 +15,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Cálculo de Frete** | lê a foto do ticket (Quant × Valor) e mostra o ganho do motorista |
 | **Contatos** | WhatsApp do plantão, encarregado, Fospar, SEV e robôs |
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **figurinhas com imagem** em categorias (Caminhões, Motoristas, Porto e CopaLinks), grade de 4 por linha, publicadas pelo admin; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos por HTTP direto com Composio de reserva; mensagens dos motoristas continuam funcionando |
-| **Serviços** | login do aplicativo, **Consulta de Ponto** (viagens, valor bruto e comissão da semana, lidos na aba **Ticket** do portal), cálculo de frete e contatos operacionais |
+| **Serviços** | login do aplicativo, **Saldo de Ganhos** (viagens, valor bruto e comissão da semana, lidos na aba **Ticket** do portal), cálculo de frete e contatos operacionais |
 | **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
 | **Portal do motorista** | o motorista digita no próprio celular (menu ⋮) o **CPF e a senha do `portal.copadubo.com.br`**; o servidor olha o **Status do ponto** dele de minuto em minuto e avisa quando o ponto for **ESCALADO**, entrar **EM DISPENSA** ou voltar a **ATIVO** — é o portal que decide a saída (ver abaixo) |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria, o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) e o cartão **Divulgação do app** (QR Code, mensagem pronta e artes da campanha) |
@@ -404,11 +404,13 @@ Testes: `tests/portal-fila.test.ts` (a leitura da tela, sem rede e sem banco),
 inteiro, com PostgreSQL local).
 
 
-## Consulta de Ponto: as viagens da semana (aba “Ticket” do portal)
+## Saldo de Ganhos: as viagens da semana (aba “Ticket” do portal)
 
-O card **Consulta de Ponto** (SERVIÇOS) apontava para o quadro público que a
-Copadubo desligou. Agora ele abre `/consulta-ponto` e mostra, para o motorista
-logado, só três números da semana: **viagens, valor bruto e comissão**.
+O card **Saldo de Ganhos** (SERVIÇOS) abre `/consulta-ponto` e mostra, para o
+motorista logado, só três números da semana: **viagens, valor bruto e
+comissão**. Até 11/11/2026 ele se chamava “Consulta de Ponto” e apontava para o
+quadro público que a Copadubo desligou — por isso o endereço da página e os
+nomes internos continuam `consulta-ponto`.
 
 **De onde vem.** Da aba **“Ticket”** do Portal do Motorista (“2ª Via de
 Ticket”): o servidor escolhe o ponto na lista PONTO, a semana de hoje na lista
@@ -422,7 +424,7 @@ viagens; comissão = bruto × a porcentagem do motorista.
 **Quem é lido.** Só o motorista que **cadastrou a própria porcentagem** na
 página (é isso que liga a consulta) e que tem o acesso ao portal e um ponto no
 app. A porcentagem fica no servidor (`portal_ticket_config`, em centésimos),
-para o card valer em qualquer aparelho dele. “Desligar a consulta” apaga a
+para o card valer em qualquer aparelho dele. “Desligar o Saldo de Ganhos” apaga a
 porcentagem e as viagens guardadas; remover o acesso ao portal apaga as viagens.
 
 **Como é lida** (`src/lib/portal-ticket.ts`, `monitorarTickets` em
@@ -463,7 +465,7 @@ padrão: a leitura é **recusada**, com o motivo, e continua valendo a última b
 hora (“Lido 09:10”) e soma parcial diz “1 de 3 pontos” (`src/lib/ticket-card.ts`).
 Na página: os três números, a lista de viagens por ponto, a porcentagem, o
 “Atualizar” e o motivo quando a leitura não veio. `/admin → Portal do motorista
-→ “Consulta de Ponto”` mostra só a **saúde** da leitura (quantos pontos lidos, a
+→ “Saldo de Ganhos”` mostra só a **saúde** da leitura (quantos pontos lidos, a
 hora, o motivo da recusa): viagens, valores, porcentagem e comissão são do
 motorista e não aparecem no painel nem no diagnóstico.
 
@@ -895,7 +897,7 @@ no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
 | `FONTE_FILA` | não | de onde vem a fila: vazio/`portal` = a aba “Fila” do Portal do Motorista (padrão); `quadro` = o quadro público antigo, desligado pela Copadubo em 10/11/2026 |
 | `PORTAL_FILA_LIVROS` | não | livros lidos na aba “Fila” (padrão `A`); ex.: `A,B,M` — cada livro a mais é uma página a mais por ciclo |
 | `PORTAL_INTERVALO_MIN` | não | de quantos em quantos minutos o Status de cada motorista é lido (1 a 60; padrão 1) |
-| `PORTAL_TICKET` | não | Consulta de Ponto: vazio = a aba “Ticket” é lida para quem cadastrou a porcentagem (padrão); `desligado` = nenhuma leitura do Ticket |
+| `PORTAL_TICKET` | não | Saldo de Ganhos: vazio = a aba “Ticket” é lida para quem cadastrou a porcentagem (padrão); `desligado` = nenhuma leitura do Ticket |
 | `PORTAL_TICKET_INTERVALO_MIN` | não | de quantos em quantos minutos o Ticket de cada motorista é lido (2 a 60; padrão 5) |
 | `PORTAL_MOTORISTA_URL` | não | base do portal, só para teste/homologação; em produção fica vazia |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |

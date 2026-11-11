@@ -93,7 +93,7 @@ import {
  *     única coisa que ele ENVIA é a escolha do ponto em “Trocar Ponto” (a lista
  *     de pontos da conta + “Confirmar”): o portal mostra o Status de um ponto
  *     por vez, e só é escolhido um ponto que o motorista cadastrou no app;
- *     e, para quem ligou a “Consulta de Ponto”, a consulta da aba “Ticket” (a
+ *     e, para quem ligou o “Saldo de Ganhos”, a consulta da aba “Ticket” (a
  *     lista de pontos + a lista de semanas + “Gerar”), que só mostra as viagens
  *     — o “Gerar PDF” nunca é aberto;
  *   - o conteúdo lido é do PRÓPRIO motorista e só ele (e o administrador,
@@ -899,7 +899,7 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
     // fila vai direto a ela, sem um pedido a mais só para achar o endereço.
     const abaDaFila = abas.find((a) => ehAbaDaFila(a.texto));
     if (abaDaFila) guardada.filaUrl = abaDaFila.url;
-    // …e onde fica a aba “Ticket” (só é aberta para quem ligou a Consulta de Ponto).
+    // …e onde fica a aba “Ticket” (só é aberta para quem ligou o Saldo de Ganhos).
     const abaDoTicket = abas.find((a) => ehAbaDoTicket(a.texto));
     if (abaDoTicket) guardada.ticketUrl = abaDoTicket.url;
   }

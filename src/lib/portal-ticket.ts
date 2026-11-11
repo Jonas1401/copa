@@ -10,9 +10,9 @@ import type { ContaDoTicket, PontoDoResumo, ResumoDoTicket, ViagemGuardada } fro
 export type { ContaDoTicket, PontoDoResumo, ResumoDoTicket, ViagemGuardada };
 
 /**
- * CONSULTA DE PONTO — as viagens da semana e a comissão do motorista.
+ * SALDO DE GANHOS — as viagens da semana e a comissão do motorista.
  *
- * O motorista cadastra a porcentagem dele no card “Consulta de Ponto”. A partir
+ * O motorista cadastra a porcentagem dele no card “Saldo de Ganhos”. A partir
  * daí, de 5 em 5 minutos, na carona da olhada do Status (a conta dele acabou de
  * abrir), a mesma sessão abre a aba “Ticket” do Portal do Motorista, escolhe
  * cada ponto que ele cadastrou no app e a semana de hoje, e toca em “Gerar”.
@@ -399,7 +399,7 @@ function motivoDoPontoVale(config: Pick<ConfigDoTicket, "erro" | "tentativaEm">,
 
 const CONTA_VAZIA: ContaDoTicket = { viagens: 0, bruto: 0, comissao: 0, toneladas: 0 };
 
-/** O que o card e a página “Consulta de Ponto” mostram para este motorista. Não fala com o portal. */
+/** O que o card e a página “Saldo de Ganhos” mostram para este motorista. Não fala com o portal. */
 export async function resumoDoTicket(motoristaId: number, agora = Date.now()): Promise<ResumoDoTicket> {
   const intervaloMin = Math.round(intervaloTicketMs() / 60_000);
   const vazio: ResumoDoTicket = {

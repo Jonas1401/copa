@@ -70,7 +70,7 @@ const CORES: Record<CorServico, { cartao: string; icone: string }> = {
 };
 
 /**
- * Card “Consulta de Ponto” com leitura: só três números — viagens, valor bruto
+ * Card “Saldo de Ganhos” com leitura: só três números — viagens, valor bruto
  * e comissão da semana — e, quando a leitura é antiga ou parcial, uma linha
  * miúda dizendo isso.
  */
@@ -108,7 +108,7 @@ function CartaoServico({
   s: Servico;
   largo?: boolean;
   onSemLink: (s: Servico) => void;
-  /** Só no card “Consulta de Ponto”: o que a leitura do Ticket trouxe. */
+  /** Só no card “Saldo de Ganhos”: o que a leitura do Ticket trouxe. */
   ticket?: CartaoDoTicket | null;
 }) {
   const Icone = ICONES[s.icone];
@@ -160,12 +160,12 @@ export default function Servicos({
   logado = false,
 }: {
   onSemLink: (s: Servico) => void;
-  /** Motorista com cadastro neste aparelho: o card “Consulta de Ponto” mostra as viagens dele. */
+  /** Motorista com cadastro neste aparelho: o card “Saldo de Ganhos” mostra as viagens dele. */
   logado?: boolean;
 }) {
   // Como na referência: uma linha de cards e o "Ver todos" para revelar o resto.
   const [mostrarTodos, setMostrarTodos] = useState(false);
-  // Consulta de Ponto: o que o servidor leu na aba “Ticket” do portal (só para quem está logado).
+  // Saldo de Ganhos: o que o servidor leu na aba “Ticket” do portal (só para quem está logado).
   const { resumo, agora } = useResumoDoTicket(logado);
   const ticket = logado && resumo ? cartaoDoTicket(resumo, agora) : null;
   const visiveis = mostrarTodos ? SERVICOS : SERVICOS.slice(0, 2);

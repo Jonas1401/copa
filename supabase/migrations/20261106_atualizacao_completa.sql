@@ -732,7 +732,7 @@ CREATE TABLE IF NOT EXISTS public.portal_fila (
   proxima_leitura_em TIMESTAMPTZ
 );
 
--- CONSULTA DE PONTO: as viagens da semana, lidas na aba “Ticket” do portal (a
+-- SALDO DE GANHOS: as viagens da semana, lidas na aba “Ticket” do portal (a
 -- 2ª Via de Ticket) com a conta do próprio motorista. `portal_ticket_config`
 -- existe para quem LIGOU a consulta (cadastrou a porcentagem da comissão);
 -- `portal_tickets` guarda as viagens de cada ponto, por semana. É dado do

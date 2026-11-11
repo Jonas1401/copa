@@ -17,7 +17,7 @@ import {
 import { useResumoDoTicket } from "@/components/consulta/useResumoDoTicket";
 
 /**
- * CONSULTA DE PONTO — as viagens da semana do motorista.
+ * SALDO DE GANHOS — as viagens da semana do motorista.
  *
  * O servidor lê a aba “Ticket” do Portal do Motorista com a conta do próprio
  * motorista (a cada 5 minutos) e esta tela mostra: quantas viagens, o valor
@@ -167,7 +167,7 @@ export default function ConsultaPontoApp() {
     if (!dados) return;
     setTexto(null);
     setEditando(false);
-    setMensagem({ texto: "Consulta desligada. A sua porcentagem e as viagens guardadas foram apagadas.", erro: false });
+    setMensagem({ texto: "Saldo de Ganhos desligado. A sua porcentagem e as viagens guardadas foram apagadas.", erro: false });
   }
 
   const aviso = resumo ? avisoDaPagina(resumo, agora) : null;
@@ -192,7 +192,7 @@ export default function ConsultaPontoApp() {
             <ScrollText size={22} strokeWidth={2.2} />
           </span>
           <div className="min-w-0">
-            <h1 className="font-display text-[clamp(20px,6vw,26px)] leading-tight font-extrabold text-white">Consulta de Ponto</h1>
+            <h1 className="font-display text-[clamp(20px,6vw,26px)] leading-tight font-extrabold text-white">Saldo de Ganhos</h1>
             <p className="text-[13.5px] text-gelo/80">Viagens da semana · Ticket do portal</p>
           </div>
         </header>
@@ -484,7 +484,7 @@ export default function ConsultaPontoApp() {
                       confirmando ? "border-ambar text-ambar" : "border-[#183341] text-gelo/80 hover:border-ambar/60"
                     }`}
                   >
-                    {ocupado === "desligar" ? "Desligando…" : confirmando ? "Toque de novo para desligar e apagar" : "Desligar a consulta"}
+                    {ocupado === "desligar" ? "Desligando…" : confirmando ? "Toque de novo para desligar e apagar" : "Desligar o Saldo de Ganhos"}
                   </button>
                 )}
               </section>
