@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   Ship,
   Trash2,
+  Wallet,
   X,
 } from "lucide-react";
 import Cabecalho from "@/components/inicio/Cabecalho";
@@ -48,6 +49,9 @@ import {
 import { LOGO } from "@/lib/logo";
 import { chamadaDoAvisoDeSaida, foraDaFilaPeloPortal, seloDoPortal } from "@/lib/portal-selo";
 import { cardDaFila } from "@/lib/fila-card";
+import { LETRA_DA_SEGUNDA_LINHA, SELO, VAO_NUMERO_SELO, letraDoSaldo, medidasDoSelo, monitorEmDia } from "@/lib/cartao-inicio";
+import { FALTA_PORCENTAGEM, cartaoDoTicket, saldoDoInicio } from "@/lib/ticket-card";
+import { useResumoDoTicket } from "@/components/consulta/useResumoDoTicket";
 
 
 /* ------------------------------------------------------------------ base */
@@ -89,8 +93,8 @@ function Led({
 }: {
   cor?: string;
   pulsante?: boolean;
-  /** Diâmetro em px (padrão do CSS: 11 px). */
-  tamanho?: number;
+  /** Diâmetro: em px, ou um tamanho do CSS (“0.8em”). Padrão do CSS: 11 px. */
+  tamanho?: number | string;
 }) {
   return (
     <span
@@ -535,17 +539,12 @@ function FolhaCadastro({
   );
 }
 
-/** "há 12 min", "há 40 s", "há 1h05" */
-function haQuanto(iso: string, agora: number) {
-  const s = Math.max(0, Math.round((agora - new Date(iso).getTime()) / 1000));
-  if (s < 60) return `há ${s} s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `há ${m} min`;
-  return `há ${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
-}
-
-/** Linha de informação: ícone em anel, texto e valor (com a seta à direita). */
+/**
+ * Um quadro da fila (“Pontos no quadro TRUCK”), num cartão só dele: ícone em
+ * anel, o texto, quantos pontos estão na fila e a seta à direita.
+ */
 function FaixaInfo({
+  faixa,
   icone,
   anel,
   rotulo,
@@ -553,8 +552,9 @@ function FaixaInfo({
   valor,
   corValor,
   sub,
-  divisor = false,
 }: {
+  /** Qual quadro é este (vai para `data-faixa`). */
+  faixa: string;
   icone: React.ReactNode;
   /** Cor do anel do ícone (borda + brilho). */
   anel: string;
@@ -563,36 +563,93 @@ function FaixaInfo({
   valor: string;
   corValor: string;
   sub: string;
-  /** Linha vertical antes do valor (usada em "Último escalado"). */
-  divisor?: boolean;
 }) {
+  // As medidas acompanham a largura da tela (as do desenho valem na de 412 px): em
+  // celular estreito o anel, os vãos e as letras encolhem juntos, e o texto não
+  // encosta no número.
   return (
-    <div className="flex min-h-[67px] w-full items-center gap-3 rounded-[24px] border border-[#183341]/70 bg-[#071A28]/85 py-2.5 pr-2.5 pl-3 text-left">
+    <div
+      data-faixa={faixa}
+      className="cartao-monitor flex min-h-[67px] w-full items-center gap-[clamp(10px,3.64vw,15px)] rounded-[24px] py-2 pr-[clamp(10px,3.64vw,15px)] pl-[clamp(10px,3.4vw,14px)] text-left"
+    >
       <span
-        className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full border-[1.5px] ${anel}`}
+        className={`grid h-[clamp(40px,11.65vw,48px)] w-[clamp(40px,11.65vw,48px)] shrink-0 place-items-center rounded-full border-[1.5px] ${anel}`}
       >
         {icone}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-display text-[14.5px] leading-tight font-extrabold text-white">
+        <span className="block font-display text-[clamp(13px,3.52vw,14.5px)] leading-tight font-extrabold text-white">
           {rotulo}
           {destaque && <span className={`ml-1 ${destaque.cor}`}>{destaque.texto}</span>}
         </span>
-        <span className="mt-1 block text-[13px] leading-tight text-gelo/75">{sub}</span>
+        <span className="mt-1 block text-[clamp(11.5px,3.16vw,13px)] leading-tight text-gelo/75">{sub}</span>
       </span>
-      <span className={`flex shrink-0 items-center ${divisor ? "h-[35px] border-l border-gelo/25 pl-5" : ""}`}>
+      <span className="flex shrink-0 items-center">
         <span
-          className={`tabular font-display text-[clamp(24px,7.3vw,31px)] leading-none font-extrabold ${corValor}`}
+          className={`tabular font-display text-[clamp(26px,8.1vw,35px)] leading-none font-extrabold ${corValor}`}
         >
           {valor}
         </span>
         <ChevronRight
           aria-hidden
-          size={22}
           strokeWidth={2.6}
-          className="ml-1 shrink-0 text-gelo/70"
+          className="ml-2 h-[clamp(20px,6.3vw,26px)] w-[clamp(20px,6.3vw,26px)] shrink-0 text-white"
         />
       </span>
+    </div>
+  );
+}
+
+/**
+ * A leitura do monitor: “Atualizado há 14s” e ONLINE / OFFLINE (tocar = reler).
+ * Com tudo em dia ela não aparece na tela inicial — só dentro do painel que
+ * abre ao tocar no número. Aparece sozinha, embaixo dos quadros da fila,
+ * quando há o que avisar (ver `monitorEmDia`).
+ */
+function LinhaDaLeitura({
+  texto,
+  dica,
+  selo,
+  emDia,
+  ocupado,
+  onReler,
+}: {
+  texto: string;
+  /** A hora exata da última leitura (aparece ao segurar o dedo ou passar o mouse). */
+  dica?: string;
+  selo: string;
+  emDia: boolean;
+  ocupado: boolean;
+  onReler: () => void;
+}) {
+  return (
+    <div
+      data-leitura={emDia ? "em-dia" : "aviso"}
+      className={`flex items-center justify-between gap-3 rounded-[18px] border py-0.5 pr-1.5 pl-3.5 ${
+        emDia ? "border-[#183341]/70 bg-[#071A28]/85" : "border-[#FFB82E]/45 bg-[#FFB82E]/[0.07]"
+      }`}
+    >
+      <span className="flex min-w-0 items-center gap-2 text-[14.5px] leading-6 text-gelo/90">
+        <Clock size={21} strokeWidth={2} className={`shrink-0 ${emDia ? "text-[#00B8BC]" : "text-ambar"}`} />
+        <span className="tabular truncate" title={dica}>
+          {texto}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onReler}
+        title="Varrer o site agora"
+        className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-full px-2 transition-colors hover:bg-white/5"
+      >
+        {ocupado ? (
+          <RotateCw size={14} className={`animate-spin ${emDia ? "text-verde" : "text-ambar"}`} />
+        ) : (
+          <Led cor={emDia ? "verde" : "ambar"} />
+        )}
+        <span className={`font-display text-[16px] leading-6 font-bold whitespace-nowrap ${emDia ? "text-verde" : "text-ambar"}`}>
+          {selo}
+        </span>
+      </button>
     </div>
   );
 }
@@ -702,6 +759,12 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     const servidor = new Date(estado.servidorAgora ?? "").getTime();
     if (Number.isFinite(servidor)) setDesvioRelogio(servidor - Date.now());
   }, [estado.servidorAgora]);
+  // Há quanto tempo, com a TELA ABERTA, este aparelho não recebe resposta do
+  // monitor (ms). O tempo com o app em segundo plano não conta: ao voltar, a
+  // tela não acusa “sem conexão” antes de perguntar de novo.
+  const [semRespostaMs, setSemRespostaMs] = useState(0);
+  // Já chegou alguma resposta do monitor desde que a tela abriu.
+  const [respondeu, setRespondeu] = useState(false);
   const [aba, setAba] = useState<Aba>("inicio");
   const [expandido, setExpandido] = useState(false);
   const [cadastroAberto, setCadastroAberto] = useState(false);
@@ -742,6 +805,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   );
   const motoristaRef = useRef<Motorista | null>(null);
   const [perfilPronto, setPerfilPronto] = useState(false);
+  // Saldo de Ganhos do motorista deste aparelho (só consulta quem tem cadastro).
+  const ticket = useResumoDoTicket(motoristaId !== null, 60_000, motoristaId);
 
   const [entrando, setEntrando] = useState(false);
   const [erroEntrada, setErroEntrada] = useState("");
@@ -953,14 +1018,27 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     const id = motoristaRef.current?.id ?? 0;
     try {
       const r = await fetch("/api/estado", { cache: "no-store" });
-      if (r.ok && (motoristaRef.current?.id ?? 0) === id) setEstado(await r.json());
+      if (!r.ok) return;
+      const novo = (await r.json()) as EstadoDTO;
+      // O monitor respondeu (mesmo que a resposta seja de outro motorista e não entre).
+      setSemRespostaMs(0);
+      setRespondeu(true);
+      if ((motoristaRef.current?.id ?? 0) === id) setEstado(novo);
     } catch {
       /* próxima varredura */
     }
   }, []);
 
   useEffect(() => {
-    const t = setInterval(() => setAgora(Date.now()), 1000);
+    let anterior = Date.now();
+    const t = setInterval(() => {
+      const agoraMs = Date.now();
+      // Voltando do segundo plano o relógio “pula”: cada volta conta no máximo 2 s.
+      const passo = Math.min(Math.max(0, agoraMs - anterior), 2000);
+      anterior = agoraMs;
+      setSemRespostaMs((ms) => ms + passo);
+      setAgora(agoraMs);
+    }, 1000);
     // Primeira varredura sai cedo; depois disso, uma a cada 5 segundos.
     const primeira = setTimeout(() => void buscarEstado(), 2200);
     timer.current = setInterval(() => void buscarEstado(), 5000);
@@ -998,8 +1076,11 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ motoristaId: motoristaRef.current?.id ?? null }),
       });
-      if (r.ok) setEstado(await r.json());
-      else setAviso({ texto: "Falha ao reler o monitor.", erro: true });
+      if (r.ok) {
+        setEstado(await r.json());
+        setSemRespostaMs(0);
+        setRespondeu(true);
+      } else setAviso({ texto: "Falha ao reler o monitor.", erro: true });
     } catch {
       setAviso({ texto: "Sem conexão com o monitor.", erro: true });
     } finally {
@@ -1287,18 +1368,9 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const alvo = estado.pontos[idx];
 
   // --------------------------------------- informações do cartão do número
-  // A fila vem da aba “Fila” do Portal do Motorista. Com um ponto na tela, as
-  // faixas são do livro dele; quadro sem leitura mostra “—” (ver `cardDaFila`).
+  // A fila vem da aba “Fila” do Portal do Motorista. Com um ponto na tela, os
+  // dois quadros são do livro dele; quadro sem leitura mostra “—” (ver `cardDaFila`).
   const cardFila = cardDaFila(estado.fila, alvo);
-  const linhaDoAlvo = cardFila.linhaDoAlvo;
-  const ultimoEscalado = cardFila.ultimoEscalado;
-  const ultimoQuando = linhaDoAlvo?.ultimoDesde
-    ? haQuanto(linhaDoAlvo.ultimoDesde, agora)
-    : linhaDoAlvo
-      ? "no quadro"
-      : alvo
-        ? "sem leitura da fila"
-        : "sem ponto";
   // Selo do cartão: com o Status do portal lido há pouco, ele manda (ESCALADO,
   // DISPENSA); sem leitura recente vale o que o quadro mostra.
   const seloAlvo = alvo ? seloDoPortal(alvo) : null;
@@ -1306,6 +1378,49 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const corLedAlvo = seloAlvo ? seloAlvo.cor : alvo?.status === "AGUARDANDO" ? "verde" : "ambar";
   const corStatus =
     corLedAlvo === "vermelho" ? "text-[#ff4d4d]" : corLedAlvo === "verde" ? "text-verde" : "text-ambar";
+  // O selo fica SEMPRE ao lado do número: a letra dele é a maior que cabe ali.
+  const textoDoSelo = alvo ? (seloAlvo ? seloAlvo.texto : alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status) : "";
+  // Embaixo de ATIVO: quantos pontos estão na frente.
+  const segundaLinhaDoSelo =
+    alvo && !alvoForaDaFila && alvo.status === "AGUARDANDO"
+      ? alvo.semFila
+        ? "sem leitura da fila"
+        : alvo.vistoEm
+          ? `${alvo.naFrente} na frente`
+          : "Varrendo…"
+      : null;
+  const selo = alvo ? medidasDoSelo(alvo.codigo, textoDoSelo, segundaLinhaDoSelo) : null;
+  const seloEmDuasLinhas = Boolean(selo && (segundaLinhaDoSelo || selo.linhas.length > 1));
+
+  // “Você vai receber”: a comissão do Saldo de Ganhos (todos os pontos do
+  // motorista). É uma consulta só para a tela: o mesmo resumo vai para o card
+  // dos SERVIÇOS.
+  const saldo = saldoDoInicio(ticket.resumo, ticket.agora, {
+    logado: Boolean(motorista) && !ticket.naoLogado,
+    carregado: ticket.carregado,
+  });
+  const cartaoTicket = motorista && ticket.resumo ? cartaoDoTicket(ticket.resumo, ticket.agora) : null;
+
+  // A leitura do monitor: com tudo em dia, nada aparece na tela inicial. Nos
+  // primeiros segundos (antes da 1ª resposta) o aviso espera, para não piscar
+  // toda vez que o app abre.
+  const leituraEmDia = monitorEmDia(estado, semRespostaMs);
+  const semConexao = estado.temLeitura !== false && estado.online && !leituraEmDia;
+  const avisarLeitura = !leituraEmDia && (respondeu || semRespostaMs > 8000);
+  const linhaDaLeitura = (
+    <LinhaDaLeitura
+      texto={
+        estado.temLeitura === false
+          ? "Aguardando 1ª leitura"
+          : `Atualizado há ${decorrido(estado.atualizadoEm, agora + desvioRelogio)}`
+      }
+      dica={estado.temLeitura ? `Última leitura real da fila: ${hora(estado.atualizadoEm)}` : undefined}
+      selo={leituraEmDia ? "ONLINE" : semConexao ? "SEM CONEXÃO" : "OFFLINE"}
+      emDia={leituraEmDia}
+      ocupado={ocupado}
+      onReler={atualizar}
+    />
+  );
   // Quem avisa a saída é o portal: sem o acesso cadastrado, o app pede.
   const chamadaPortal = motorista && estado.pontos.length ? chamadaDoAvisoDeSaida(estado.avisoSaida) : null;
   const abrirPortal = () => {
@@ -1401,7 +1516,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 initial={reduzido ? false : { opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, ease: [0.2, 0.7, 0.3, 1] }}
-                className="cartao-monitor relative mx-3 -mt-[3.3333%] overflow-hidden rounded-[24px] px-3 pt-3 pb-5"
+                data-cartao="numero"
+                className="cartao-monitor relative mx-3 -mt-[3.3333%] overflow-hidden rounded-[24px] px-3 pt-3 pb-2"
               >
                 <div className="varredura" aria-hidden />
 
@@ -1427,7 +1543,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   </button>
                 </div>
 
-                {/* número + status (toque = abrir o painel; arrastar = trocar de ponto) */}
+                {/* número com o status AO LADO (toque = abrir o painel; arrastar = trocar de ponto) */}
                 <motion.div
                   key={idx}
                   initial={reduzido ? false : { opacity: 0, x: 24 }}
@@ -1446,7 +1562,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                       arrastou.current = false;
                     }, 60);
                   }}
-                  className="mt-5"
+                  className="mt-0.5"
                 >
                   <button
                     type="button"
@@ -1455,11 +1571,12 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     }}
                     aria-expanded={expandido}
                     title={expandido ? "Toque para recolher" : "Toque para abrir o painel"}
-                    className={`flex w-full flex-wrap items-center gap-y-2 pl-2 text-left ${
-                      alvo?.status === "AGUARDANDO" ? "gap-x-3" : "gap-x-4"
-                    }`}
+                    // Se um dia o selo não couber (letra de reserva mais larga), ele desce inteiro: nunca é cortado.
+                    className="flex w-full flex-wrap items-center gap-y-2 pl-2 text-left"
+                    style={{ columnGap: VAO_NUMERO_SELO }}
                   >
                     <span
+                      data-numero
                       className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(0, 184, 188, 0.45)] ${
                         alvo && alvo.codigo.length > 3
                           ? "text-[clamp(50px,15.5vw,66px)]"
@@ -1468,20 +1585,32 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     >
                       {alvo ? alvo.codigo : "—"}
                     </span>
-                    {alvo && (
+                    {alvo && selo && (
                       <span
-                        className={`flex translate-y-[5px] items-center gap-3.5 rounded-full border border-[#183341]/80 bg-[#071A28]/90 ${
-                          alvo.status === "AGUARDANDO" ? "px-3 py-[7px]" : "px-4 py-3.5"
-                        }`}
+                        data-selo
+                        className="flex translate-y-1 items-center rounded-full border border-[#183341]/80 bg-[#071A28]/90"
+                        style={{
+                          fontSize: selo.letra,
+                          gap: `${SELO.vao}em`,
+                          paddingInline: `${SELO.folga}em`,
+                          paddingBlock: seloEmDuasLinhas ? "0.27em" : "0.6em",
+                        }}
                       >
-                        <Led cor={corLedAlvo} pulsante tamanho={18} />
+                        <Led cor={corLedAlvo} pulsante tamanho={`${SELO.bolinha}em`} />
                         <span className="flex flex-col">
-                          <span className={`font-display text-[20.5px] leading-[26px] font-bold ${corStatus}`}>
-                            {seloAlvo ? seloAlvo.texto : alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status}
+                          <span className={`font-display font-bold whitespace-nowrap ${selo.linhas.length > 1 ? "leading-[1.08]" : "leading-[1.25]"} ${corStatus}`}>
+                            {selo.linhas.map((linha) => (
+                              <span key={linha} className="block">
+                                {linha}
+                              </span>
+                            ))}
                           </span>
-                          {!alvoForaDaFila && alvo.status === "AGUARDANDO" && (
-                            <span className="tabular whitespace-nowrap text-[12px] leading-[14px] font-semibold text-gelo/75">
-                              {alvo.semFila ? "sem leitura da fila" : alvo.vistoEm ? `${alvo.naFrente} na frente` : "Varrendo…"}
+                          {segundaLinhaDoSelo && (
+                            <span
+                              className="tabular font-semibold whitespace-nowrap text-gelo/75"
+                              style={{ fontSize: `${LETRA_DA_SEGUNDA_LINHA}em`, lineHeight: 1.2 }}
+                            >
+                              {segundaLinhaDoSelo}
                             </span>
                           )}
                         </span>
@@ -1498,68 +1627,85 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   </button>
                 </motion.div>
 
-                {/* informações da fila */}
-                <div className="mt-[18px] space-y-3">
-                  <FaixaInfo
-                    icone={<Clock size={24} strokeWidth={2.1} className="text-[#00B8BC]" />}
-                    anel="border-[#183341]/70 bg-[#00B8BC]/10 shadow-[0_0_20px_-6px_rgba(0, 184, 188, 0.9)]"
-                    rotulo="Último escalado"
-                    valor={ultimoEscalado}
-                    corValor="text-white"
-                    sub={ultimoQuando}
-                    divisor
-                  />
-                  <FaixaInfo
-                    icone={<Truck size={24} strokeWidth={2} className="text-[#FFB82E]" />}
-                    anel="border-[#FFB82E]/70 bg-[#FFB82E]/10 shadow-[0_0_20px_-6px_rgba(255, 184, 46, 0.9)]"
-                    rotulo="Pontos no quadro"
-                    destaque={{ texto: "TRUCK", cor: "text-[#FFB82E]" }}
-                    valor={cardFila.truck.valor}
-                    corValor="text-[#FFB82E]"
-                    sub={cardFila.truck.sub}
-                  />
-                  <FaixaInfo
-                    icone={<Truck size={24} strokeWidth={2} className="text-[#00C853]" />}
-                    anel="border-[#00C853]/70 bg-[#00C853]/10 shadow-[0_0_20px_-6px_rgba(0, 200, 83, 0.9)]"
-                    rotulo="Pontos no quadro"
-                    destaque={{ texto: "CAVALO/C", cor: "text-[#00C853]" }}
-                    valor={cardFila.cavalo.valor}
-                    corValor="text-[#00C853]"
-                    sub={cardFila.cavalo.sub}
-                  />
-                </div>
-
-                {/* rodapé do cartão */}
-                <div className="mt-[22px] flex items-center justify-between gap-3 pl-1.5">
-                  <span className="flex items-center gap-2 text-[15px] leading-6 text-gelo/90">
-                    <Clock size={24} strokeWidth={2} className="shrink-0 text-[#00B8BC]" />
-                    <span className="tabular" title={estado.temLeitura ? `Última leitura real da fila: ${hora(estado.atualizadoEm)}` : undefined}>
-                      {estado.temLeitura === false
-                        ? "Aguardando 1ª leitura"
-                        : `Atualizado há ${decorrido(estado.atualizadoEm, agora + desvioRelogio)}`}
-                    </span>
+                {/* “Você vai receber”: o saldo do motorista (todos os pontos dele). Tocar abre o Saldo de Ganhos. */}
+                <Link
+                  href="/consulta-ponto"
+                  data-saldo
+                  title="Abrir o Saldo de Ganhos"
+                  className="mt-[13px] block border-t border-[#183341] pt-[7px] transition-opacity active:opacity-75"
+                >
+                  <span className="flex items-center gap-[11px] pl-1 text-[14px] leading-6 font-medium text-gelo/85">
+                    <Wallet size={24} strokeWidth={2} className="shrink-0 text-ouro" aria-hidden />
+                    Você vai receber
                   </span>
-                  <button
-                    type="button"
-                    onClick={atualizar}
-                    title="Varrer o site agora"
-                    className="-my-2.5 flex items-center gap-2 rounded-full px-2 py-2.5 transition-colors hover:bg-white/5"
+                  {/* Dinheiro nunca é cortado nem quebrado: a letra encolhe o que for preciso para caber numa linha. */}
+                  <span
+                    data-saldo-valor
+                    className={`tabular -mt-px block pl-[11px] font-display leading-none font-black whitespace-nowrap ${
+                      saldo.temValor ? "text-ouro" : saldo.valor === FALTA_PORCENTAGEM ? "text-ambar" : "text-ouro/45"
+                    } ${saldo.velho ? "opacity-70" : ""}`}
+                    style={{ fontSize: letraDoSaldo(saldo.valor) }}
                   >
-                    {ocupado ? (
-                      <RotateCw size={14} className="animate-spin text-verde" />
-                    ) : (
-                      <Led cor={estado.online ? "verde" : "ambar"} />
-                    )}
+                    {saldo.valor}
+                  </span>
+                  {saldo.nota && (
                     <span
-                      className={`font-display text-[18px] leading-6 font-bold ${
-                        estado.online ? "text-verde" : "text-ambar"
-                      }`}
+                      data-saldo-nota
+                      className={`mt-1 block pb-0.5 pl-[11px] text-[12.5px] leading-[16px] ${saldo.atencao ? "text-ambar" : "text-gelo/70"}`}
                     >
-                      {estado.online ? "ONLINE" : "OFFLINE"}
+                      {saldo.nota}
                     </span>
-                  </button>
-                </div>
+                  )}
+                </Link>
               </motion.section>
+            </div>
+
+            {/* painel completo: abre ao tocar no número, logo abaixo do cartão */}
+            {expandido && (
+              <motion.div
+                initial={reduzido ? false : { opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="mt-2.5 space-y-2.5"
+              >
+                <CadastroInline
+                  tipo={tipo}
+                  livro={livro}
+                  numero={numero}
+                  ocupado={ocupado || ativando}
+                  onTipo={setTipo}
+                  onLivro={setLivro}
+                  onNumero={setNumero}
+                  onConfirmar={() => void confirmar()}
+                />
+                {blocoSeusPontos}
+                {/* a leitura do monitor e o botão de reler ficam aqui dentro */}
+                {linhaDaLeitura}
+              </motion.div>
+            )}
+
+            {/* a fila: um cartão para cada quadro */}
+            <div className="mt-3.5 flex flex-col gap-[13px]">
+              <FaixaInfo
+                faixa="truck"
+                icone={<Truck strokeWidth={2} className="h-[52%] w-[52%] text-[#FFB82E]" />}
+                anel="border-[#FFB82E]/70 bg-[#FFB82E]/10 shadow-[0_0_20px_-6px_rgba(255, 184, 46, 0.9)]"
+                rotulo="Pontos no quadro"
+                destaque={{ texto: "TRUCK", cor: "text-[#FFB82E]" }}
+                valor={cardFila.truck.valor}
+                corValor="text-[#FFB82E]"
+                sub={cardFila.truck.sub}
+              />
+              <FaixaInfo
+                faixa="cavalo"
+                icone={<Truck strokeWidth={2} className="h-[52%] w-[52%] text-[#00C853]" />}
+                anel="border-[#00C853]/70 bg-[#00C853]/10 shadow-[0_0_20px_-6px_rgba(0, 200, 83, 0.9)]"
+                rotulo="Pontos no quadro"
+                destaque={{ texto: "CAVALO/C", cor: "text-[#00C853]" }}
+                valor={cardFila.cavalo.valor}
+                corValor="text-[#00C853]"
+                sub={cardFila.cavalo.sub}
+              />
             </div>
 
             {/* Quem avisa a saída é o Status do Portal do Motorista: sem o
@@ -1579,27 +1725,9 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               </button>
             )}
 
-            {/* painel completo: abre ao tocar no número */}
-            {expandido && (
-              <motion.div
-                initial={reduzido ? false : { opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className="mt-2.5 space-y-2.5"
-              >
-                <CadastroInline
-                  tipo={tipo}
-                  livro={livro}
-                  numero={numero}
-                  ocupado={ocupado || ativando}
-                  onTipo={setTipo}
-                  onLivro={setLivro}
-                  onNumero={setNumero}
-                  onConfirmar={() => void confirmar()}
-                />
-                {blocoSeusPontos}
-              </motion.div>
-            )}
+            {/* A leitura do monitor só aparece aqui quando há o que avisar (sem
+                1ª leitura, OFFLINE, sem conexão). Com o painel aberto ela já está lá. */}
+            {avisarLeitura && !expandido && <div className="mt-2.5">{linhaDaLeitura}</div>}
 
             <motion.div
               initial={reduzido ? false : { opacity: 0, y: 14 }}
@@ -1607,7 +1735,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               transition={{ duration: 0.45, delay: 0.12 }}
               className="mt-4"
             >
-              <Servicos onSemLink={semLink} logado={Boolean(motorista)} />
+              <Servicos onSemLink={semLink} ticket={cartaoTicket} />
             </motion.div>
           </>
         )}
