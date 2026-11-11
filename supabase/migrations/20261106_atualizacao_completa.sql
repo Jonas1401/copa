@@ -695,6 +695,27 @@ CREATE TABLE IF NOT EXISTS public.portal_saidas_pendentes (
 CREATE INDEX IF NOT EXISTS portal_saidas_pendentes_proxima_idx
   ON public.portal_saidas_pendentes (proxima_em);
 
+-- Monitoramento pelo STATUS do portal (10/11/2026). A sessão aberta no portal
+-- fica cifrada como a senha e é reaproveitada entre as leituras (o login só se
+-- repete quando o portal pedir); `proxima_leitura_em` marca a próxima leitura.
+ALTER TABLE public.portal_motorista_acessos
+  ADD COLUMN IF NOT EXISTS sessao_cifrada TEXT,
+  ADD COLUMN IF NOT EXISTS proxima_leitura_em TIMESTAMPTZ;
+
+-- Situação de cada ponto no portal (ATIVO / ESCALADO / EM DISPENSA), como o app
+-- leu pela última vez. A troca desta situação decide os avisos de saída e de
+-- volta. Uma linha por ponto.
+CREATE TABLE IF NOT EXISTS public.portal_situacoes (
+  ponto_id INTEGER PRIMARY KEY,
+  motorista_id INTEGER NOT NULL,
+  codigo TEXT NOT NULL,
+  turno TEXT NOT NULL,
+  mudou_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  lido_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS portal_situacoes_motorista_idx
+  ON public.portal_situacoes (motorista_id);
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend
@@ -747,6 +768,7 @@ ALTER TABLE public.portal_motorista_acessos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_leituras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_eventos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_saidas_pendentes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_situacoes ENABLE ROW LEVEL SECURITY;
 
 -- Sem policy, RLS já bloqueia; o REVOKE é a segunda tranca para o PostgREST.
 -- Os papéis anon/authenticated só existem no Supabase — num PostgreSQL comum
@@ -769,7 +791,7 @@ END $$;
 
 COMMIT;
 
--- Conferência rápida: todas as tabelas do app devem aparecer abaixo (48).
+-- Conferência rápida: todas as tabelas do app devem aparecer abaixo (49).
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'

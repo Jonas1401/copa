@@ -30,6 +30,18 @@ type Leitura = {
   diagnostico: string | null;
 };
 
+/** Situação de um ponto do motorista, como o Status do portal mostrou. */
+type SituacaoDoPonto = {
+  /** Código como o portal escreve (A032). */
+  codigo: string;
+  /** ATIVO, ESCALADO, EM DISPENSA… */
+  turno: string;
+  lidoEm: string;
+  mudouEm: string;
+  /** Lida há pouco (uma leitura antiga não afirma nada sobre agora). */
+  recente: boolean;
+};
+
 export type EstadoPortalMotorista = {
   cadastrado: boolean;
   cpfMascarado: string | null;
@@ -37,6 +49,11 @@ export type EstadoPortalMotorista = {
   ativo: boolean;
   desde: string | null;
   leitura: Leitura | null;
+  /** Quem decide a saída do ponto: o Status do portal (padrão) ou o quadro. */
+  fonte?: "portal" | "quadro";
+  /** De quantos em quantos minutos o Status é olhado (fonte `portal`). */
+  intervaloMin?: number | null;
+  situacoes?: SituacaoDoPonto[];
 };
 
 type Estado = EstadoPortalMotorista;
@@ -121,17 +138,27 @@ export default function PortalMotorista({
       return;
     }
     const motivo = Array.isArray(dados?.diagnostico) ? String(dados.diagnostico[dados.diagnostico.length - 1] ?? "") : "";
+    // Situação de cada ponto nesta leitura (quando o Status é a fonte do aviso).
+    const lidas: string[] = Array.isArray(dados?.situacoes)
+      ? (dados.situacoes as { codigo?: string; turno?: string | null }[])
+          .filter((x) => x?.codigo && x?.turno)
+          .map((x) => `${x.codigo} ${x.turno}`)
+      : [];
     setAviso({
       texto: dados?.pausado
         ? "O portal recusou o CPF/senha de novo. Pausei a leitura para não bloquear a sua conta: cadastre a senha novamente."
         : dados?.loginRecusado
           ? "O portal recusou o CPF/senha. Cadastre a senha de novo."
           : dados?.ok
-            ? `Portal lido agora: ${dados?.linhas ?? 0} linha(s).`
+            ? lidas.length
+              ? `Status lido agora: ${lidas.join(" · ")}.`
+              : `Portal lido agora: ${dados?.linhas ?? 0} linha(s).`
             : motivo || "O portal não devolveu conteúdo nesta leitura.",
       erro: !dados?.ok,
     });
-    await carregar();
+    // A resposta já traz o estado novo da tela; a releitura é só garantia.
+    if (dados?.estado) setEstado(dados.estado);
+    else await carregar();
   }
 
   async function apagar() {
@@ -154,6 +181,10 @@ export default function PortalMotorista({
   const cadastrado = Boolean(estado?.cadastrado);
   const mostrarFormulario = !cadastrado || editando;
   const l = estado?.leitura ?? null;
+  // Quem avisa a saída: o Status do portal (padrão) ou, na configuração antiga, o quadro.
+  const peloStatus = estado?.fonte !== "quadro";
+  const cadaMin = estado?.intervaloMin && estado.intervaloMin > 1 ? `a cada ${estado.intervaloMin} minutos` : "de minuto em minuto";
+  const situacoes = peloStatus ? (estado?.situacoes ?? []) : [];
   // Motivo da última leitura que falhou (texto do servidor, sem dado sensível).
   const motivoFalha = l && !l.ok ? (l.diagnostico ?? "").split("\n").filter(Boolean).pop() ?? "" : "";
 
@@ -183,10 +214,21 @@ export default function PortalMotorista({
         </div>
 
         <p className="mt-3 text-[13.5px] leading-snug text-gelo/80">
-          Digite aqui o <b>seu CPF e a senha do portal</b> uma única vez. Quando o seu
-          ponto sair do quadro, o aplicativo entra no portal por você, confere se ele
-          foi <b>ESCALADO</b>, está <b>EM DISPENSA</b> ou continua <b>ATIVO</b> e manda
-          um aviso só, já com essa informação.
+          Digite aqui o <b>seu CPF e a senha do portal</b> uma única vez.{" "}
+          {peloStatus ? (
+            <>
+              O aplicativo olha o <b>Status do seu ponto</b> no portal {cadaMin} e avisa
+              quando ele for <b>ESCALADO</b>, entrar <b>EM DISPENSA</b> ou voltar a{" "}
+              <b>ATIVO</b> — já com as informações que o Status mostra. Sem este
+              cadastro não há aviso de saída.
+            </>
+          ) : (
+            <>
+              Quando o seu ponto sair do quadro, o aplicativo entra no portal por você,
+              confere se ele foi <b>ESCALADO</b>, está <b>EM DISPENSA</b> ou continua{" "}
+              <b>ATIVO</b> e manda um aviso só, já com essa informação.
+            </>
+          )}
         </p>
 
         <div className="mt-3 flex items-start gap-2 rounded-[16px] border border-[#183341]/60 bg-[#071A28]/70 p-3">
@@ -278,10 +320,50 @@ export default function PortalMotorista({
               </div>
               <p className="mt-1 text-[12px] text-gelo/55">
                 {estado?.ativo
-                  ? `Cadastrado em ${quando(estado?.desde ?? null)}. O app só entra na sua conta quando o seu ponto sai do quadro; se o ponto estiver em dispensa, relê a cada 10 minutos (por até 6 horas) para saber quando ela termina.`
+                  ? peloStatus
+                    ? `Cadastrado em ${quando(estado?.desde ?? null)}. O app olha o Status do seu ponto ${cadaMin} e avisa quando a situação mudar. Ele fica conectado na sua conta e só entra de novo quando o portal pede.`
+                    : `Cadastrado em ${quando(estado?.desde ?? null)}. O app só entra na sua conta quando o seu ponto sai do quadro; se o ponto estiver em dispensa, relê a cada 10 minutos (por até 6 horas) para saber quando ela termina.`
                   : "Pausado: o portal recusou o CPF/senha duas vezes seguidas. Para não bloquear a sua conta, o app parou de tentar. Toque em “Trocar CPF/senha” e cadastre de novo."}
               </p>
             </div>
+
+            {peloStatus && estado?.ativo && (
+              <div className="rounded-[16px] border border-[#183341]/60 bg-[#071A28]/70 p-3">
+                <span className="micro text-gelo/55">Status do ponto no portal</span>
+                {situacoes.length ? (
+                  <ul className="mt-1.5 space-y-1.5">
+                    {situacoes.map((x) => (
+                      <li key={x.codigo} className="flex items-baseline justify-between gap-2">
+                        <span className="tabular font-display text-[15px] font-bold text-white">{x.codigo}</span>
+                        <span className="min-w-0 text-right">
+                          <b
+                            className={`font-display text-[14px] tracking-[0.04em] ${
+                              !x.recente
+                                ? "text-gelo/55"
+                                : x.turno === "EM DISPENSA"
+                                  ? "text-red-300"
+                                  : x.turno === "ATIVO"
+                                    ? "text-verde"
+                                    : "text-ambar"
+                            }`}
+                          >
+                            {x.turno}
+                          </b>
+                          <span className="block text-[11.5px] text-gelo/55">
+                            {x.recente ? `lido em ${quando(x.lidoEm)}` : `última leitura boa em ${quando(x.lidoEm)} — pode ter mudado`}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-[12.5px] leading-snug text-gelo/70">
+                    Ainda não li a situação do seu ponto na tela de Status. Sem ela não há aviso de saída — confira se o
+                    número do ponto cadastrado no app é o mesmo da sua conta no portal.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="rounded-[16px] border border-[#183341]/60 bg-[#071A28]/70 p-3">
               <div className="flex items-center justify-between gap-2">
@@ -357,7 +439,10 @@ export default function PortalMotorista({
         <p className="mt-3 text-[11px] leading-snug text-gelo/45">
           O portal é da Copadubo; o CopaLinks apenas abre a sua página com os seus
           dados e mostra o que aparece nela — nunca toca em botão nenhum (não entra
-          nem sai de dispensa por você). Cada leitura é um login na sua conta.
+          nem sai de dispensa por você).{" "}
+          {peloStatus
+            ? "A leitura é feita na sua conta, com a sessão que fica aberta no servidor."
+            : "Cada leitura é um login na sua conta."}
         </p>
       </div>
     </div>

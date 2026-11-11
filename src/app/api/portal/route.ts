@@ -5,19 +5,20 @@ import {
   acessoPortalDoMotorista,
   acessoPublico,
   garantirTabelasPortal,
-  monitorarMotorista,
   removerAcessoPortal,
   salvarAcessoPortal,
   ultimaLeituraPortal,
 } from "@/lib/portal-copadubo";
 import { cpfPlausivel, limparCpf } from "@/lib/portal-copadubo-parse";
+import { monitorarMotorista } from "@/lib/portal-monitor";
+import { fontePortal, intervaloStatusMs, situacaoFresca, situacoesDoMotorista } from "@/lib/portal-situacao";
 
 export const dynamic = "force-dynamic";
 /** Um login no portal pode levar alguns segundos; o padrão de 10 s é curto. */
 export const maxDuration = 45;
 const CAB = { "Cache-Control": "private, no-store" };
 
-/** Freio simples por motorista: 6 leituras manuais por hora (cada uma é 1 login). */
+/** Freio simples por motorista: 6 leituras manuais por hora (uma leitura manual pode ser 1 login). */
 const leituras = new Map<number, number[]>();
 function podeLer(id: number) {
   const agora = Date.now();
@@ -28,15 +29,45 @@ function podeLer(id: number) {
   return true;
 }
 
+/**
+ * Como o ponto deste motorista está sendo monitorado, para a tela explicar sem
+ * adivinhar: quem decide a saída (o Status do portal ou o quadro), de quanto em
+ * quanto tempo o Status é olhado e a situação guardada de cada ponto dele.
+ */
+async function monitoramentoDe(motoristaId: number) {
+  const fonte = fontePortal();
+  if (fonte !== "portal") return { fonte, intervaloMin: null, situacoes: [] };
+  const situacoes = await situacoesDoMotorista(motoristaId).catch(() => []);
+  return {
+    fonte,
+    intervaloMin: Math.round(intervaloStatusMs() / 60_000),
+    situacoes: situacoes
+      .map((s) => ({
+        codigo: s.codigo,
+        turno: s.turno,
+        lidoEm: s.lidoEm.toISOString(),
+        mudouEm: s.mudouEm.toISOString(),
+        // Leitura antiga não afirma nada sobre agora.
+        recente: situacaoFresca(s),
+      }))
+      .sort((a, b) => a.codigo.localeCompare(b.codigo)),
+  };
+}
+
+/** O que a tela do motorista mostra: cadastro, última leitura e monitoramento. */
+async function estadoDaTela(motoristaId: number) {
+  const acesso = await acessoPortalDoMotorista(motoristaId);
+  const leitura = acesso ? await ultimaLeituraPortal(motoristaId) : null;
+  return { ...acessoPublico(acesso, leitura), ...(await monitoramentoDe(motoristaId)) };
+}
+
 /** GET → o que este motorista já cadastrou + o resumo da última leitura. */
 export async function GET() {
   await garantirTabelas();
   await garantirTabelasPortal();
   const m = await motoristaDaSessao();
   if (!m) return naoAutorizadoMotorista();
-  const acesso = await acessoPortalDoMotorista(m.id);
-  const leitura = acesso ? await ultimaLeituraPortal(m.id) : null;
-  return NextResponse.json(acessoPublico(acesso, leitura), { headers: CAB });
+  return NextResponse.json(await estadoDaTela(m.id), { headers: CAB });
 }
 
 /**
@@ -76,20 +107,31 @@ export async function POST(req: Request) {
     console.error("[portal] primeira leitura falhou:", e instanceof Error ? e.message : e);
   }
 
-  const acesso = await acessoPortalDoMotorista(m.id);
-  const ultima = await ultimaLeituraPortal(m.id);
+  // O portal abriu com a conta dele, mas a tela de Status não mostrou a
+  // situação de nenhum ponto cadastrado no app: sem ela não há aviso de saída.
+  const semSituacao = Boolean(leitura && "entrou" in leitura && leitura.entrou && !leitura.ok);
+  // Situação de cada ponto lida agora: o motorista confere na hora se o app
+  // enxerga o ponto dele (é a troca dela que gera o aviso de saída).
+  const lidas =
+    leitura && "situacoes" in leitura && Array.isArray(leitura.situacoes)
+      ? leitura.situacoes.filter((x) => x.turno).map((x) => `${x.codigo} ${x.turno}`)
+      : [];
   return NextResponse.json(
     {
       salvo: true,
-      ...acessoPublico(acesso, ultima),
+      ...(await estadoDaTela(m.id)),
       // Mensagem pronta para a tela (sem nenhum dado sensível).
       mensagem: leitura?.loginRecusado
         ? "Guardei seus dados, mas o portal recusou o CPF/senha. Confira e cadastre de novo."
         : leitura?.captcha
           ? "Guardei seus dados, mas o portal pediu captcha neste acesso — a leitura automática não passa por ele."
           : leitura?.ok
-            ? "Pronto! O portal abriu com os seus dados e eu já li o que aparece nele."
-            : "Guardei seus dados, mas a primeira leitura não veio completa. Toque em “Ler agora” para tentar de novo; o motivo aparece em “Última leitura”.",
+            ? lidas.length
+              ? `Pronto! O portal abriu com os seus dados. Status lido agora: ${lidas.join(" · ")}. Daqui em diante eu aviso quando ele mudar.`
+              : "Pronto! O portal abriu com os seus dados e eu já li o que aparece nele."
+            : semSituacao
+              ? "O portal abriu com os seus dados, mas a tela de Status não mostrou a situação do ponto cadastrado no app (ATIVO / ESCALADO / EM DISPENSA). Confira se o número do ponto no app é o mesmo da sua conta no portal; o que foi lido aparece em “Última leitura”."
+              : "Guardei seus dados, mas a primeira leitura não veio completa. Toque em “Ler agora” para tentar de novo; o motivo aparece em “Última leitura”.",
     },
     { headers: CAB },
   );
@@ -130,7 +172,6 @@ export async function PUT() {
     );
   }
   const r = await monitorarMotorista(m.id, { avisar: false });
-  const ultima = await ultimaLeituraPortal(m.id);
   // O acesso é relido: esta leitura pode ter sido a segunda recusa (pausa).
-  return NextResponse.json({ ...r, estado: acessoPublico(await acessoPortalDoMotorista(m.id), ultima) }, { headers: CAB });
+  return NextResponse.json({ ...r, estado: await estadoDaTela(m.id) }, { headers: CAB });
 }

@@ -544,6 +544,21 @@ export function hashConteudo(secoes: SecaoPortal[]): string {
   return `${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
 }
 
+/** Contador que o portal recalcula sozinho a cada minuto (“há 9 min”, “há 2 h”). */
+const RE_CONTADOR_DE_TEMPO = /\bh[áa]\s+\d+\s*(?:min(?:utos?)?|h(?:oras?)?|d(?:ias?)?|s(?:eg(?:undos?)?)?)\b/gi;
+
+/**
+ * Impressão digital que NÃO muda quando só o relógio da página andou
+ * (“há 9 min” → “há 10 min”). É o que diz se duas leituras seguidas mostram a
+ * mesma coisa — a leitura de minuto em minuto não vira uma linha nova no
+ * histórico a cada minuto.
+ */
+export function hashEstavel(secoes: SecaoPortal[]): string {
+  return hashConteudo(
+    secoes.map((s) => ({ titulo: s.titulo, linhas: s.linhas.map((l) => l.replace(RE_CONTADOR_DE_TEMPO, "há N")) })),
+  );
+}
+
 /** Lista simples (sem ordem) de todas as linhas. */
 export function todasAsLinhas(secoes: SecaoPortal[]): string[] {
   return secoes.flatMap((s) => s.linhas);

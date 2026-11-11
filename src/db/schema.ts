@@ -238,6 +238,13 @@ export const portalMotoristaAcessos = pgTable("portal_motorista_acessos", {
   ativo: integer("ativo").default(1).notNull(),
   aceitoEm: timestamp("aceito_em", { withTimezone: true }).defaultNow().notNull(),
   atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).defaultNow().notNull(),
+  // Sessão aberta no portal (cookies + endereço da tela de Status), cifrada como
+  // a senha: a leitura de minuto em minuto reaproveita a sessão e só faz login
+  // de novo quando o portal pedir.
+  sessaoCifrada: text("sessao_cifrada"),
+  // A partir de quando a próxima leitura periódica do Status pode começar
+  // (null = já). É também a reserva: duas funções não leem a mesma conta juntas.
+  proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
 });
 
 // Uma linha por leitura do portal: o que a página mostrou (seções/linhas),
@@ -305,6 +312,19 @@ export const portalSaidasPendentes = pgTable("portal_saidas_pendentes", {
   unique("portal_saida_pendente_ponto").on(t.pontoId),
   index("portal_saidas_pendentes_proxima_idx").on(t.proximaEm),
 ]);
+
+// Situação de cada ponto NO PORTAL (ATIVO / ESCALADO / EM DISPENSA), como o app
+// leu pela última vez. Quando a fonte do monitoramento é o Status do portal, é
+// a TROCA desta situação que decide os avisos de saída e de volta — uma linha
+// por ponto, e só quem troca a situação no banco envia o aviso.
+export const portalSituacoes = pgTable("portal_situacoes", {
+  pontoId: integer("ponto_id").primaryKey(),
+  motoristaId: integer("motorista_id").notNull(),
+  codigo: text("codigo").notNull(), // como o portal escreve: A032
+  turno: text("turno").notNull(), // ATIVO, ESCALADO, EM DISPENSA…
+  mudouEm: timestamp("mudou_em", { withTimezone: true }).defaultNow().notNull(), // quando o app viu a troca
+  lidoEm: timestamp("lido_em", { withTimezone: true }).defaultNow().notNull(), // última leitura boa deste ponto
+}, (t) => [index("portal_situacoes_motorista_idx").on(t.motoristaId)]);
 
 // Último resultado do "Testar conexão" de cada integração.
 export const integracoesStatus = pgTable("integracoes_status", {

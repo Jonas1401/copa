@@ -8,6 +8,9 @@ import {
 } from "@/lib/estado";
 import { motoristaDaSessao } from "@/lib/motorista-sessao";
 import { acessoPortalDoMotorista, garantirTabelasPortal, INTERVALO_LEITURA_MS, monitorarSeDevido, ultimaLeituraPortal } from "@/lib/portal-copadubo";
+import { normalizarCodigoPortal } from "@/lib/portal-copadubo-parse";
+import { monitorarStatusEmSegundoPlano } from "@/lib/portal-monitor";
+import { fontePortal, situacaoFresca, situacoesDoMotorista } from "@/lib/portal-situacao";
 import { pontoEmDispensa } from "@/lib/portal-status-ponto";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +35,9 @@ async function atualizarPortal(id: number) {
   if (atualizando.has(id)) return;
   atualizando.add(id);
   try {
-    // A regra de quando reler o portal é uma só (a mesma do cron): só com um
-    // ponto do motorista fora do quadro e respeitando o intervalo entre logins.
+    // Fonte `quadro`: a regra de quando reler o portal é uma só (a mesma do
+    // cron): só com um ponto do motorista fora do quadro e respeitando o
+    // intervalo entre logins.
     await monitorarSeDevido(id);
   } catch { /* A próxima consulta tentará novamente. */ }
   finally { atualizando.delete(id); }
@@ -65,13 +69,30 @@ export async function GET() {
     // Uma falha ou leitura antiga nunca deve inventar uma dispensa atual.
     let ultimaPortal: Awaited<ReturnType<typeof ultimaLeituraPortal>> = null;
     let portalAtivo = false;
+    // Fonte `portal` (o padrão): a saída do ponto é avisada pelo Status do
+    // Portal do Motorista. O app mostra a situação lida lá e diz ao motorista
+    // quando falta o cadastro do acesso — sem ele não há aviso de saída.
+    const fonte = fontePortal();
     if (motorista && estado.pontos.length) {
       try {
         const acesso = await acessoPortalDoMotorista(motorista.id);
         portalAtivo = acesso?.ativo === 1;
-        if (portalAtivo) {
-          ultimaPortal = await ultimaLeituraPortal(motorista.id);
-          estado.pontos = estado.pontos.map((p) => ({ ...p, emDispensa: pontoEmDispensa(ultimaPortal, p) }));
+        if (fonte === "portal") {
+          estado.avisoSaida = portalAtivo ? "portal" : acesso ? "pausado" : "sem_acesso";
+          if (portalAtivo) {
+            const situacoes = await situacoesDoMotorista(motorista.id);
+            estado.pontos = estado.pontos.map((p) => {
+              const lida = situacoes.find((s) => s.pontoId === p.id && s.codigo === normalizarCodigoPortal(p.codigo));
+              const turno = lida && situacaoFresca(lida) ? lida.turno : null;
+              return { ...p, situacaoPortal: turno, emDispensa: turno === "EM DISPENSA" };
+            });
+          }
+        } else {
+          estado.avisoSaida = "quadro";
+          if (portalAtivo) {
+            ultimaPortal = await ultimaLeituraPortal(motorista.id);
+            estado.pontos = estado.pontos.map((p) => ({ ...p, emDispensa: pontoEmDispensa(ultimaPortal, p) }));
+          }
         }
       } catch { /* O portal não pode impedir a exibição da fila. */ }
     }
@@ -89,10 +110,16 @@ export async function GET() {
       // A varredura desta chamada pode ainda estar em andamento — e é ela que
       // descobre que um ponto saiu do quadro.
       if (varredura) await varredura;
-      // Ponto que acabou de sair do quadro: confere a situação no portal e
-      // envia o aviso (não depende de o cron rodar a cada minuto).
+      // Fonte `quadro`: ponto que acabou de sair do quadro é conferido no
+      // portal antes do aviso (não depende de o cron rodar a cada minuto).
+      // Com a fonte `portal` não sobra nada aqui além de uma saída agendada
+      // antes da troca da fonte.
       await conferirSaidasNoPortal();
-      if (motorista && portalAtivo && temPontoFora && (!ultimaPortal || Date.now() - ultimaPortal.criadoEm.getTime() >= INTERVALO_LEITURA_MS)) {
+      if (fonte === "portal") {
+        // O app aberto mantém a leitura do Status em dia (uma rodada curta,
+        // para todos os motoristas com a leitura vencida).
+        await monitorarStatusEmSegundoPlano();
+      } else if (motorista && portalAtivo && temPontoFora && (!ultimaPortal || Date.now() - ultimaPortal.criadoEm.getTime() >= INTERVALO_LEITURA_MS)) {
         await atualizarPortal(motorista.id);
       }
     });

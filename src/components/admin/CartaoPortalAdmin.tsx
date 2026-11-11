@@ -23,8 +23,13 @@ import {
  *   - as linhas que o leitor marcou como interessantes e a página inteira.
  *
  * O CPF completo e a senha NÃO chegam até aqui — a API só manda `cpfMascarado`
- * e `senhaFinal4`. A leitura sob demanda ("Ler agora") faz um login novo e
- * passa pela auditoria; "Remover acesso" apaga a senha do banco na hora.
+ * e `senhaFinal4`. A leitura sob demanda ("Ler agora") usa a sessão guardada
+ * do motorista (o login só se repete quando o portal pede) e passa pela
+ * auditoria; "Remover acesso" apaga a senha do banco na hora.
+ *
+ * Com o Status do portal como fonte do aviso de saída (o padrão), o cartão
+ * mostra também a situação guardada de cada ponto (ATIVO / ESCALADO / EM
+ * DISPENSA) — é a troca dela que gera o aviso.
  */
 
 type Ultima = {
@@ -98,6 +103,18 @@ const ROTULO_MODO: Record<ModoSaida, string> = {
   motoristas: "Ligado para os motoristas",
 };
 
+/** Situação guardada de um ponto, como o Status do portal mostrou. */
+type SituacaoPainel = {
+  motoristaId: number;
+  /** Código como o portal escreve (A032). */
+  codigo: string;
+  turno: string;
+  lidoEm: string;
+  mudouEm: string;
+  /** Lida há pouco (uma leitura antiga não afirma nada sobre agora). */
+  recente: boolean;
+};
+
 type Painel = {
   total: number;
   ativos: number;
@@ -105,6 +122,8 @@ type Painel = {
   falhas: number;
   atualizadoEm: string | null;
   motoristas: MotoristaPortal[];
+  /** Quem decide a saída do ponto e o que o monitor do Status tem guardado. */
+  monitor?: { fonte: "portal" | "quadro"; intervaloMin: number; situacoes: SituacaoPainel[] };
 };
 
 const CHAVE_TOKEN = "copalinks-admin-sessao";
@@ -292,13 +311,23 @@ export default function CartaoPortalAdmin() {
       }
       if (d?.motoristas) setP(d as Painel);
       if (o === "ler") {
+        // Situação de cada ponto nesta leitura (quando o Status é a fonte do aviso).
+        const lidas: string[] = Array.isArray(d?.resultado?.situacoes)
+          ? (d.resultado.situacoes as { codigo?: string; turno?: string | null }[])
+              .filter((x) => x?.codigo && x?.turno)
+              .map((x) => `${x.codigo} ${x.turno}`)
+          : [];
         setAviso(
           d?.resultado?.loginRecusado
             ? "O portal recusou o CPF/senha cadastrados."
             : d?.resultado?.rodou
               ? d?.resultado?.ok
-                ? `Leitura feita: ${d.resultado.linhas} linha(s).`
-                : "A leitura não trouxe conteúdo."
+                ? lidas.length
+                  ? `Status lido: ${lidas.join(" · ")}.`
+                  : `Leitura feita: ${d.resultado.linhas} linha(s).`
+                : d?.resultado?.entrou
+                  ? "O portal abriu, mas a tela de Status não mostrou a situação do ponto cadastrado no app."
+                  : "A leitura não trouxe conteúdo."
               : "Esse motorista não tem acesso cadastrado.",
         );
       } else {
@@ -313,6 +342,11 @@ export default function CartaoPortalAdmin() {
   }
 
   const lista = p?.motoristas ?? [];
+  // Quem decide a saída do ponto: o Status do portal (padrão) ou o quadro.
+  const peloStatus = p?.monitor?.fonte !== "quadro";
+  const cadaMin =
+    p?.monitor?.intervaloMin && p.monitor.intervaloMin > 1 ? `a cada ${p.monitor.intervaloMin} min` : "de minuto em minuto";
+  const situacoesDe = (motoristaId: number) => (p?.monitor?.situacoes ?? []).filter((x) => x.motoristaId === motoristaId);
 
   return (
     <section className="mt-4 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/90 p-4">
@@ -353,8 +387,9 @@ export default function CartaoPortalAdmin() {
               Atualizar
             </button>
             <span className="text-[12px] text-gelo/55">
-              Cada leitura é um login novo na conta do motorista: o servidor só entra quando um
-              ponto dele sai do quadro (e, em dispensa, a cada 10 min).
+              {peloStatus
+                ? `O servidor olha o Status de cada motorista ${cadaMin}, com a sessão que fica guardada: o login só se repete quando o portal pede.`
+                : "Cada leitura é um login novo na conta do motorista: o servidor só entra quando um ponto dele sai do quadro (e, em dispensa, a cada 10 min)."}
             </span>
           </div>
 
@@ -389,6 +424,35 @@ export default function CartaoPortalAdmin() {
                       {m.ultima ? horaMin(m.ultima.em) : `cadastrado em ${horaMin(m.desde)}`}
                     </span>
                   </div>
+
+                  {peloStatus && m.ativo ? (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {situacoesDe(m.motoristaId).length ? (
+                        situacoesDe(m.motoristaId).map((x) => (
+                          <span
+                            key={x.codigo}
+                            title={`Lido em ${horaMin(x.lidoEm)} · nesta situação desde ${horaMin(x.mudouEm)}`}
+                            className={`rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold ${
+                              !x.recente
+                                ? "border-[#183341]/70 text-gelo/50"
+                                : x.turno === "EM DISPENSA"
+                                  ? "border-red-400/50 text-red-200"
+                                  : x.turno === "ATIVO"
+                                    ? "border-ciano/45 text-ciano"
+                                    : "border-ouro/50 text-ouro"
+                            }`}
+                          >
+                            {x.codigo} · {x.turno}
+                            {x.recente ? "" : " (leitura antiga)"}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[11.5px] text-gelo/50">
+                          Situação do ponto ainda não lida no Status — sem ela não há aviso de saída.
+                        </span>
+                      )}
+                    </div>
+                  ) : null}
 
                   {m.ultima?.sinais?.length ? (
                     <ul className="mt-2 space-y-0.5">
@@ -478,11 +542,24 @@ export default function CartaoPortalAdmin() {
               <FlaskConical size={16} /> Saída do ponto (teste)
             </h3>
             <p className="mt-1 text-[12.5px] leading-snug text-gelo/70">
-              Quando o ponto monitorado sai do quadro, o app entra no portal com o CPF/senha do
-              motorista, lê o <b>Status do Ponto</b> e manda um aviso só: <b>ESCALADO</b> (com as
-              linhas da escala que o portal mostrar), <b>EM DISPENSA</b> (com o motivo) ou, se o
-              portal ainda disser <b>ATIVO</b>, o aviso do quadro dizendo isso. A consulta automática
-              faz parte do aviso normal; as opções abaixo controlam apenas os testes manuais.
+              {peloStatus ? (
+                <>
+                  Quem decide que o ponto saiu é o <b>Status do Ponto</b> no portal, olhado {cadaMin} na
+                  conta de cada motorista. A troca de situação gera um aviso só: <b>ESCALADO</b> (com
+                  as linhas da escala que o portal mostrar), <b>EM DISPENSA</b> (com o motivo) ou de
+                  volta a <b>ATIVO</b>. O quadro só mostra a fila e avisa que a vez está chegando;
+                  motorista sem CPF/senha cadastrados não recebe aviso de saída. As opções abaixo
+                  controlam apenas os testes manuais.
+                </>
+              ) : (
+                <>
+                  Quando o ponto monitorado sai do quadro, o app entra no portal com o CPF/senha do
+                  motorista, lê o <b>Status do Ponto</b> e manda um aviso só: <b>ESCALADO</b> (com as
+                  linhas da escala que o portal mostrar), <b>EM DISPENSA</b> (com o motivo) ou, se o
+                  portal ainda disser <b>ATIVO</b>, o aviso do quadro dizendo isso. A consulta automática
+                  faz parte do aviso normal; as opções abaixo controlam apenas os testes manuais.
+                </>
+              )}
             </p>
 
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -556,8 +633,9 @@ export default function CartaoPortalAdmin() {
                 >
                   <option value="escalado">Saiu para o trabalho (ESCALADO)</option>
                   <option value="dispensa">Foi para a dispensa</option>
-                  <option value="ativo">Portal ainda ATIVO · é o Último Escalado</option>
-                  <option value="ativo_fora">Portal continua ATIVO · sumiu do quadro</option>
+                  {/* Avisos que só existem quando é o QUADRO que decide a saída. */}
+                  {!peloStatus && <option value="ativo">Portal ainda ATIVO · é o Último Escalado</option>}
+                  {!peloStatus && <option value="ativo_fora">Portal continua ATIVO · sumiu do quadro</option>}
                 </select>
               </label>
               <button
@@ -585,7 +663,9 @@ export default function CartaoPortalAdmin() {
                     ? resultado.evento.dispensa
                       ? "Situação: DISPENSA"
                       : "Situação: saiu para o trabalho"
-                    : "Situação no portal: não consta como saído (quando o número sai do quadro, vai o aviso do quadro)"}
+                    : peloStatus
+                      ? "Situação no portal: não consta como saído (sem aviso de saída)"
+                      : "Situação no portal: não consta como saído (quando o número sai do quadro, vai o aviso do quadro)"}
                   {resultado.evento?.tipoTrabalho ? ` · trabalho: ${resultado.evento.tipoTrabalho}` : ""}
                   {resultado.evento?.livro ? ` · livro ${resultado.evento.livro}` : ""}
                   {resultado.evento?.posicao ? ` · posição ${resultado.evento.posicao}` : ""}
@@ -647,7 +727,7 @@ export default function CartaoPortalAdmin() {
 
           <p className="mt-3 text-[11.5px] leading-snug text-gelo/45">
             A senha do portal nunca é exibida (só os 4 últimos caracteres) e não é registrada em
-            log, auditoria ou aviso. Cada leitura faz um login novo e a página é transformada em
+            log, auditoria ou aviso. {peloStatus ? "A sessão de cada motorista fica guardada cifrada, como a senha," : "Cada leitura faz um login novo"} e a página é transformada em
             seções — se a Copadubo mudar o layout, o leitor continua funcionando sem código novo.
           </p>
         </div>

@@ -339,9 +339,13 @@ export async function notificarEvento(entrada: {
   acao: "chamada" | "saiu" | "voltou" | "perto";
   /** Motivo de saída confirmado na leitura completa do site. */
   saidaPorUltimo?: boolean;
-  /** O que o Portal do Motorista disse na hora da saída (ver `PortalNoAviso`). */
+  /**
+   * O que o Portal do Motorista disse (ver `PortalNoAviso`): na saída, a
+   * situação do ponto; na volta (`voltou`), o texto do aviso quando é o
+   * Status do portal que mostra o ponto ATIVO de novo.
+   */
   portal?: PortalNoAviso | null;
-  /** Momento da saída do quadro: cada saída tem o próprio aviso (entra na tag). */
+  /** Momento da saída (ou da volta vista no portal): cada uma tem o próprio aviso (entra na tag). */
   instante?: Date | null;
   /** Quantos estão na frente (usado no aviso "perto da vez"). */
   naFrente?: number;
@@ -372,7 +376,9 @@ export async function notificarEvento(entrada: {
   const textos: Record<string, string> = {
     chamada: `${saudacao}Seu número está NA VEZ (número 1 do quadro). Aguarde a próxima chamada.\n${linha}\n${detalhe}`,
     saiu: avisoSaida.body,
-    voltou: `${saudacao}Seu ponto voltou para a fila.\n${linha}\n${detalhe}`,
+    voltou: entrada.portal
+      ? `${saudacao}${entrada.portal.mensagem}`
+      : `${saudacao}Seu ponto voltou para a fila.\n${linha}\n${detalhe}`,
     perto: `${saudacao}Seu ponto está chegando perto da vez: ${entrada.naFrente ?? "poucos"} na frente.\n${linha}\n${detalhe}`,
   };
 
@@ -391,14 +397,19 @@ export async function notificarEvento(entrada: {
     // vizinho de fila (dentro de 2 dias) seria tratada como aviso repetido. O
     // momento é o mesmo em toda nova tentativa da MESMA saída (vem do banco),
     // então repetir o envio continua sem duplicar o aviso.
-    ...(entrada.acao === "saiu" && entrada.instante
+    ...((entrada.acao === "saiu" || entrada.acao === "voltou") && entrada.instante
       ? [`T${entrada.instante.getTime().toString(36)}`]
       : []),
   ].join("_");
 
   return enviarPush(
     {
-      title: entrada.acao === "saiu" ? avisoSaida.title : TITULO_PADRAO_AVISO,
+      title:
+        entrada.acao === "saiu"
+          ? avisoSaida.title
+          : entrada.acao === "voltou" && entrada.portal
+            ? entrada.portal.titulo
+            : TITULO_PADRAO_AVISO,
       body: textos[entrada.acao] ?? textos.chamada,
       tag,
       acao: entrada.acao,

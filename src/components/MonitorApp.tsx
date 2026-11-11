@@ -46,6 +46,7 @@ import {
   linkDoApp,
 } from "@/lib/compartilhar";
 import { LOGO } from "@/lib/logo";
+import { chamadaDoAvisoDeSaida, foraDaFilaPeloPortal, seloDoPortal } from "@/lib/portal-selo";
 
 
 /* ------------------------------------------------------------------ base */
@@ -181,7 +182,11 @@ function LinhaPonto({
     tipo !== p.tipo || livro !== p.livro || Number(numero) !== p.numero;
   const mini =
     "rounded-full border border-violeta/40 bg-black/35 px-3 py-1.5 font-display text-[14px] font-bold text-gelo outline-none";
-  const cor = p.emDispensa ? "vermelho" : p.status === "AGUARDANDO" ? "verde" : "ambar";
+  // Com o Status do Portal do Motorista lido há pouco, é ele que manda no selo
+  // (ESCALADO, DISPENSA); o quadro fica com a posição na fila.
+  const selo = seloDoPortal(p);
+  const foraDaFila = foraDaFilaPeloPortal(p);
+  const cor = selo ? selo.cor : p.status === "AGUARDANDO" ? "verde" : "ambar";
   return (
     <li
       className={`rounded-[16px] border px-4 py-3 transition-colors ${
@@ -204,7 +209,7 @@ function LinhaPonto({
           <span className="tabular font-display text-[19px] font-extrabold text-ciano">
             {p.codigo}
           </span>
-          {!p.emDispensa && p.status !== "SAIU" && (
+          {!foraDaFila && p.status !== "SAIU" && (
             <span
               className={`tabular text-[13px] font-medium ${
                 p.status === "NA VEZ" ? "text-ambar" : "text-verde"
@@ -222,7 +227,7 @@ function LinhaPonto({
               cor === "vermelho" ? "text-[#ff4d4d]" : cor === "verde" ? "text-verde" : "text-ambar"
             }`}
           >
-            {p.emDispensa ? "DISPENSA" : p.status}
+            {selo ? selo.texto : p.status}
           </span>
         </div>
       </button>
@@ -1293,8 +1298,23 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     : linhaDoAlvo
       ? "no quadro"
       : "sem ponto";
+  // Selo do cartão: com o Status do portal lido há pouco, ele manda (ESCALADO,
+  // DISPENSA); sem leitura recente vale o que o quadro mostra.
+  const seloAlvo = alvo ? seloDoPortal(alvo) : null;
+  const alvoForaDaFila = alvo ? foraDaFilaPeloPortal(alvo) : false;
+  const corLedAlvo = seloAlvo ? seloAlvo.cor : alvo?.status === "AGUARDANDO" ? "verde" : "ambar";
   const corStatus =
-    alvo?.emDispensa ? "text-[#ff4d4d]" : alvo?.status === "AGUARDANDO" ? "text-verde" : "text-ambar";
+    corLedAlvo === "vermelho" ? "text-[#ff4d4d]" : corLedAlvo === "verde" ? "text-verde" : "text-ambar";
+  // Quem avisa a saída é o portal: sem o acesso cadastrado, o app pede.
+  const chamadaPortal = motorista && estado.pontos.length ? chamadaDoAvisoDeSaida(estado.avisoSaida) : null;
+  const abrirPortal = () => {
+    setPortalInicial(null);
+    setPortalAberto(true);
+    void fetch("/api/portal", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setPortalInicial(d))
+      .catch(() => null);
+  };
 
   const selecionarPonto = (i: number) => {
     setIdx(i);
@@ -1364,12 +1384,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 onRenomear={renomear}
                 onAtivarNotificacoes={() => setPainelNotif("geral")}
                 onAbrirPortal={() => {
-                  setPortalInicial(null);
-                  setPortalAberto(true);
-                  void fetch("/api/portal", { cache: "no-store" })
-                    .then((r) => (r.ok ? r.json() : null))
-                    .then((d) => d && setPortalInicial(d))
-                    .catch(() => null);
+                  abrirPortal();
                 }}
               />
             </BannerCaminhao>
@@ -1458,12 +1473,12 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                           alvo.status === "AGUARDANDO" ? "px-3 py-[7px]" : "px-4 py-3.5"
                         }`}
                       >
-                        <Led cor={alvo.emDispensa ? "vermelho" : alvo.status === "AGUARDANDO" ? "verde" : "ambar"} pulsante tamanho={18} />
+                        <Led cor={corLedAlvo} pulsante tamanho={18} />
                         <span className="flex flex-col">
                           <span className={`font-display text-[20.5px] leading-[26px] font-bold ${corStatus}`}>
-                            {alvo.emDispensa ? "DISPENSA" : alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status}
+                            {seloAlvo ? seloAlvo.texto : alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status}
                           </span>
-                          {!alvo.emDispensa && alvo.status === "AGUARDANDO" && (
+                          {!alvoForaDaFila && alvo.status === "AGUARDANDO" && (
                             <span className="tabular whitespace-nowrap text-[12px] leading-[14px] font-semibold text-gelo/75">
                               {alvo.vistoEm ? `${alvo.naFrente} na frente` : "Varrendo…"}
                             </span>
@@ -1545,6 +1560,23 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                 </div>
               </motion.section>
             </div>
+
+            {/* Quem avisa a saída é o Status do Portal do Motorista: sem o
+                acesso cadastrado (ou com a senha recusada) não há aviso. */}
+            {chamadaPortal && (
+              <button
+                type="button"
+                onClick={abrirPortal}
+                className="mt-2.5 flex w-full items-center gap-3 rounded-[16px] border border-[#FFB82E]/45 bg-[#FFB82E]/[0.07] px-4 py-3 text-left transition-colors hover:bg-[#FFB82E]/[0.12]"
+              >
+                <BellOff size={22} strokeWidth={2} className="shrink-0 text-ambar" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-display text-[15px] leading-5 font-bold text-ambar">{chamadaPortal.titulo}</span>
+                  <span className="mt-0.5 block text-[13px] leading-[18px] text-gelo/85">{chamadaPortal.texto}</span>
+                </span>
+                <ChevronRight size={18} className="shrink-0 text-ambar" />
+              </button>
+            )}
 
             {/* painel completo: abre ao tocar no número */}
             {expandido && (

@@ -17,7 +17,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 | **Chat dos motoristas** | recados sobre o trabalho, digitados livremente, com **áudio** e anexos; **figurinhas com imagem** em categorias (Caminhões, Motoristas, Porto e CopaLinks), grade de 4 por linha, publicadas pelo admin; **curtidas com emoji** nas mensagens (toque duplo ou botão 😀 na bolha, com lista de quem curtiu); o recado de voz toca em **1x, 1,5x ou 2x** (etiqueta de velocidade no player); o servidor posta apenas avisos de **navios/manobras**, com **um navio por mensagem e notificação**, lidos por HTTP direto com Composio de reserva; mensagens dos motoristas continuam funcionando |
 | **Serviços** | links: login do aplicativo, tela de caminhões, cálculo de frete e contatos operacionais |
 | **Divulgação** (`/divulgacao`) | página pública de instalação: o que o app faz, passo a passo por aparelho (Android, iPhone, navegador dentro do WhatsApp), QR Code do link, prévia da mensagem e as artes para status |
-| **Portal do motorista** | o motorista digita no próprio celular (menu ⋮) o **CPF e a senha do `portal.copadubo.com.br`**; o servidor abre a página de status dele, transforma tudo em seções/linhas e avisa quando muda (ver abaixo) |
+| **Portal do motorista** | o motorista digita no próprio celular (menu ⋮) o **CPF e a senha do `portal.copadubo.com.br`**; o servidor olha o **Status do ponto** dele de minuto em minuto e avisa quando o ponto for **ESCALADO**, entrar **EM DISPENSA** ou voltar a **ATIVO** — é o portal que decide a saída (ver abaixo) |
 | **Configurações de API** (`/admin`) | API Keys cifradas, testes de conexão, auditoria, o cartão **Radar da previsão** (monitoramento do tempo, painel da APPA com fallback automático e "método de leitura" usado, exclusivo do administrador) e o cartão **Divulgação do app** (QR Code, mensagem pronta e artes da campanha) |
 
 ## Tecnologia
@@ -194,10 +194,14 @@ Teste: `TEST_DATABASE_URL=... tsx --test tests/chat-push.test.ts` (banco
 
 ## Portal do motorista (`portal.copadubo.com.br`)
 
-O quadro da intranet continua sendo a fonte da fila (5 s) e é ele quem diz que
-um ponto **saiu**. O **Portal do Motorista** — que só abre com login — é
-consultado para responder o que o quadro não mostra: o ponto foi **ESCALADO**
-(e para onde), está **EM DISPENSA** (e por quê) ou continua **ATIVO**.
+O quadro da intranet continua sendo a fonte da **fila** (5 s): a posição, quem
+está na vez e o aviso de que a vez está chegando. Quem diz que o ponto **saiu
+para o trabalho** é o **Portal do Motorista** — que só abre com login: o app
+olha o **Status do Ponto** na conta de cada motorista **de minuto em minuto** e
+avisa a troca de situação — **ESCALADO**, **EM DISPENSA** ou de volta a
+**ATIVO** — com as informações que o Status mostra. Motorista que não cadastrou
+o CPF/senha **não recebe aviso de saída**: a tela inicial mostra o chamado
+“Aviso de saída desligado”, que abre o cadastro.
 
 **Como o login funciona:** quem digita é o próprio motorista, uma única vez, no
 celular (`menu ⋮ → Portal do motorista`). CPF e senha são enviados por HTTPS,
@@ -226,10 +230,13 @@ excluir o cadastro do motorista apaga tudo o que é do portal dele.
    a área do motorista abrir. Voltou para a tela de login = **recusado**;
    `404`, `403`, `5xx` ou resposta vazia = **falha** (nem aceito, nem recusa).
 
-Os cookies ficam na memória só durante a visita (um login por leitura, nada
-guardado), os redirecionamentos são seguidos um a um e **CPF/senha só saem para
-o endereço do próprio portal**: formulário ou redirecionamento apontando para
-outro site interrompe a leitura.
+Os redirecionamentos são seguidos um a um e **CPF/senha só saem para o
+endereço do próprio portal**: formulário ou redirecionamento apontando para
+outro site interrompe a leitura. Os cookies da sessão aberta ficam **cifrados
+no banco** entre uma leitura e outra (é o que permite olhar o Status de minuto
+em minuto sem um login por leitura — ver abaixo); com
+`PORTAL_FONTE_SAIDA=quadro` eles ficam só na memória durante a visita (um login
+por leitura, nada guardado).
 
 > O defeito corrigido aqui: o app abria `/status.php`, que não existe (`404`),
 > não encontrava campo de senha na página de erro e registrava “Login aceito”
@@ -244,27 +251,46 @@ Ticket, Fila**) — não sai testando endereços; se `/moto/status` não existir
 tela é achada pela aba “Status”. E ele **só olha**: link ou botão de ação
 (“Sair”, “Entrar em dispensa”, “Sair da dispensa”…) nunca é aberto.
 
-**Quando o app entra na conta do motorista** (cada leitura é um login de
-verdade, então são poucas):
+**Quando o app vai à conta do motorista** (o Status do portal é a fonte do
+aviso de saída — o padrão):
 
 | Quando | O que faz |
 | --- | --- |
-| o ponto **sai do quadro** | consulta a situação antes do aviso de saída (seção abaixo) |
-| o ponto está fora do quadro **EM DISPENSA** (ou a situação ainda não foi lida) | relê a cada 10 min, por até 6 h depois da saída, para o selo DISPENSA do app acompanhar o fim dela. Ponto ESCALADO não é relido |
-| o motorista toca em **Ler agora** | uma leitura na hora (até 6 por hora) |
+| **de minuto em minuto** (`/api/cron`; com o app aberto, também em segundo plano no `/api/estado`) | abre a tela de Status com a **sessão guardada** — um pedido só — e compara a situação de cada ponto do motorista com a que estava guardada |
+| a situação **mudou** | abre também as abas do menu, na mesma sessão, para o aviso sair sem o menu e o rodapé do site |
+| o portal **encerrou a sessão** | entra de novo **na leitura seguinte**. Se o portal continuar derrubando a sessão, o freio segura: depois de 2 logins em seguida, **um login automático a cada 10 min** por conta — e 10 min de espera depois de um login que não abriu a conta |
+| o motorista toca em **Ler agora** | uma leitura na hora (até 6 por hora), sem o freio de logins |
 | o administrador usa **Ler agora** / **Ler o portal agora** | uma leitura na hora, registrada na auditoria |
 
-Com o ponto na fila, o app não entra no portal por conta própria. Num mesmo
-servidor, as idas ao portal de um motorista são feitas uma de cada vez, e cada
-saída é reservada no banco por 45 s antes da consulta — se dois servidores
-rodarem juntos, o pior caso é um login a mais, nunca um aviso repetido. Cada
-visita tem prazo total de 22 s.
+A sessão (os cookies do portal) fica **cifrada no banco, como a senha**
+(`portal_motorista_acessos.sessao_cifrada`), e é apagada quando a senha é
+trocada, recusada duas vezes ou removida. Cada conta é reservada no banco antes
+da leitura (`proxima_leitura_em`, com `FOR UPDATE SKIP LOCKED`): o cron e o app
+aberto nunca olham a mesma conta no mesmo minuto, e num mesmo servidor as idas
+ao portal de um motorista são feitas uma de cada vez. Cada visita tem prazo
+total de 22 s. A rodada do cron lê até 3 contas ao mesmo tempo durante 25 s; se
+houver mais contas do que cabe em um minuto, quem espera há mais tempo vai
+primeiro (e o intervalo real fica maior que 1 min).
 
-**Senha recusada:** o aviso de saída sai pelo quadro na mesma hora. Na
-**segunda recusa seguida** o acesso é **pausado** (o app para de tentar, para a
-conta do motorista não ser bloqueada), ele recebe um aviso pedindo para
-cadastrar a senha de novo e a tela mostra “Pausado”. Captcha e portal fora do ar
+O histórico (`portal_leituras`) não cresce uma linha por minuto: leitura igual
+à anterior (só o “há N min” andou) atualiza a linha que já existe, e ficam no
+máximo 300 linhas por motorista, por 7 dias.
+
+`PORTAL_INTERVALO_MIN` (1 a 60; padrão 1) muda o intervalo sem mexer no código.
+
+**Senha recusada:** na **segunda recusa seguida** o acesso é **pausado** (o app
+para de tentar, para a conta do motorista não ser bloqueada), ele recebe um
+aviso pedindo para cadastrar a senha de novo, a tela do portal mostra “Pausado”
+e a tela inicial mostra “Aviso de saída parado”. Captcha e portal fora do ar
 não contam como recusa.
+
+**Leitura parada:** uma leitura só é boa quando a tela de Status mostra a
+situação de um ponto **daquele motorista**. Na terceira leitura seguida sem ela
+(portal fora do ar, captcha, tela diferente, número do ponto que não bate) o
+motorista recebe “⚠️ Portal do motorista — Não consegui ler o Status do seu
+ponto 3 vezes seguidas…”, e as tentativas passam a ser de 5 em 5 min até a
+leitura voltar. Não existe aviso de reserva pelo quadro: sem o Status não há
+aviso de saída.
 
 **Diagnóstico (`/admin`):** o cartão **Portal do motorista** lista quem
 cadastrou (CPF mascarado, 4 últimos da senha, ativo/pausado), a última leitura
@@ -279,22 +305,23 @@ Em produção deixe **vazia**: o padrão é `https://portal.copadubo.com.br`. Se
 preenchida, é só a base do site — sem `/moto/status.php` no fim.
 
 
-## Saída do ponto: ESCALADO, EM DISPENSA ou ATIVO
+## Saída do ponto: quem decide é o Status do portal
 
-Quando o ponto monitorado **sai do quadro** (a fila marca `SAIU`), o aviso não
-sai na hora para quem cadastrou o CPF/senha: a saída fica em
-`portal_saidas_pendentes` e `processarSaidasPendentes()` (`src/lib/estado.ts`)
-**entra no portal com a conta do próprio motorista**, lê o **Status do Ponto**
-e manda **um aviso só**, já com o que o portal mostra:
+Para cada ponto, o app guarda a última situação lida no Status do portal
+(`portal_situacoes`). A cada leitura (`src/lib/portal-monitor.ts`) ele compara,
+e é a **troca** que gera o aviso — **um só**, com o que o Status mostra:
 
-| O portal mostra | O que o motorista recebe |
+| O Status passou a mostrar | O que o motorista recebe |
 | --- | --- |
 | **ESCALADO** | “🚛 Seu ponto foi ESCALADO” + as linhas do cartão do ponto, como o portal escreve |
 | **EM DISPENSA** | “🟥 Seu ponto foi para a DISPENSA” + o motivo e há quanto tempo |
-| **ATIVO**, e o número é o **Último Escalado** do quadro | o aviso do quadro, na hora, dizendo que o portal ainda mostra ATIVO |
-| **ATIVO**, e o número só **sumiu** do quadro | nova consulta em +1, +2 e +3 min. Voltou ao quadro: cancela sem avisar. Continuou ATIVO: aviso do quadro dizendo exatamente isso |
-| portal fora do ar / tela sem a situação | uma nova tentativa no ciclo seguinte; depois, o aviso do quadro (“destino não foi confirmado”) |
-| senha recusada, captcha ou sem CPF/senha | o aviso do quadro, na hora |
+| **ATIVO** de novo | “🟦 Seu ponto está ATIVO” — voltou para a fila (antes: ESCALADO ou EM DISPENSA) |
+| a mesma situação da leitura anterior | nada |
+| a **primeira** leitura do ponto | nada: é só o ponto de partida. Cadastrar a senha com o ponto já ESCALADO não dispara aviso |
+
+O **quadro** não participa dessa decisão: quando o número some do quadro (ou
+volta para ele) fica só uma linha no histórico, sem aviso. Ele segue mostrando
+a fila e avisando “perto da vez” e “na vez”.
 
 Exemplos (dados inventados):
 
@@ -305,30 +332,62 @@ Exemplos (dados inventados):
 - **dispensa** → “Olá, Fulano! Seu ponto A032 saiu para a DISPENSA (motivo 001 -
   OFICINA). Está nessa situação há 9 min. Assim que voltar para a fila, eu
   aviso.”;
-- **portal ainda ATIVO** → “Olá, Fulano! Seu número A032 agora aparece como
-  Último Escalado. No Portal do Motorista o ponto ainda aparece como ATIVO: a
-  escala ainda não foi registrada lá.”
+- **voltou** → “Olá, Fulano! Seu ponto A032 voltou para a fila: o Status do
+  Portal do Motorista mostra ATIVO (antes: ESCALADO).”
 
-Garantias: nenhuma saída fica sem aviso (passados 5 min, sai com o que houver);
-a mesma saída nunca é avisada duas vezes, mesmo com o cron e o app aberto
-rodando juntos (a reserva da saída é feita no banco); motorista com dois pontos
-recebe os dados do cartão **daquele** ponto; e o aviso nunca usa dados de um
-ponto diferente do monitorado. A consulta roda no `/api/cron` e, com o app
-aberto, em segundo plano no `/api/estado` — a tela não espera o portal.
+Garantias: a troca é gravada de forma atômica — a mesma mudança lida por duas
+funções ao mesmo tempo (cron e app aberto) gera **um aviso só**; motorista com
+dois pontos recebe os dados do cartão **daquele** ponto; o cartão de outro ponto
+nunca vira a situação deste; e uma situação lida há mais de 5 min (ou três
+intervalos) deixa de aparecer no app como atual.
+
+No app, o selo do ponto mostra **ESCALADO** ou **DISPENSA** quando o Status diz
+isso — mesmo que o número ainda apareça no quadro — e a tela “Portal do
+motorista” lista a situação de cada ponto com a hora da leitura.
 
 Tudo isso depende do mesmo agendamento que o monitoramento com o app fechado já
-exige: `/api/cron` **a cada minuto**. Com o cron diário do plano Hobby e o app
-fechado, a saída só é percebida — e a espera só é retomada — quando alguém abre
-o app.
+exige: `/api/cron` **a cada minuto** (Supabase pg_cron ou `vercel.pro.json`).
+Com o cron diário do plano Hobby e o app fechado, o Status só é lido quando
+alguém abre o app.
+
+> **Antes de ligar para todos:** são cerca de **1.440 consultas por dia em cada
+> conta**, feitas a partir do servidor. A Copadubo pode limitar, pedir captcha
+> ou bloquear a conta ou o endereço do servidor — combine com ela antes. Se o
+> portal só aceitar uma sessão por conta, o app e o motorista (no navegador
+> dele) podem derrubar a sessão um do outro. `PORTAL_INTERVALO_MIN` espaça as
+> leituras e `PORTAL_FONTE_SAIDA=quadro` volta ao comportamento anterior.
 
 > As telas logadas não são públicas: o leitor foi calibrado por prints
-> (09/11/2026) e os testes usam um portal de mentira. Na primeira saída real,
-> confira em `/admin → Portal do motorista` o registro “Consulta automática
-> nº 1” — ele mostra as abas achadas, as linhas lidas e a decisão tomada.
+> (09/11/2026) e os testes usam um portal de mentira — esta leitura **nunca foi
+> testada no portal de verdade**. Na primeira troca real, confira em
+> `/admin → Portal do motorista` a situação guardada de cada ponto, “Ver o que
+> foi lido” e o diagnóstico da leitura (sessão reaproveitada ou login, abas
+> achadas, situação lida).
+
+### Voltar ao quadro como fonte (`PORTAL_FONTE_SAIDA=quadro`)
+
+Com `PORTAL_FONTE_SAIDA=quadro` no ambiente vale o comportamento anterior: é o
+**quadro** que percebe a saída (a fila marca `SAIU`) e o portal é consultado uma
+vez — com um login novo — para dizer o que aconteceu. A saída fica em
+`portal_saidas_pendentes` e `processarSaidasPendentes()` (`src/lib/estado.ts`)
+manda **um aviso só**:
+
+| O portal mostra | O que o motorista recebe |
+| --- | --- |
+| **ESCALADO** | “🚛 Seu ponto foi ESCALADO” + as linhas do cartão do ponto |
+| **EM DISPENSA** | “🟥 Seu ponto foi para a DISPENSA” + o motivo e há quanto tempo |
+| **ATIVO**, e o número é o **Último Escalado** do quadro | o aviso do quadro, na hora, dizendo que o portal ainda mostra ATIVO |
+| **ATIVO**, e o número só **sumiu** do quadro | nova consulta em +1, +2 e +3 min. Voltou ao quadro: cancela sem avisar. Continuou ATIVO: aviso do quadro dizendo exatamente isso |
+| portal fora do ar / tela sem a situação | uma nova tentativa no ciclo seguinte; depois, o aviso do quadro (“destino não foi confirmado”) |
+| senha recusada, captcha ou sem CPF/senha | o aviso do quadro, na hora |
+
+Nesse modo quem não cadastrou o CPF/senha continua recebendo o aviso do quadro,
+o portal só é relido com um ponto fora do quadro (a cada 10 min, por até 6 h) e
+nenhuma saída fica sem aviso (passados 5 min, sai com o que houver).
 
 ### Teste no `/admin`
 
-`/admin → Portal do motorista → **Saída do ponto (teste)**`. A consulta
+`/admin → Portal do motorista → **Saída do ponto (teste)**`. A leitura
 automática acima **não depende** destes modos — eles valem só para os botões de
 teste (gravados em `configuracao.portal_saida_modo`):
 
@@ -338,11 +397,13 @@ teste (gravados em `configuracao.portal_saida_modo`):
 | `somente_admin` (**padrão**) | o portal é lido e o aviso aparece no painel, mas **nada chega no celular** |
 | `motoristas` | o botão do painel também envia para o celular do motorista |
 
-No cartão dá para **Simular mensagem** (cenários ESCALADO, dispensa e os dois
-casos de portal ainda ATIVO, com telas de exemplo, sem rede e sem enviar — o
-texto é montado pelas mesmas funções do envio de verdade), **Ler o portal
-agora** (leitura real do motorista escolhido) e ver os **últimos avisos
-registrados** em `portal_eventos`, cada um com “o que o leitor viu no portal”.
+No cartão dá para ver a **situação guardada de cada ponto** (ATIVO / ESCALADO /
+EM DISPENSA, com a hora da leitura), **Simular mensagem** (cenários ESCALADO e
+dispensa — e, com a fonte `quadro`, os dois casos de portal ainda ATIVO — com
+telas de exemplo, sem rede e sem enviar; o texto é montado pelas mesmas funções
+do envio de verdade), **Ler o portal agora** (leitura real do motorista
+escolhido, na sessão guardada) e ver os **últimos avisos registrados** em
+`portal_eventos`, cada um com “o que o leitor viu no portal”.
 “Telas extras” fica vazio: o leitor abre o Status e as abas do menu. Tudo passa
 pela auditoria; CPF e senha continuam cifrados e nunca aparecem.
 
@@ -351,10 +412,16 @@ pela auditoria; CPF e senha continuam cifrados e nunca aparecem.
 - `tests/portal-login.test.ts` — login contra um portal de mentira
   (`tests/portal-fixture.ts`): redirecionamentos, troca de cookie, senha errada,
   captcha, portal fora, `404` que não é login, senha que só sai para o portal;
+- `tests/portal-status-situacao.test.ts` — as regras do Status como fonte: que
+  aviso cada troca pede, configuração por ambiente, sessão guardada (uma leitura
+  = um pedido; freio de logins), selo do ponto e o chamado para cadastrar;
+- `tests/portal-status-monitor.test.ts` — de ponta a ponta com PostgreSQL local:
+  primeira leitura sem aviso, ESCALADO / DISPENSA / volta, dois pontos, sessão
+  encerrada, senha recusada, portal fora do ar, duas rodadas ao mesmo tempo;
 - `tests/portal-saida-status.test.ts` — leitura de ATIVO / ESCALADO / EM
   DISPENSA, dois pontos, decisão do aviso, texto final, leitura periódica;
-- `tests/portal-saida-cron.test.ts` — de ponta a ponta com PostgreSQL local
-  (quadro → `SAIU` → login → um aviso), como `tests/cron-push.test.ts`;
+- `tests/portal-saida-cron.test.ts` e `tests/cron-push.test.ts` — a saída
+  decidida pelo quadro (`PORTAL_FONTE_SAIDA=quadro`), de ponta a ponta;
 - `tests/portal-copadubo.test.ts` e `tests/portal-tela.test.ts` — leitor
   genérico, telas, rotas, cron e cartão do `/admin`.
 
@@ -652,7 +719,10 @@ no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
 | `CRON_SECRET` | recomendada | autenticação do Cron diário da Vercel |
 | `SUPABASE_CRON_SECRET` | se usar pg_cron | chave separada do cron de 1 minuto; o mesmo valor fica no Supabase Vault |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | sim, para Monitor WhatsApp nativo | JSON privado de conta de serviço Firebase, só na Vercel; nunca no Android/GitHub |
-| `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel |
+| `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel (e do CPF/senha/sessão do Portal do Motorista) |
+| `PORTAL_FONTE_SAIDA` | não | quem decide a saída do ponto: vazio/`portal` = o Status do Portal do Motorista (padrão); `quadro` = o quadro da intranet, com uma consulta ao portal na saída |
+| `PORTAL_INTERVALO_MIN` | não | de quantos em quantos minutos o Status de cada motorista é lido (1 a 60; padrão 1) |
+| `PORTAL_MOTORISTA_URL` | não | base do portal, só para teste/homologação; em produção fica vazia |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
 | `NAVIOS_MONITOR_MIN` / `NAVIOS_MAX_POR_CICLO` | não | intervalo das leituras (5 min) e quantidade de avisos individuais por ciclo (10); não mudam o visual |

@@ -37,6 +37,10 @@ test("app fechado: cron aguarda Push, NA VEZ não vira SAIU e uma página parcia
 
   process.env.CRON_SECRET = "segredo-isolado-do-cron";
   process.env.COMPOSIO_API_KEY = "";
+  // Este teste cobre a saída decidida pelo QUADRO (`PORTAL_FONTE_SAIDA=quadro`).
+  // No padrão, quem decide é o Status do Portal do Motorista — e o quadro não
+  // avisa a saída: ver tests/portal-status-monitor.test.ts.
+  process.env.PORTAL_FONTE_SAIDA = "quadro";
   const chaves = webpush.generateVAPIDKeys();
   process.env.VAPID_PUBLIC_KEY = chaves.publicKey;
   process.env.VAPID_PRIVATE_KEY = chaves.privateKey;

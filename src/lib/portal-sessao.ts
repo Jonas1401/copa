@@ -17,6 +17,11 @@
  *
  * Só rede: nada de banco, nada de credencial. O CPF e a senha passam por aqui
  * apenas dentro do corpo do POST do login e nunca entram em mensagem de erro.
+ *
+ * A sessão pode nascer com os cookies de uma visita anterior (`cookies`) e
+ * devolvê-los no fim (`exportarCookies`): é o que permite olhar o Status de
+ * minuto em minuto sem fazer um login a cada leitura. Quem guarda os cookies
+ * (cifrados) é o `portal-copadubo.ts`.
  */
 
 /** Prazo de cada pedido. */
@@ -85,7 +90,7 @@ export class SessaoPortal {
   constructor(
     private readonly buscar: typeof fetch,
     base: string,
-    opcoes: { prazoTotalMs?: number } = {},
+    opcoes: { prazoTotalMs?: number; cookies?: Record<string, string> | null } = {},
   ) {
     try {
       this.origem = new URL(base);
@@ -93,6 +98,14 @@ export class SessaoPortal {
       this.origem = null;
     }
     this.limiteAte = Date.now() + (opcoes.prazoTotalMs ?? PRAZO_SESSAO_MS);
+    for (const [nome, valor] of Object.entries(opcoes.cookies ?? {})) {
+      if (nome && typeof valor === "string" && valor) this.cookies.set(nome, valor);
+    }
+  }
+
+  /** Cookies da sessão, para continuar a mesma visita numa próxima leitura. */
+  exportarCookies(): Record<string, string> {
+    return Object.fromEntries(this.cookies.entries());
   }
 
   /** O endereço pertence ao portal (mesmo servidor; http só pode subir para https). */

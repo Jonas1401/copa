@@ -9,11 +9,14 @@ import {
   extrairStatusEAtivos,
   garantirTabelasPortal,
   lerTelasDoMotorista,
+  lerTelasNaSessaoGuardada,
   registrarLeituraPortal,
   umPorVez,
+  type CredenciaisPortal,
   type TelaLida,
   type TelasDoMotorista,
 } from "@/lib/portal-copadubo";
+import { fontePortal } from "@/lib/portal-situacao";
 import {
   fraseStatus,
   hashConteudo,
@@ -29,6 +32,15 @@ import {
 
 /**
  * SAÍDA DO PONTO → mensagem com o trabalho.
+ *
+ * Aqui ficam (1) como o que o portal mostra vira a mensagem do aviso —
+ * `montarEventoSaida`, `situacaoDoPontoNasTelas` — e (2) o fluxo em que o
+ * QUADRO percebe a saída e o portal é consultado uma vez.
+ *
+ * QUEM DECIDE A SAÍDA: por padrão é o Status do Portal do Motorista, lido de
+ * minuto em minuto (`portal-monitor.ts`, que usa as funções de mensagem daqui).
+ * O fluxo (2), descrito abaixo, só vale com `PORTAL_FONTE_SAIDA=quadro` — e
+ * para os testes manuais do painel do administrador.
  *
  * Quando o CopaLinks percebe que o ponto monitorado saiu do quadro (o status
  * da fila virou SAIU), o app entra no portal com o CPF/senha do próprio
@@ -328,6 +340,28 @@ export function consultarPortalNaSaida(
   return umPorVez(motoristaId, () => consultarAgora(motoristaId, codigos, opcoes));
 }
 
+/**
+ * As telas do motorista para uma consulta sob demanda (saída que esperava o
+ * portal, teste do painel). Com o Status do portal como fonte do aviso (o
+ * padrão), a conta tem UMA sessão — a guardada, que a leitura de minuto em
+ * minuto usa: um login novo aqui poderia derrubá-la. Com a fonte `quadro`,
+ * cada consulta é um login novo, como sempre foi.
+ *
+ * Quem chama já está dentro do `umPorVez` deste motorista.
+ */
+async function lerTelasParaConsulta(
+  motoristaId: number,
+  credenciais: CredenciaisPortal,
+  caminhos: string[],
+  opcoes: { buscar?: typeof fetch; codigo?: string | null },
+): Promise<TelasDoMotorista> {
+  if (fontePortal() === "portal") {
+    const telas = await lerTelasNaSessaoGuardada(motoristaId, { ...opcoes, caminhos, origem: "manual", jaNaFila: true });
+    if (telas) return telas;
+  }
+  return lerTelasDoMotorista(credenciais, caminhos, opcoes);
+}
+
 async function consultarAgora(
   motoristaId: number,
   codigos: string | string[],
@@ -341,7 +375,7 @@ async function consultarAgora(
   }
   const { caminhos } = await lerModoSaida();
   const inicio = Date.now();
-  const leitura = await lerTelasDoMotorista(credenciais, caminhos, { buscar: opcoes.buscar, codigo: principal });
+  const leitura = await lerTelasParaConsulta(motoristaId, credenciais, caminhos, { buscar: opcoes.buscar, codigo: principal });
 
   const gravada = await guardarConsulta(motoristaId, leitura, principal, Date.now() - inicio, "Consulta do portal ao detectar saída do quadro.");
   if (gravada.pausado) await avisarAcessoPausado(motoristaId, gravada.id);
@@ -745,10 +779,10 @@ export async function verificarSaidaDoMotorista(
         quando,
       };
     }
-    // O teste do painel também é um login de verdade na conta do motorista: um
-    // por vez, guardado como as demais leituras e contado na pausa por recusa.
+    // O teste do painel também é uma ida de verdade à conta do motorista: uma
+    // por vez, guardada como as demais leituras e contada na pausa por recusa.
     const inicio = Date.now();
-    const leitura = await umPorVez(motoristaId, () => lerTelasDoMotorista(credenciais, caminhos, { buscar: opcoes.buscar }));
+    const leitura = await umPorVez(motoristaId, () => lerTelasParaConsulta(motoristaId, credenciais, caminhos, { buscar: opcoes.buscar }));
     diagnostico.push(...leitura.diagnostico);
     const gravada = await guardarConsulta(motoristaId, leitura, null, Date.now() - inicio, "Leitura pedida no painel do administrador.");
     if (gravada.pausado) {
