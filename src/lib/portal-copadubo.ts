@@ -11,6 +11,7 @@ import {
   portalSaidasPendentes,
   portalSituacoes,
   portalTicketConfig,
+  portalTicketPorcentagens,
   portalTickets,
 } from "@/db/schema";
 import { cifrarParaColuna, decifrarDeColuna } from "@/lib/admin/segredos";
@@ -1186,12 +1187,21 @@ export async function garantirTabelasPortal() {
         erro TEXT,
         CONSTRAINT portal_tickets_ponto_semana UNIQUE (motorista_id, codigo, semana_inicio)
       );
+      CREATE TABLE IF NOT EXISTS portal_ticket_porcentagens (
+        id SERIAL PRIMARY KEY,
+        motorista_id INTEGER NOT NULL,
+        codigo TEXT NOT NULL,
+        porcentagem_centesimos INTEGER NOT NULL,
+        atualizado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        CONSTRAINT portal_ticket_porcentagens_ponto UNIQUE (motorista_id, codigo)
+      );
+      ALTER TABLE portal_ticket_config ADD COLUMN IF NOT EXISTS por_ponto_em TIMESTAMP WITH TIME ZONE;
       DO $$
       DECLARE t text;
       BEGIN
         -- Sem policy, o RLS fecha estas tabelas para a API pública do Supabase;
         -- o servidor (dono das tabelas) continua lendo e gravando normalmente.
-        FOREACH t IN ARRAY ARRAY['portal_motorista_acessos', 'portal_leituras', 'portal_eventos', 'portal_saidas_pendentes', 'portal_situacoes', 'portal_fila', 'portal_ticket_config', 'portal_tickets'] LOOP
+        FOREACH t IN ARRAY ARRAY['portal_motorista_acessos', 'portal_leituras', 'portal_eventos', 'portal_saidas_pendentes', 'portal_situacoes', 'portal_fila', 'portal_ticket_config', 'portal_tickets', 'portal_ticket_porcentagens'] LOOP
           BEGIN
             EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
           EXCEPTION WHEN OTHERS THEN NULL;
@@ -1344,8 +1354,8 @@ export async function removerAcessoPortal(motoristaId: number) {
   await comBanco(() => db.delete(portalLeituras).where(eq(portalLeituras.motoristaId, motoristaId)));
   // Sem acesso, a situação lida no portal deixa de valer para os pontos dele.
   await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
-  // As viagens lidas na aba “Ticket” saem junto (a porcentagem que ele
-  // cadastrou fica: é uma preferência dele, não um dado do portal).
+  // As viagens lidas na aba “Ticket” saem junto (as porcentagens que ele
+  // cadastrou ficam: são uma preferência dele, não um dado do portal).
   await comBanco(() => db.delete(portalTickets).where(eq(portalTickets.motoristaId, motoristaId)));
   await comBanco(() =>
     db
@@ -1378,6 +1388,7 @@ export async function apagarDadosPortalDoMotorista(motoristaId: number) {
   await comBanco(() => db.delete(portalEventos).where(eq(portalEventos.motoristaId, motoristaId)));
   await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
   await comBanco(() => db.delete(portalTickets).where(eq(portalTickets.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalTicketPorcentagens).where(eq(portalTicketPorcentagens.motoristaId, motoristaId)));
   await comBanco(() => db.delete(portalTicketConfig).where(eq(portalTicketConfig.motoristaId, motoristaId)));
   await esquecerMotoristaNaFila(motoristaId);
 }
@@ -2015,8 +2026,22 @@ export function lerFilaNaSessaoGuardada(
 
 /* ---------------------------------------------------------- aba “Ticket” */
 
-/** Prazo da leitura dos tickets (a tela do formulário e um “Gerar” por ponto). */
+/** Prazo da leitura dos tickets (a tela do formulário e um “Gerar” por ponto) com até 3 pontos. */
 const PRAZO_TICKET_MS = 12_000;
+/** Todos os pontos do app são lidos na mesma visita: cada ponto além do terceiro é mais um “Gerar” e ganha mais tempo. */
+const PRAZO_TICKET_POR_PONTO_A_MAIS_MS = 2_000;
+/** Teto do prazo de uma leitura, com quantos pontos for. */
+const PRAZO_TICKET_MAX_MS = 20_000;
+
+/** O motivo do ponto que ficou sem leitura porque o tempo da leitura acabou antes da vez dele. */
+export const MOTIVO_SEM_TEMPO = "não deu tempo de consultar este ponto nesta leitura; ele é o primeiro da próxima";
+/** O motivo da leitura que nem começou: a função que a chamou já estava no fim do prazo dela. */
+export const MOTIVO_SEM_TEMPO_PARA_COMECAR = "não sobrou tempo nesta rodada para abrir a aba Ticket";
+
+/** O prazo de UMA leitura do Ticket, pelo número de pontos consultados: 12 s até 3 pontos, 2 s a mais por ponto, no máximo 20 s. */
+export function prazoDoTicketMs(quantosPontos: number): number {
+  return Math.min(PRAZO_TICKET_MAX_MS, PRAZO_TICKET_MS + PRAZO_TICKET_POR_PONTO_A_MAIS_MS * Math.max(0, quantosPontos - 3));
+}
 /** Quantas vezes o MESMO código pode aparecer na lista de pontos da conta e ainda ser lido. */
 export const MAX_OPCOES_DO_MESMO_PONTO = 3;
 /** Endereço que nunca recebe a consulta: o do PDF (ou de imprimir / baixar). */
@@ -2049,7 +2074,13 @@ export type TicketsLidosNoPortal = {
  */
 export async function lerTicketsComSessao(
   sessao: SessaoGuardada,
-  opcoes: { buscar?: typeof fetch; codigos: string[]; agora?: Date },
+  opcoes: {
+    buscar?: typeof fetch;
+    codigos: string[];
+    agora?: Date;
+    /** Hora (em ms) em que a leitura tem de ter acabado: a função que chamou tem prazo. */
+    terminarAte?: number;
+  },
 ): Promise<TicketsLidosNoPortal> {
   const diagnostico: string[] = [];
   const pontosLidos: TicketsLidosNoPortal["pontos"] = {};
@@ -2065,7 +2096,12 @@ export async function lerTicketsComSessao(
 
   if (!opcoes.codigos.length) return semLeitura("nenhum ponto para consultar");
   if (!Object.keys(sessao.cookies).length) return semLeitura("sem sessão aberta no portal nesta conta");
-  const sessaoHttp = new SessaoPortal(opcoes.buscar ?? fetch, urlPortal(""), { cookies: sessao.cookies, prazoTotalMs: PRAZO_TICKET_MS });
+  // O prazo cresce com o número de pontos, mas nunca passa da hora em que quem chamou precisa terminar.
+  const sobra = opcoes.terminarAte === undefined ? Infinity : opcoes.terminarAte - Date.now();
+  const prazoTotalMs = Math.max(0, Math.min(prazoDoTicketMs(opcoes.codigos.length), sobra));
+  if (prazoTotalMs <= 0) return semLeitura(MOTIVO_SEM_TEMPO_PARA_COMECAR);
+  const acabaEm = Date.now() + prazoTotalMs;
+  const sessaoHttp = new SessaoPortal(opcoes.buscar ?? fetch, urlPortal(""), { cookies: sessao.cookies, prazoTotalMs });
   visita = sessaoHttp;
 
   // 1) O endereço da aba: o que o menu do portal informou. Sem ele, abre a
@@ -2125,6 +2161,12 @@ export async function lerTicketsComSessao(
   // 4) Um “Gerar” por ponto (e por opção, quando a lista repete o código).
   let enviados = 0;
   for (const codigo of opcoes.codigos) {
+    // Acabou o tempo desta leitura: o ponto que não coube não é pedido — ele abre a leitura seguinte.
+    if (Date.now() >= acabaEm) {
+      falhas[codigo] = MOTIVO_SEM_TEMPO;
+      diagnostico.push(`Ticket do ${codigo}: ${MOTIVO_SEM_TEMPO}.`);
+      continue;
+    }
     const quantas = aberto.form.pontos.filter((p) => p.codigo === codigo).length;
     if (!quantas) {
       const lista = [...new Set(aberto.form.pontos.map((p) => p.codigo))];
@@ -2227,6 +2269,8 @@ export function lerTicketsNaSessaoGuardada(
     buscar?: typeof fetch;
     codigos: string[];
     agora?: Date;
+    /** Hora (em ms) em que a leitura tem de ter acabado. */
+    terminarAte?: number;
     /** Quem chama já está dentro do `umPorVez` deste motorista. */
     jaNaFila?: boolean;
   },

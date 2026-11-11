@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ResumoDoTicket } from "@/lib/ticket-card";
+import { CABECALHO_DA_TELA, VERSAO_DA_TELA, type ResumoDoTicket } from "@/lib/ticket-card";
 
 /**
  * O resumo do “Saldo de Ganhos” do motorista logado (viagens, bruto e
- * comissão da semana), como o servidor guardou. O GET não fala com o portal:
+ * comissão da semana, somando todos os pontos dele), como o servidor guardou. O GET não fala com o portal:
  * só devolve a última leitura — por isso pode ser repetido a cada minuto
  * enquanto a tela está visível. Quem não ligou a consulta (não cadastrou a
  * porcentagem) não repete: só pergunta ao abrir e ao voltar para a tela.
@@ -24,7 +24,7 @@ export function useResumoDoTicket(ativo: boolean, intervaloMs = 60_000) {
 
   const carregar = useCallback(async () => {
     try {
-      const r = await fetch("/api/tickets", { cache: "no-store" });
+      const r = await fetch("/api/tickets", { cache: "no-store", headers: { [CABECALHO_DA_TELA]: VERSAO_DA_TELA } });
       setAgora(Date.now());
       semRepeticao.current = r.status === 401;
       if (r.status === 401) {

@@ -348,7 +348,14 @@ export const portalFila = pgTable("portal_fila", {
 // cadastrar a porcentagem da comissão; sem esta linha, o Ticket não é aberto.
 export const portalTicketConfig = pgTable("portal_ticket_config", {
   motoristaId: integer("motorista_id").primaryKey(),
-  porcentagemCentesimos: integer("porcentagem_centesimos").notNull(), // 18,5 % → 1850
+  // A ÚLTIMA porcentagem salva (18,5 % → 1850). A conta usa a de cada ponto
+  // (`portal_ticket_porcentagens`); esta coluna fica só para a versão anterior
+  // do app, que tinha uma porcentagem para tudo.
+  porcentagemCentesimos: integer("porcentagem_centesimos").notNull(),
+  // Desde quando as porcentagens deste motorista são por ponto. NULL = cadastro
+  // feito na versão anterior: na primeira olhada, a porcentagem única dele vira
+  // a de cada ponto que ele tem no app (uma vez só).
+  porPontoEm: timestamp("por_ponto_em", { withTimezone: true }),
   // A semana que o portal mostrou como a de hoje na última leitura (aaaa-mm-dd).
   semanaInicio: text("semana_inicio"),
   semanaFim: text("semana_fim"),
@@ -377,6 +384,19 @@ export const portalTickets = pgTable("portal_tickets", {
   erro: text("erro"), // por que a última tentativa não serviu (null = serviu)
 }, (t) => [
   unique("portal_tickets_ponto_semana").on(t.motoristaId, t.codigo, t.semanaInicio),
+]);
+
+// A porcentagem da comissão de CADA ponto do motorista (cada ponto pode ter a
+// sua). Fica guardada pelo código do ponto, mesmo quando ele sai do app por um
+// tempo; sai do banco quando o motorista desliga o Saldo de Ganhos.
+export const portalTicketPorcentagens = pgTable("portal_ticket_porcentagens", {
+  id: serial("id").primaryKey(),
+  motoristaId: integer("motorista_id").notNull(),
+  codigo: text("codigo").notNull(), // A032
+  porcentagemCentesimos: integer("porcentagem_centesimos").notNull(), // 18,5 % → 1850
+  atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  unique("portal_ticket_porcentagens_ponto").on(t.motoristaId, t.codigo),
 ]);
 
 // Último resultado do "Testar conexão" de cada integração.

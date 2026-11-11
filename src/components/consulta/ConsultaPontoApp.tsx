@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, Info, Percent, RefreshCw, ScrollText } from "lucide-react";
 import { PORCENTAGENS, brl, lerPorcentagem, num, toneladas } from "@/lib/frete";
 import {
+  CABECALHO_DA_TELA,
+  FALTA_PORCENTAGEM,
+  VERSAO_DA_TELA,
   avisoDaPagina,
   diaMesDe,
   horaDaLeitura,
@@ -20,9 +23,12 @@ import { useResumoDoTicket } from "@/components/consulta/useResumoDoTicket";
  * SALDO DE GANHOS — as viagens da semana do motorista.
  *
  * O servidor lê a aba “Ticket” do Portal do Motorista com a conta do próprio
- * motorista (a cada 5 minutos) e esta tela mostra: quantas viagens, o valor
- * bruto e a comissão — a mesma conta do “Cálculo de Frete”. Aqui o motorista
- * cadastra a porcentagem dele (é o que liga a consulta).
+ * motorista (a cada 5 minutos, todos os pontos que ele tem no app) e esta tela
+ * mostra: quantas viagens, o valor bruto e a comissão — a mesma conta do
+ * “Cálculo de Frete”. Aqui o motorista cadastra a porcentagem (é o que liga a
+ * consulta): com mais de um ponto, a de CADA ponto. O saldo é um só e soma
+ * todos os pontos; enquanto falta a porcentagem de algum, a comissão não
+ * aparece.
  */
 
 /** A porcentagem que o motorista já usa na calculadora de frete (só para sugerir). */
@@ -51,9 +57,14 @@ function ViagensDoPonto({ p }: { p: PontoDoResumo }) {
         <thead>
           <tr className="bg-[#071A28] text-left text-[11px] tracking-[0.06em] text-gelo/75 uppercase">
             <th className="py-2 pl-3 font-semibold">Data</th>
-            <th className="py-2 text-right font-semibold">Quant</th>
-            <th className="py-2 text-right font-semibold">Valor</th>
-            <th className="py-2 pr-3 text-right font-semibold">Frete</th>
+            {/*
+              O respiro à esquerda de cada número impede que o peso encoste no valor (“29,92017,29”).
+              Em tela com menos de 360 px as quatro colunas não cabem inteiras: a coluna Valor some e o
+              valor por tonelada desce para baixo do peso (“29,920” / “× 17,29”) — nada é cortado.
+            */}
+            <th className="py-2 pl-2 text-right font-semibold">Quant</th>
+            <th className="hidden py-2 pl-2 text-right font-semibold min-[360px]:table-cell">Valor</th>
+            <th className="py-2 pr-3 pl-2 text-right font-semibold">Frete</th>
           </tr>
         </thead>
         <tbody className="tabular">
@@ -65,9 +76,12 @@ function ViagensDoPonto({ p }: { p: PontoDoResumo }) {
                 </span>
                 {v.servico && <span className="block text-[11px] leading-tight text-gelo/60 [overflow-wrap:anywhere]">{v.servico}</span>}
               </td>
-              <td className="py-2 text-right text-white">{toneladas(v.quant)}</td>
-              <td className="py-2 text-right text-white">{num(v.valor)}</td>
-              <td className="py-2 pr-3 text-right font-bold text-white">{brl(v.quant * v.valor)}</td>
+              <td className="py-2 pl-2 text-right whitespace-nowrap text-white">
+                <span className="block">{toneladas(v.quant)}</span>
+                <span className="block text-[11px] leading-tight text-gelo/60 min-[360px]:hidden">× {num(v.valor)}</span>
+              </td>
+              <td className="hidden py-2 pl-2 text-right whitespace-nowrap text-white min-[360px]:table-cell">{num(v.valor)}</td>
+              <td className="py-2 pr-3 pl-2 text-right font-bold whitespace-nowrap text-white">{brl(v.quant * v.valor)}</td>
             </tr>
           ))}
         </tbody>
@@ -75,9 +89,9 @@ function ViagensDoPonto({ p }: { p: PontoDoResumo }) {
           <tfoot className="tabular">
             <tr className="border-t border-[#183341]/70 bg-[#071A28] font-bold">
               <td className="py-2.5 pl-3 text-gelo/80">Total</td>
-              <td className="py-2.5 text-right text-white">{toneladas(p.conta.toneladas)}</td>
-              <td />
-              <td className="py-2.5 pr-3 text-right text-white">{brl(p.conta.bruto)}</td>
+              <td className="py-2.5 pl-2 text-right whitespace-nowrap text-white">{toneladas(p.conta.toneladas)}</td>
+              <td className="hidden min-[360px]:table-cell" />
+              <td className="py-2.5 pr-3 pl-2 text-right whitespace-nowrap text-white">{brl(p.conta.bruto)}</td>
             </tr>
           </tfoot>
         )}
@@ -86,11 +100,97 @@ function ViagensDoPonto({ p }: { p: PontoDoResumo }) {
   );
 }
 
+/** Os botões de 15 a 22 %, o campo livre e o “Salvar”: a porcentagem de UM ponto. */
+function EditorDaPorcentagem({
+  campo,
+  valor,
+  rotulo,
+  salvando,
+  travado,
+  textoDoSalvar,
+  podeCancelar,
+  aoDigitar,
+  aoSalvar,
+  aoCancelar,
+}: {
+  campo: string;
+  /** O que está no campo, já lido como número (null = ainda não é uma porcentagem). */
+  valor: number | null;
+  /** Para o leitor de tela: “Sua porcentagem” ou “Porcentagem do A032”. */
+  rotulo: string;
+  salvando: boolean;
+  travado: boolean;
+  textoDoSalvar: string;
+  podeCancelar: boolean;
+  aoDigitar: (texto: string) => void;
+  aoSalvar: () => void;
+  aoCancelar: () => void;
+}) {
+  return (
+    <>
+      <div className="mt-3 grid grid-cols-4 gap-2">
+        {PORCENTAGENS.map((v) => {
+          const ativo = valor === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => aoDigitar(String(v))}
+              aria-pressed={ativo}
+              className={`rounded-[14px] py-3 font-display text-[16px] font-black transition-transform active:scale-95 ${
+                ativo ? "ouro" : "border border-[#183341]/80 bg-[#071A28]/80 text-white hover:border-ciano/60"
+              }`}
+            >
+              {v}%
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex items-center gap-2 rounded-[14px] border-[1.5px] border-[#183341]/80 bg-[#071A28]/80 px-4 py-3 focus-within:border-ciano/70">
+        <input
+          value={campo}
+          onChange={(e) => aoDigitar(e.target.value)}
+          inputMode="decimal"
+          aria-label={rotulo}
+          placeholder="Outro valor..."
+          className="tabular min-w-0 flex-1 bg-transparent font-display text-[16px] font-black text-white outline-none placeholder:text-gelo/40"
+        />
+        <span className="font-black text-gelo/70">%</span>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={aoSalvar}
+          disabled={travado || valor === null}
+          className="ouro flex h-[52px] min-w-0 flex-1 items-center justify-center rounded-full font-display text-[17px] font-extrabold tracking-[0.04em] uppercase disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {salvando ? "Salvando…" : textoDoSalvar}
+        </button>
+        {podeCancelar && (
+          <button
+            type="button"
+            onClick={aoCancelar}
+            disabled={travado}
+            className="h-[52px] shrink-0 rounded-full border border-[#183341] px-5 font-display text-[15px] font-bold text-gelo/85 hover:border-ciano/60 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function ConsultaPontoApp() {
   const { resumo, naoLogado, carregado, agora, receber } = useResumoDoTicket(true);
-  /** O que está digitado no campo da porcentagem (null = o motorista ainda não mexeu). */
-  const [texto, setTexto] = useState<string | null>(null);
-  const [editando, setEditando] = useState(false);
+  /**
+   * O que está digitado no campo da porcentagem, e de QUAL ponto (null = o
+   * motorista ainda não mexeu). O texto só vale para o ponto em que foi
+   * digitado: se a tela passar a mostrar outro ponto, o campo começa vazio.
+   */
+  const [digitado, setDigitado] = useState<{ codigo: string; texto: string } | null>(null);
+  /** O ponto que o motorista abriu para trocar a porcentagem (null = nenhum: abre sozinho o primeiro ponto SEM porcentagem). */
+  const [escolhido, setEscolhido] = useState<string | null>(null);
   const [sugestao, setSugestao] = useState("");
   const [ocupado, setOcupado] = useState<Ocupado>(null);
   const [mensagem, setMensagem] = useState<Mensagem | null>(null);
@@ -110,10 +210,33 @@ export default function ConsultaPontoApp() {
     return () => clearTimeout(t);
   }, []);
 
-  const pctSalva = resumo?.porcentagem ?? null;
-  const campo = texto ?? (pctSalva !== null ? num(pctSalva) : sugestao);
+  // Cada ponto tem a sua porcentagem. Com um ponto só, a tela é a de sempre (“Sua porcentagem”).
+  const pontos = resumo?.pontos ?? [];
+  const varios = pontos.length > 1;
+  /** A mesma porcentagem em todos os pontos (null = cada um com a sua, ou falta a de algum). */
+  const pctDeTodos = resumo?.porcentagem ?? null;
+  // O ponto com a porcentagem aberta para digitar: o que o motorista escolheu ou, sozinho, o primeiro que ainda não tem.
+  const primeiroSemPorcentagem = resumo?.semPorcentagem[0] ?? null;
+  const emEdicao = pontos.find((p) => p.codigo === escolhido) ?? pontos.find((p) => p.codigo === primeiroSemPorcentagem) ?? null;
+  const texto = emEdicao && digitado?.codigo === emEdicao.codigo ? digitado.texto : null;
+  // Com um ponto só, a porcentagem da calculadora de frete entra como sugestão; com vários, cada uma é digitada.
+  const campo = texto ?? (emEdicao && emEdicao.porcentagem !== null ? num(emEdicao.porcentagem) : varios ? "" : sugestao);
   const pctDoCampo = lerPorcentagem(campo);
-  const mostrarFormulario = Boolean(resumo) && (editando || !resumo?.ligado);
+
+  function digitar(novo: string) {
+    if (emEdicao) setDigitado({ codigo: emEdicao.codigo, texto: novo });
+  }
+
+  function abrirPorcentagem(codigo: string) {
+    setEscolhido(codigo);
+    setDigitado(null);
+    setMensagem(null);
+  }
+
+  function fecharPorcentagem() {
+    setEscolhido(null);
+    setDigitado(null);
+  }
 
   async function chamar(metodo: "POST" | "PUT" | "DELETE", qual: Exclude<Ocupado, null>, corpo?: unknown) {
     if (ocupado) return null;
@@ -122,7 +245,8 @@ export default function ConsultaPontoApp() {
     try {
       const r = await fetch("/api/tickets", {
         method: metodo,
-        ...(corpo === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(corpo) }),
+        headers: { [CABECALHO_DA_TELA]: VERSAO_DA_TELA, ...(corpo === undefined ? {} : { "content-type": "application/json" }) },
+        ...(corpo === undefined ? {} : { body: JSON.stringify(corpo) }),
       });
       const dados = (await r.json().catch(() => ({}))) as Partial<ResumoDoTicket> & { erro?: string; mensagem?: string; leu?: boolean };
       if (!r.ok) {
@@ -140,14 +264,16 @@ export default function ConsultaPontoApp() {
   }
 
   async function salvar() {
+    if (!emEdicao) return;
     if (pctDoCampo === null) {
-      setMensagem({ texto: "Digite a sua porcentagem (por exemplo 18 ou 18,5).", erro: true });
+      setMensagem({ texto: varios ? `Digite a porcentagem do ${emEdicao.codigo} (por exemplo 18 ou 18,5).` : "Digite a sua porcentagem (por exemplo 18 ou 18,5).", erro: true });
       return;
     }
-    const dados = await chamar("POST", "salvar", { porcentagem: campo });
+    // A porcentagem vai com o código do ponto: cada ponto tem a sua.
+    const dados = await chamar("POST", "salvar", { porcentagens: { [emEdicao.codigo]: campo } });
     if (!dados) return;
-    setEditando(false);
-    setTexto(null);
+    // Fecha este; se ainda houver ponto sem porcentagem, o próximo abre sozinho.
+    fecharPorcentagem();
     setMensagem({ texto: dados.mensagem ?? "Porcentagem salva.", erro: false });
   }
 
@@ -163,11 +289,16 @@ export default function ConsultaPontoApp() {
       return;
     }
     setConfirmando(false);
+    const eramVarios = varios;
     const dados = await chamar("DELETE", "desligar");
     if (!dados) return;
-    setTexto(null);
-    setEditando(false);
-    setMensagem({ texto: "Saldo de Ganhos desligado. A sua porcentagem e as viagens guardadas foram apagadas.", erro: false });
+    fecharPorcentagem();
+    setMensagem({
+      texto: eramVarios
+        ? "Saldo de Ganhos desligado. As porcentagens e as viagens guardadas foram apagadas."
+        : "Saldo de Ganhos desligado. A sua porcentagem e as viagens guardadas foram apagadas.",
+      erro: false,
+    });
   }
 
   const aviso = resumo ? avisoDaPagina(resumo, agora) : null;
@@ -175,6 +306,10 @@ export default function ConsultaPontoApp() {
   const podeAtualizar = Boolean(resumo?.ligado && resumo.disponivel && resumo.temAcesso && resumo.totalPontos);
   // Com um ponto só, as viagens já aparecem abertas.
   const pontoAberto = aberto ?? (resumo && resumo.pontos.length === 1 ? resumo.pontos[0].codigo : null);
+  // A comissão do saldo: a soma de todos os pontos, ou “Falta %” enquanto algum ponto não tem a porcentagem dele.
+  const comissaoDoSaldo = resumo ? (resumo.conta.comissao === null ? FALTA_PORCENTAGEM : brl(resumo.conta.comissao)) : "—";
+  const faltaPorcentagem = Boolean(resumo && temLeitura && resumo.conta.comissao === null);
+  const textoDoSalvar = resumo?.ligado ? "Salvar" : "Salvar e ligar";
 
   return (
     <div className="fundo-app relative min-h-screen w-full bg-fundo">
@@ -257,12 +392,15 @@ export default function ConsultaPontoApp() {
                       {temLeitura ? brl(resumo.conta.bruto) : "—"}
                     </div>
                   </div>
-                  <div className="min-w-0 rounded-[16px] border border-ouro/40 bg-[#000D16]/50 px-3 py-2.5">
+                  <div className={`min-w-0 rounded-[16px] border bg-[#000D16]/50 px-3 py-2.5 ${faltaPorcentagem ? "border-ambar/50" : "border-ouro/40"}`}>
                     <div className="text-[12px] font-medium text-gelo/80">
-                      Comissão{pctSalva !== null ? <span className="tabular text-gelo/65"> · {num(pctSalva)}%</span> : null}
+                      Comissão{pctDeTodos !== null ? <span className="tabular text-gelo/65"> · {num(pctDeTodos)}%</span> : null}
                     </div>
-                    <div className={`tabular mt-0.5 font-display ${letraDoValor(brl(resumo.conta.comissao))} leading-tight font-extrabold text-ouro [overflow-wrap:anywhere]`}>
-                      {temLeitura && pctSalva !== null ? brl(resumo.conta.comissao) : "—"}
+                    <div
+                      className={`tabular mt-0.5 font-display ${letraDoValor(comissaoDoSaldo)} leading-tight font-extrabold [overflow-wrap:anywhere] ${faltaPorcentagem ? "text-ambar" : "text-ouro"}`}
+                      data-ticket="comissao"
+                    >
+                      {temLeitura ? comissaoDoSaldo : "—"}
                     </div>
                   </div>
                 </div>
@@ -275,6 +413,8 @@ export default function ConsultaPontoApp() {
                     </>
                   ) : resumo.ligado ? (
                     "Ainda sem leitura do portal."
+                  ) : varios ? (
+                    "Cadastre a porcentagem de cada ponto para eu começar a ler as suas viagens."
                   ) : (
                     "Cadastre a sua porcentagem para eu começar a ler as suas viagens."
                   )}
@@ -317,93 +457,111 @@ export default function ConsultaPontoApp() {
                 </p>
               )}
 
-              {/* porcentagem */}
-              <Bloco>
-                <div className="flex items-end justify-between gap-3">
+              {/* porcentagem: uma por ponto */}
+              {varios ? (
+                <Bloco>
                   <span className="flex items-center gap-2 font-display text-[15px] font-extrabold tracking-[0.03em] text-white uppercase">
-                    <Percent size={17} className="text-ouro" /> Sua porcentagem
+                    <Percent size={17} className="shrink-0 text-ouro" /> Porcentagem de cada ponto
                   </span>
-                  <span className="tabular font-display text-[30px] leading-none font-black text-ouro">
-                    {mostrarFormulario ? (pctDoCampo !== null ? `${num(pctDoCampo)}%` : "—") : pctSalva !== null ? `${num(pctSalva)}%` : "—"}
-                  </span>
-                </div>
+                  <ul className="mt-3 space-y-2" data-ticket="porcentagens">
+                    {pontos.map((p) => {
+                      const editando = emEdicao?.codigo === p.codigo;
+                      const falta = p.porcentagem === null;
+                      return (
+                        <li
+                          key={p.codigo}
+                          className={`rounded-[18px] border bg-[#071A28]/70 px-3.5 py-3 ${editando ? "border-ciano/60" : falta ? "border-ambar/50" : "border-[#183341]/70"}`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="tabular min-w-0 font-display text-[18px] leading-tight font-extrabold text-ciano">{p.codigo}</span>
+                            <span className="flex shrink-0 items-center gap-3">
+                              <span className={`tabular font-display leading-none font-black ${!editando && falta ? "text-[15px] text-ambar" : "text-[24px] text-ouro"}`}>
+                                {editando ? (pctDoCampo !== null ? `${num(pctDoCampo)}%` : "—") : falta ? "Falta" : `${num(p.porcentagem as number)}%`}
+                              </span>
+                              {!editando && (
+                                <button
+                                  type="button"
+                                  onClick={() => abrirPorcentagem(p.codigo)}
+                                  disabled={ocupado !== null}
+                                  className={`rounded-full border px-4 py-2 font-display text-[14.5px] font-bold disabled:opacity-50 ${
+                                    falta ? "border-ambar text-ambar" : "border-[#183341] text-white hover:border-ciano/60"
+                                  }`}
+                                >
+                                  {falta ? "Cadastrar" : "Trocar"}
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                          {editando && (
+                            <EditorDaPorcentagem
+                              campo={campo}
+                              valor={pctDoCampo}
+                              rotulo={`Porcentagem do ${p.codigo}`}
+                              salvando={ocupado === "salvar"}
+                              travado={ocupado !== null}
+                              textoDoSalvar={textoDoSalvar}
+                              podeCancelar={!falta}
+                              aoDigitar={digitar}
+                              aoSalvar={() => void salvar()}
+                              aoCancelar={fecharPorcentagem}
+                            />
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="mt-3 text-[12.5px] leading-snug text-gelo/70">
+                    Cada ponto tem a sua porcentagem. O saldo é um só: soma as viagens, o valor bruto e a comissão de todos os pontos.
+                    {!resumo.ligado ? ` Ao salvar a primeira, eu passo a abrir a aba “Ticket” do Portal do Motorista com a sua conta, a cada ${resumo.intervaloMin} minutos, só para ler as viagens da semana.` : ""}
+                  </p>
+                </Bloco>
+              ) : (
+                <Bloco>
+                  <div className="flex items-end justify-between gap-3">
+                    <span className="flex items-center gap-2 font-display text-[15px] font-extrabold tracking-[0.03em] text-white uppercase">
+                      <Percent size={17} className="text-ouro" /> Sua porcentagem
+                    </span>
+                    <span className="tabular font-display text-[30px] leading-none font-black text-ouro">
+                      {emEdicao ? (pctDoCampo !== null ? `${num(pctDoCampo)}%` : "—") : pontos[0] && pontos[0].porcentagem !== null ? `${num(pontos[0].porcentagem)}%` : "—"}
+                    </span>
+                  </div>
 
-                {mostrarFormulario ? (
-                  <>
-                    <div className="mt-3 grid grid-cols-4 gap-2">
-                      {PORCENTAGENS.map((v) => {
-                        const ativo = pctDoCampo === v;
-                        return (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => setTexto(String(v))}
-                            aria-pressed={ativo}
-                            className={`rounded-[14px] py-3 font-display text-[16px] font-black transition-transform active:scale-95 ${
-                              ativo ? "ouro" : "border border-[#183341]/80 bg-[#071A28]/80 text-white hover:border-ciano/60"
-                            }`}
-                          >
-                            {v}%
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="mt-3 flex items-center gap-2 rounded-[14px] border-[1.5px] border-[#183341]/80 bg-[#071A28]/80 px-4 py-3 focus-within:border-ciano/70">
-                      <input
-                        value={campo}
-                        onChange={(e) => setTexto(e.target.value)}
-                        inputMode="decimal"
-                        aria-label="Sua porcentagem"
-                        placeholder="Outro valor..."
-                        className="tabular min-w-0 flex-1 bg-transparent font-display text-[16px] font-black text-white outline-none placeholder:text-gelo/40"
+                  {emEdicao ? (
+                    <>
+                      <EditorDaPorcentagem
+                        campo={campo}
+                        valor={pctDoCampo}
+                        rotulo="Sua porcentagem"
+                        salvando={ocupado === "salvar"}
+                        travado={ocupado !== null}
+                        textoDoSalvar={textoDoSalvar}
+                        podeCancelar={emEdicao.porcentagem !== null}
+                        aoDigitar={digitar}
+                        aoSalvar={() => void salvar()}
+                        aoCancelar={fecharPorcentagem}
                       />
-                      <span className="font-black text-gelo/70">%</span>
-                    </div>
-                    <div className="mt-3 flex gap-2">
+                      {!resumo.ligado && (
+                        <p className="mt-3 text-[12.5px] leading-snug text-gelo/70">
+                          Ao salvar, eu passo a abrir a aba “Ticket” do Portal do Motorista com a sua conta, a cada {resumo.intervaloMin} minutos, só para ler as viagens da semana.
+                        </p>
+                      )}
+                    </>
+                  ) : pontos[0] ? (
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <p className="text-[13px] leading-snug text-gelo/75">A comissão é esta porcentagem do valor bruto.</p>
                       <button
                         type="button"
-                        onClick={() => void salvar()}
-                        disabled={ocupado !== null || pctDoCampo === null}
-                        className="ouro flex h-[52px] flex-1 items-center justify-center rounded-full font-display text-[17px] font-extrabold tracking-[0.04em] uppercase disabled:cursor-not-allowed disabled:opacity-45"
+                        onClick={() => abrirPorcentagem(pontos[0].codigo)}
+                        className="shrink-0 rounded-full border border-[#183341] px-4 py-2 font-display text-[14.5px] font-bold text-white hover:border-ciano/60"
                       >
-                        {ocupado === "salvar" ? "Salvando…" : resumo.ligado ? "Salvar" : "Salvar e ligar"}
+                        Trocar
                       </button>
-                      {resumo.ligado && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditando(false);
-                            setTexto(null);
-                          }}
-                          disabled={ocupado !== null}
-                          className="h-[52px] rounded-full border border-[#183341] px-5 font-display text-[15px] font-bold text-gelo/85 hover:border-ciano/60 disabled:opacity-50"
-                        >
-                          Cancelar
-                        </button>
-                      )}
                     </div>
-                    {!resumo.ligado && (
-                      <p className="mt-3 text-[12.5px] leading-snug text-gelo/70">
-                        Ao salvar, eu passo a abrir a aba “Ticket” do Portal do Motorista com a sua conta, a cada {resumo.intervaloMin} minutos, só para ler as viagens da semana.
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <p className="text-[13px] leading-snug text-gelo/75">A comissão é esta porcentagem do valor bruto.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditando(true);
-                        setMensagem(null);
-                      }}
-                      className="shrink-0 rounded-full border border-[#183341] px-4 py-2 font-display text-[14.5px] font-bold text-white hover:border-ciano/60"
-                    >
-                      Trocar
-                    </button>
-                  </div>
-                )}
-              </Bloco>
+                  ) : (
+                    <p className="mt-2 text-[13px] leading-snug text-gelo/75">A porcentagem é de cada ponto: cadastre o seu ponto na tela inicial e ela aparece aqui.</p>
+                  )}
+                </Bloco>
+              )}
 
               {/* por ponto */}
               {resumo.ligado && resumo.pontos.length > 0 && (
@@ -430,7 +588,17 @@ export default function ConsultaPontoApp() {
                               </span>
                               {p.conta && p.viagens && p.viagens.length > 0 && (
                                 <span className="tabular mt-0.5 block text-[13px] text-gelo/80">
-                                  Bruto <span className="font-bold text-white">{brl(p.conta.bruto)}</span> · Comissão <span className="font-bold text-ouro">{brl(p.conta.comissao)}</span>
+                                  {/* Dois blocos: em tela estreita a comissão desce inteira para a linha de baixo (o valor nunca fica longe do rótulo). */}
+                                  <span className="inline-block">
+                                    Bruto <span className="font-bold text-white">{brl(p.conta.bruto)}</span> ·&nbsp;
+                                  </span>
+                                  {p.conta.comissao === null || p.porcentagem === null ? (
+                                    <span className="inline-block font-bold text-ambar">falta a % deste ponto</span>
+                                  ) : (
+                                    <span className="inline-block">
+                                      Comissão{varios ? ` ${num(p.porcentagem)}%` : ""} <span className="font-bold text-ouro">{brl(p.conta.comissao)}</span>
+                                    </span>
+                                  )}
                                 </span>
                               )}
                             </span>
@@ -470,8 +638,9 @@ export default function ConsultaPontoApp() {
               {/* como funciona */}
               <section className="rounded-[20px] border border-[#183341]/60 bg-[#071A28]/60 px-4 py-3.5 text-[13px] leading-relaxed text-gelo/75">
                 <p>
-                  As viagens vêm da aba <strong className="text-gelo/90">Ticket</strong> do Portal do Motorista (2ª via), lidas com a sua conta. A conta é a mesma do
-                  “Cálculo de Frete”: Quant × Valor de cada viagem; a comissão é a sua porcentagem do valor bruto.
+                  As viagens vêm da aba <strong className="text-gelo/90">Ticket</strong> do Portal do Motorista (2ª via), lidas com a sua conta
+                  {varios ? ", de todos os pontos que você cadastrou no app" : ""}. A conta é a mesma do “Cálculo de Frete”: Quant × Valor de cada viagem;{" "}
+                  {varios ? "a comissão de cada ponto é a porcentagem dele sobre o valor bruto do ponto, e o saldo soma todos." : "a comissão é a sua porcentagem do valor bruto."}
                 </p>
                 <p className="mt-2">É uma conferência — o que vale é o ticket da Copadubo. Só você vê estes números.</p>
                 {resumo.ligado && (

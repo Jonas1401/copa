@@ -408,7 +408,8 @@ inteiro, com PostgreSQL local).
 
 O card **Saldo de Ganhos** (SERVIÇOS) abre `/consulta-ponto` e mostra, para o
 motorista logado, só três números da semana: **viagens, valor bruto e
-comissão**. Até 11/11/2026 ele se chamava “Consulta de Ponto” e apontava para o
+comissão** — **um saldo só, somando todos os pontos** que ele tem no app. Até
+11/11/2026 ele se chamava “Consulta de Ponto” e apontava para o
 quadro público que a Copadubo desligou — por isso o endereço da página e os
 nomes internos continuam `consulta-ponto`.
 
@@ -417,15 +418,32 @@ Ticket”): o servidor escolhe o ponto na lista PONTO, a semana de hoje na lista
 SEMANA, envia o “Gerar” e lê o cartão “Lançamentos” (PONTO · QUANT · VALOR ·
 SERVIÇO · DATA · HORA). O “Gerar PDF” nunca é aberto.
 
-**A conta** é a do Cálculo de Frete (`src/lib/frete.ts`, a mesma função
-`calcular`): frete da viagem = Quant (t) × Valor (R$/t); valor bruto = soma das
-viagens; comissão = bruto × a porcentagem do motorista.
+**A conta** de cada ponto é a do Cálculo de Frete (`src/lib/frete.ts`, a mesma
+função `calcular`): frete da viagem = Quant (t) × Valor (R$/t); valor bruto do
+ponto = soma das viagens dele; comissão do ponto = bruto × **a porcentagem
+daquele ponto**. O **saldo** é a soma dos pontos — viagens, bruto e comissão —,
+feita em centavos (`saldoDosPontos`), para o total fechar com a linha de cada
+ponto na tela.
 
-**Quem é lido.** Só o motorista que **cadastrou a própria porcentagem** na
-página (é isso que liga a consulta) e que tem o acesso ao portal e um ponto no
-app. A porcentagem fica no servidor (`portal_ticket_config`, em centésimos),
-para o card valer em qualquer aparelho dele. “Desligar o Saldo de Ganhos” apaga a
-porcentagem e as viagens guardadas; remover o acesso ao portal apaga as viagens.
+**Uma porcentagem para cada ponto.** Cada ponto do app tem a sua
+(`portal_ticket_porcentagens`, em centésimos, uma linha por motorista e ponto).
+Com um ponto só, a página é “Sua porcentagem”, como sempre; com dois ou mais,
+“Porcentagem de cada ponto”: uma linha por ponto, com “Cadastrar” / “Trocar”.
+Enquanto **algum ponto do app está sem porcentagem**, viagens e bruto aparecem
+normalmente e, no lugar da comissão do saldo, o card escreve **“Falta %”**
+(“Cadastre a % do A063”) — nunca um total que deixa um ponto de fora, e nunca
+R$ 0,00. Ponto cadastrado depois nasce sem porcentagem. Quem tinha UMA
+porcentagem (versão de 11/11/2026): ela foi copiada, uma única vez, para cada
+ponto que o motorista tinha no app (`portal_ticket_config.por_ponto_em` marca
+quando); a coluna antiga `porcentagem_centesimos` continua lá e guarda só a
+última porcentagem salva.
+
+**Quem é lido.** Só o motorista que **cadastrou a porcentagem** de pelo menos um
+ponto na página (é isso que liga a consulta) e que tem o acesso ao portal e um
+ponto no app. Ligada a consulta, **todos os pontos dele no app são lidos**, com
+ou sem porcentagem. As porcentagens ficam no servidor, para o card valer em
+qualquer aparelho dele. “Desligar o Saldo de Ganhos” apaga as porcentagens e as
+viagens guardadas; remover o acesso ao portal apaga as viagens.
 
 **Como é lida** (`src/lib/portal-ticket.ts`, `monitorarTickets` em
 `src/lib/portal-monitor.ts`):
@@ -441,10 +459,14 @@ porcentagem e as viagens guardadas; remover o acesso ao portal apaga as viagens.
   reserva em `portal_ticket_config.proxima_leitura_em` é atômica. Depois de uma
   leitura que não trouxe nada, tenta de novo em 1 minuto. O botão **Atualizar**
   lê na hora (no máximo um toque a cada 20 s);
-- os pontos são os **cadastrados no app**, até 3 por leitura, em rodízio (quem
-  nunca foi lido primeiro, depois a tentativa mais antiga). Uma leitura são
-  normalmente de 2 a 7 pedidos ao portal (mais quando a lista repete o código),
-  com 12 s de prazo no total: o que não couber fica para a leitura seguinte;
+- **todos os pontos cadastrados no app, na mesma leitura** (um “Gerar” para cada
+  um; quem nunca foi lido primeiro, depois a tentativa mais antiga). Só acima de
+  10 pontos há rodízio. Uma leitura é a tela do formulário e um pedido por ponto
+  (o dobro quando o formulário tem código escondido; mais quando a lista repete
+  o código), com **12 s de prazo até 3 pontos e 2 s a mais por ponto, no máximo
+  20 s** (`prazoDoTicketMs`). A leitura também tem hora para acabar dentro da
+  função que a chamou (cron: 50 s; app aberto: 42 s; “Atualizar”: 24 s). O ponto
+  que não couber fica com o motivo e **abre a leitura seguinte**;
 - a semana é a que contém **hoje (Brasília)** na lista do portal; na segunda-feira
   em que duas semanas contêm o dia, vale a que o portal deixa marcada. As
   viagens ficam guardadas por semana (`portal_tickets`) por 70 dias;
@@ -461,10 +483,15 @@ encontrado para este período”. Tela diferente, página cortada ou linha fora 
 padrão: a leitura é **recusada**, com o motivo, e continua valendo a última boa
 — com a hora dela na tela. Um número errado de dinheiro é pior do que nenhum.
 
-**O que aparece.** No card: Viagens / Bruto / Comissão; leitura antiga leva a
-hora (“Lido 09:10”) e soma parcial diz “1 de 3 pontos” (`src/lib/ticket-card.ts`).
-Na página: os três números, a lista de viagens por ponto, a porcentagem, o
-“Atualizar” e o motivo quando a leitura não veio. `/admin → Portal do motorista
+**O que aparece.** No card: Viagens / Bruto / Comissão e uma nota só: leitura
+antiga leva a hora (“Lido 09:10”); soma parcial diz “1 de 3 pontos”; com tudo
+lido e uma porcentagem faltando, de qual ponto (“Cadastre a % do A063”) — o
+“Falta %” fica sempre no lugar da comissão (`src/lib/ticket-card.ts`). Na
+página: os três números do saldo, a porcentagem de cada ponto, a lista de
+viagens por ponto (com o bruto e a comissão dele), o “Atualizar”, o motivo
+quando a leitura não veio e um aviso que diz as duas coisas quando falta
+porcentagem e falta ler um ponto (o caso do ponto recém-cadastrado).
+`/admin → Portal do motorista
 → “Saldo de Ganhos”` mostra só a **saúde** da leitura (quantos pontos lidos, a
 hora, o motivo da recusa): viagens, valores, porcentagem e comissão são do
 motorista e não aparecem no painel nem no diagnóstico.
@@ -472,8 +499,17 @@ motorista e não aparecem no painel nem no diagnóstico.
 `PORTAL_TICKET=desligado` desliga a leitura. Com `PORTAL_FONTE_SAIDA=quadro` não
 existe a rodada do Status e o Ticket também não é lido sozinho.
 
+**API** (`/api/tickets`, só com a sessão do motorista): `POST { "porcentagens":
+{ "A032": "18", "A063": "20,5" } }` salva a de um ou mais pontos — só dos
+pontos que ESSE motorista tem no app; o formato antigo `{ "porcentagem": "18" }`
+só vale para quem tem um ponto. As telas mandam o cabeçalho
+`x-saldo-de-ganhos: 2`: um app aberto antes desta versão (sem recarregar) não
+manda e, enquanto faltar a porcentagem de algum ponto, recebe a resposta de quem
+ainda não cadastrou — ele não saberia mostrar a comissão em branco.
+
 Testes: `tests/portal-ticket-parse.test.ts` (a tela), `tests/portal-ticket.test.ts`
-(a leitura contra um portal de mentira, sem rede), `tests/ticket-card.test.ts`
+(a leitura contra um portal de mentira, sem rede), `tests/saldo-por-ponto.test.ts`
+(a conta por ponto, o saldo e o cadastro da porcentagem), `tests/ticket-card.test.ts`
 (o card e a página) e `tests/portal-ticket-cron.test.ts` (o ciclo inteiro, com
 PostgreSQL local).
 
@@ -897,7 +933,7 @@ no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
 | `FONTE_FILA` | não | de onde vem a fila: vazio/`portal` = a aba “Fila” do Portal do Motorista (padrão); `quadro` = o quadro público antigo, desligado pela Copadubo em 10/11/2026 |
 | `PORTAL_FILA_LIVROS` | não | livros lidos na aba “Fila” (padrão `A`); ex.: `A,B,M` — cada livro a mais é uma página a mais por ciclo |
 | `PORTAL_INTERVALO_MIN` | não | de quantos em quantos minutos o Status de cada motorista é lido (1 a 60; padrão 1) |
-| `PORTAL_TICKET` | não | Saldo de Ganhos: vazio = a aba “Ticket” é lida para quem cadastrou a porcentagem (padrão); `desligado` = nenhuma leitura do Ticket |
+| `PORTAL_TICKET` | não | Saldo de Ganhos: vazio = a aba “Ticket” é lida, com todos os pontos do app, para quem cadastrou a porcentagem (padrão); `desligado` = nenhuma leitura do Ticket |
 | `PORTAL_TICKET_INTERVALO_MIN` | não | de quantos em quantos minutos o Ticket de cada motorista é lido (2 a 60; padrão 5) |
 | `PORTAL_MOTORISTA_URL` | não | base do portal, só para teste/homologação; em produção fica vazia |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |

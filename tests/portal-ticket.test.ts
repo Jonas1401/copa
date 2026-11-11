@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_OPCOES_DO_MESMO_PONTO, lerPortalDoMotorista, lerTicketsComSessao, sessaoVazia } from "../src/lib/portal-copadubo";
+import { MAX_OPCOES_DO_MESMO_PONTO, MOTIVO_SEM_TEMPO, MOTIVO_SEM_TEMPO_PARA_COMECAR, lerPortalDoMotorista, lerTicketsComSessao, sessaoVazia } from "../src/lib/portal-copadubo";
 import {
   BASE_FALSA,
   CPF_FALSO,
@@ -410,6 +410,68 @@ test("portal fora do ar ou sem resposta: sem leitura, e a sessão guardada conti
   assert.match(caiu.falhas.A777, /sem resposta do portal/);
   assert.deepEqual(sessao.cookies, cookies);
   assert.equal(sessao.ticketUrl, `${BASE_FALSA}/moto/ticket`);
+});
+
+test("todos os pontos do motorista na MESMA visita: um “Gerar” para cada um dos seis", async () => {
+  const seis = ["A701", "A777", "B702", "M703", "A705", "A706"];
+  const portal = portalCom(conta({ pontos: seis, lancamentos: { "1|0": VIAGENS, "2|0": [VIAGENS[0]], "5|0": [VIAGENS[1], VIAGENS[2]] } }));
+  const sessao = await sessaoAberta(portal);
+  const antes = portal.pedidos.length;
+  const lida = await lerTicketsComSessao(sessao, { buscar: portal.buscar, codigos: seis, agora: QUARTA });
+  assert.deepEqual(pedidosDesde(portal, antes), ["GET moto/ticket", ...seis.map(() => "POST moto/ticket_lista.php")]);
+  assert.deepEqual(portal.consultasDeTicket, seis.map((c) => `${c} 2026-11-09`));
+  assert.deepEqual(lida.falhas, {});
+  assert.deepEqual(Object.fromEntries(seis.map((c) => [c, lida.pontos[c]?.length])), { A701: 0, A777: 3, B702: 1, M703: 0, A705: 0, A706: 2 });
+  // Cada viagem fica no ponto DELA (é com isso que cada ponto leva a própria porcentagem).
+  for (const c of seis) assert.ok((lida.pontos[c] ?? []).every((l) => l.ponto === c), c);
+});
+
+test("a leitura tem hora para acabar: sem tempo, nada é pedido ao portal e cada ponto fica com o motivo", async () => {
+  const portal = portalCom(conta({ lancamentos: { "1|0": VIAGENS, "2|0": [VIAGENS[0]] } }));
+  const sessao = await sessaoAberta(portal);
+  const antes = portal.pedidos.length;
+  // Quem chamou (o cron, por exemplo) já está no fim do prazo dele.
+  const semTempo = await lerTicketsComSessao(sessao, { buscar: portal.buscar, codigos: ["A777", "B702"], agora: QUARTA, terminarAte: Date.now() - 1 });
+  assert.deepEqual(pedidosDesde(portal, antes), [], "sem tempo, nenhum pedido sai");
+  assert.deepEqual(semTempo.pontos, {});
+  assert.deepEqual(semTempo.falhas, { A777: MOTIVO_SEM_TEMPO_PARA_COMECAR, B702: MOTIVO_SEM_TEMPO_PARA_COMECAR });
+  assert.match(MOTIVO_SEM_TEMPO_PARA_COMECAR, /não sobrou tempo nesta rodada/);
+  assert.equal(semTempo.pedidos, 0);
+  assert.equal(semTempo.semana, null);
+  // Com tempo de sobra, a mesma leitura vem inteira.
+  const comTempo = await lerTicketsComSessao(sessao, { buscar: portal.buscar, codigos: ["A777", "B702"], agora: QUARTA, terminarAte: Date.now() + 60_000 });
+  assert.deepEqual(comTempo.falhas, {});
+  assert.deepEqual([comTempo.pontos.A777?.length, comTempo.pontos.B702?.length], [3, 1]);
+
+  // O tempo acaba no MEIO: o ponto que não coube fica com o motivo, e o que já veio continua valendo.
+  let pedidos = 0;
+  const lento = (async (input: string | URL | Request, init?: RequestInit) => {
+    pedidos += 1;
+    // O segundo “Gerar” não responde: quem o encerra é o prazo do pedido (como no fetch de verdade).
+    if (pedidos === 3) {
+      await new Promise((_, recusar) => {
+        const sinal = init?.signal;
+        const espera = setTimeout(() => recusar(new Error("o teste esperou demais")), 5_000);
+        sinal?.addEventListener("abort", () => {
+          clearTimeout(espera);
+          recusar(sinal.reason);
+        });
+      });
+    }
+    return portal.buscar(input, init);
+  }) as typeof fetch;
+  const comecou = Date.now();
+  const pelaMetade = await lerTicketsComSessao(sessao, { buscar: lento, codigos: ["A777", "B702", "A701"], agora: QUARTA, terminarAte: comecou + 300 });
+  assert.ok(Date.now() - comecou < 2_000, `a leitura passou muito da hora: ${Date.now() - comecou} ms`);
+  assert.equal(pelaMetade.pontos.A777?.length, 3, "o primeiro ponto veio antes de o tempo acabar");
+  assert.equal(pelaMetade.pontos.B702, undefined, "o ponto em que o tempo acabou não vale como lido");
+  assert.match(pelaMetade.falhas.B702, /sem resposta do portal \(o portal demorou demais para responder\)/);
+  // O ponto seguinte nem é pedido — e o motivo diz que ele abre a próxima leitura.
+  assert.equal(pelaMetade.pontos.A701, undefined);
+  assert.equal(pelaMetade.falhas.A701, MOTIVO_SEM_TEMPO);
+  assert.match(MOTIVO_SEM_TEMPO, /não deu tempo .* é o primeiro da próxima/);
+  assert.equal(pedidos, 3);
+  semValores(pelaMetade.diagnostico);
 });
 
 test("nenhum caminho da leitura pede algo com “pdf”, mesmo com o botão na tela de resultado", async () => {

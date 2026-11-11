@@ -762,6 +762,23 @@ CREATE TABLE IF NOT EXISTS public.portal_tickets (
   CONSTRAINT portal_tickets_ponto_semana UNIQUE (motorista_id, codigo, semana_inicio)
 );
 
+-- SALDO DE GANHOS, porcentagem POR PONTO (11/11/2026): cada ponto do motorista
+-- tem a sua porcentagem, e o saldo soma a comissão de todos. `por_ponto_em`
+-- vazio = cadastro feito antes disto, com uma porcentagem só: na primeira
+-- olhada, o app copia essa porcentagem para cada ponto que o motorista tem
+-- (uma vez só). `portal_ticket_config.porcentagem_centesimos` passa a guardar
+-- apenas a última porcentagem salva.
+CREATE TABLE IF NOT EXISTS public.portal_ticket_porcentagens (
+  id SERIAL PRIMARY KEY,
+  motorista_id INTEGER NOT NULL,
+  codigo TEXT NOT NULL,
+  porcentagem_centesimos INTEGER NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT portal_ticket_porcentagens_ponto UNIQUE (motorista_id, codigo)
+);
+ALTER TABLE public.portal_ticket_config
+  ADD COLUMN IF NOT EXISTS por_ponto_em TIMESTAMPTZ;
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend
@@ -818,6 +835,7 @@ ALTER TABLE public.portal_situacoes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_fila ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_ticket_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.portal_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.portal_ticket_porcentagens ENABLE ROW LEVEL SECURITY;
 
 -- Sem policy, RLS já bloqueia; o REVOKE é a segunda tranca para o PostgREST.
 -- Os papéis anon/authenticated só existem no Supabase — num PostgreSQL comum
@@ -840,7 +858,7 @@ END $$;
 
 COMMIT;
 
--- Conferência rápida: todas as tabelas do app devem aparecer abaixo (52).
+-- Conferência rápida: todas as tabelas do app devem aparecer abaixo (53).
 SELECT tablename
 FROM pg_tables
 WHERE schemaname = 'public'

@@ -1,6 +1,6 @@
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { comBanco, db, temBancoConfigurado } from "@/db";
-import { pontos, portalMotoristaAcessos, portalTicketConfig, portalTickets } from "@/db/schema";
+import { pontos, portalMotoristaAcessos, portalTicketConfig, portalTicketPorcentagens, portalTickets } from "@/db/schema";
 import { calcular, type Carga } from "@/lib/frete";
 import { acessoPortalDoMotorista, garantirTabelasPortal, lerTicketsNaSessaoGuardada, type TicketsLidosNoPortal } from "@/lib/portal-copadubo";
 import { normalizarCodigoPortal } from "@/lib/portal-copadubo-parse";
@@ -12,19 +12,23 @@ export type { ContaDoTicket, PontoDoResumo, ResumoDoTicket, ViagemGuardada };
 /**
  * SALDO DE GANHOS — as viagens da semana e a comissão do motorista.
  *
- * O motorista cadastra a porcentagem dele no card “Saldo de Ganhos”. A partir
- * daí, de 5 em 5 minutos, na carona da olhada do Status (a conta dele acabou de
- * abrir), a mesma sessão abre a aba “Ticket” do Portal do Motorista, escolhe
- * cada ponto que ele cadastrou no app e a semana de hoje, e toca em “Gerar”.
- * As viagens que a tela mostra ficam guardadas AQUI, por ponto e por semana.
+ * O motorista cadastra a porcentagem de CADA ponto dele no card “Saldo de
+ * Ganhos”. A partir daí, de 5 em 5 minutos, na carona da olhada do Status (a
+ * conta dele acabou de abrir), a mesma sessão abre a aba “Ticket” do Portal do
+ * Motorista, escolhe cada ponto que ele cadastrou no app — todos — e a semana
+ * de hoje, e toca em “Gerar”. As viagens que a tela mostra ficam guardadas
+ * AQUI, por ponto e por semana.
  *
  * A conta é a MESMA da calculadora de frete (`frete.ts`, card “Cálculo de
  * Frete”): frete da viagem = Quant (t) × Valor (R$/t); bruto = soma das
- * viagens; comissão = bruto × porcentagem. O card mostra só três números:
- * viagens, valor bruto e comissão.
+ * viagens; comissão = bruto × porcentagem. Cada ponto tem a SUA porcentagem; o
+ * saldo é um só: soma as viagens, o bruto e a comissão de todos os pontos. O
+ * card mostra só três números: viagens, valor bruto e comissão.
  *
  * Regras:
  *   - só é lido o Ticket de quem LIGOU a consulta (cadastrou a porcentagem);
+ *   - enquanto algum ponto do app está sem porcentagem, a comissão do saldo
+ *     não é somada (dinheiro pela metade não aparece); viagens e bruto, sim;
  *   - a leitura nunca faz login: usa a sessão que a olhada do Status deixou
  *     aberta. Sem sessão, espera a próxima olhada;
  *   - leitura que não veio inteira não muda nada: a última leitura boa continua
@@ -55,8 +59,12 @@ export function intervaloTicketMs(): number {
   return Math.round(minutos * 60_000);
 }
 
-/** Pontos consultados por leitura (cada ponto é um “Gerar”). Com mais pontos, eles se revezam. */
-export const MAX_PONTOS_POR_LEITURA = 3;
+/**
+ * Teto de pontos consultados numa leitura (cada ponto é um “Gerar”). Toda
+ * leitura consulta TODOS os pontos que o motorista tem no app; só quem passa
+ * deste teto tem os pontos se revezando.
+ */
+export const MAX_PONTOS_POR_LEITURA = 10;
 /** Entre um “Atualizar” e outro do mesmo motorista. */
 export const ESPERA_ENTRE_ATUALIZAR_MS = 20_000;
 /** Depois de uma tentativa que não leu nada, a próxima pode vir mais cedo. */
@@ -87,7 +95,7 @@ export function porcentagemEmCentesimos(valor: unknown): number | null {
  * pôr: cada viagem vira uma “carga” (Quant × Valor) e a porcentagem é aplicada
  * sobre a soma.
  */
-export function contaDasViagens(viagens: Pick<ViagemGuardada, "quant" | "valor">[], porcentagem: number): ContaDoTicket {
+export function contaDasViagens(viagens: Pick<ViagemGuardada, "quant" | "valor">[], porcentagem: number): ContaDoTicket & { comissao: number } {
   const cargas: Carga[] = viagens.map((v, i) => ({
     id: `v-${i}`,
     quant: v.quant,
@@ -98,6 +106,56 @@ export function contaDasViagens(viagens: Pick<ViagemGuardada, "quant" | "valor">
   }));
   const c = calcular({ cargas, ponto: "" }, porcentagem);
   return { viagens: c.cargas.length, bruto: c.bruto, comissao: c.ganho, toneladas: c.toneladas };
+}
+
+const FORMATO_DOS_CENTAVOS = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false });
+
+/**
+ * O valor em centavos inteiros, arredondado EXATAMENTE como a tela escreve o
+ * dinheiro (`brl`, o mesmo arredondamento do `Intl.NumberFormat`). É o que
+ * garante que o saldo é a soma do que aparece em cada ponto, centavo por
+ * centavo.
+ */
+export function emCentavos(valor: number): number {
+  return Math.round(Number(FORMATO_DOS_CENTAVOS.format(Number.isFinite(valor) ? valor : 0)) * 100);
+}
+
+/**
+ * A conta de UM ponto (um ticket), com a porcentagem DELE: é a conta da
+ * calculadora, com o bruto e a comissão já em centavos fechados — os mesmos
+ * que a tela escreve. Sem porcentagem: viagens e bruto, e a comissão fica em
+ * branco (null), nunca zero.
+ */
+export function contaDoPonto(viagens: Pick<ViagemGuardada, "quant" | "valor">[], porcentagem: number | null): ContaDoTicket {
+  const c = contaDasViagens(viagens, porcentagem ?? 0);
+  return {
+    viagens: c.viagens,
+    bruto: emCentavos(c.bruto) / 100,
+    comissao: porcentagem === null ? null : emCentavos(c.comissao) / 100,
+    toneladas: c.toneladas,
+  };
+}
+
+/**
+ * O SALDO: um total só, de todos os pontos. É a SOMA do que cada ponto lido
+ * mostra — viagens, toneladas, valor bruto e comissão (a de cada ponto com a
+ * porcentagem dele) —, somada em centavos: o total sempre fecha com as linhas
+ * dos pontos.
+ *
+ * `pontosDoApp` são TODOS os pontos do app, lidos ou não (`conta` null = sem
+ * leitura nesta semana). Se algum está sem porcentagem, a comissão do saldo
+ * não é somada (null): um total de dinheiro que deixa um ponto de fora não
+ * aparece.
+ */
+export function saldoDosPontos(pontosDoApp: { conta: ContaDoTicket | null; porcentagem: number | null }[]): ContaDoTicket {
+  const contas = pontosDoApp.flatMap((p) => (p.conta ? [p.conta] : []));
+  const todosComPorcentagem = pontosDoApp.every((p) => p.porcentagem !== null) && contas.every((c) => c.comissao !== null);
+  return {
+    viagens: contas.reduce((s, c) => s + c.viagens, 0),
+    bruto: contas.reduce((s, c) => s + emCentavos(c.bruto), 0) / 100,
+    comissao: todosComPorcentagem ? contas.reduce((s, c) => s + emCentavos(c.comissao ?? 0), 0) / 100 : null,
+    toneladas: contas.reduce((s, c) => s + c.toneladas, 0),
+  };
 }
 
 /** Confere o que saiu do banco: um valor estragado nunca vira viagem. */
@@ -119,8 +177,8 @@ export function viagensValidas(v: unknown): ViagemGuardada[] | null {
 
 export type ConfigDoTicket = {
   motoristaId: number;
-  /** 18.5 = 18,5 %. */
-  porcentagem: number;
+  /** A porcentagem de cada ponto, pelo código (18.5 = 18,5 %). Ponto que não está aqui ainda não tem a dele. */
+  porcentagens: Record<string, number>;
   semana: { inicio: string; fim: string } | null;
   tentativaEm: Date | null;
   erro: string | null;
@@ -131,15 +189,57 @@ const linhasDe = (texto: string | null) => (texto ? texto.split("\n").filter(Boo
 const semanaValida = (inicio: string | null, fim: string | null) =>
   inicio && fim && /^\d{4}-\d{2}-\d{2}$/.test(inicio) && /^\d{4}-\d{2}-\d{2}$/.test(fim) && inicio <= fim ? { inicio, fim } : null;
 
-/** A consulta deste motorista (null = ele não ligou). */
-export async function configDoTicket(motoristaId: number): Promise<ConfigDoTicket | null> {
+/**
+ * Cadastro feito na versão anterior (UMA porcentagem para tudo): ela vira a
+ * porcentagem de cada ponto que o motorista tem no app agora — uma vez só. É
+ * um comando único: ou marca o cadastro como “por ponto” e copia, ou não faz
+ * nada (duas funções juntas não copiam duas vezes). Ponto cadastrado depois
+ * disto nasce sem porcentagem: é o motorista quem põe a de cada um.
+ */
+async function converterCadastroAntigo(motoristaId: number, codigos: string[]) {
+  if (!codigos.length) return;
+  const lista = sql.join(
+    codigos.map((c) => sql`${c}`),
+    sql`, `,
+  );
+  await comBanco(() =>
+    db.execute(sql`
+      WITH marcado AS (
+        UPDATE portal_ticket_config SET por_ponto_em = now()
+        WHERE motorista_id = ${motoristaId} AND por_ponto_em IS NULL
+        RETURNING motorista_id, porcentagem_centesimos
+      )
+      INSERT INTO portal_ticket_porcentagens (motorista_id, codigo, porcentagem_centesimos)
+      SELECT m.motorista_id, c.codigo, m.porcentagem_centesimos
+      FROM marcado m CROSS JOIN unnest(ARRAY[${lista}]::text[]) AS c(codigo)
+      WHERE m.porcentagem_centesimos BETWEEN 1 AND 10000
+      ON CONFLICT (motorista_id, codigo) DO NOTHING
+    `),
+  );
+}
+
+/**
+ * A consulta deste motorista (null = ele não ligou). `codigos`: os pontos dele
+ * no app — é com eles que um cadastro da versão anterior é convertido.
+ */
+export async function configDoTicket(motoristaId: number, codigos?: string[]): Promise<ConfigDoTicket | null> {
   if (!temBancoConfigurado) return null;
   await garantirTabelasPortal();
   const [linha] = await comBanco(() => db.select().from(portalTicketConfig).where(eq(portalTicketConfig.motoristaId, motoristaId)).limit(1));
   if (!linha) return null;
+  if (!linha.porPontoEm) await converterCadastroAntigo(motoristaId, codigos ?? (await codigosDoMotorista(motoristaId)));
+  const porPonto = await comBanco(() =>
+    db
+      .select({ codigo: portalTicketPorcentagens.codigo, centesimos: portalTicketPorcentagens.porcentagemCentesimos })
+      .from(portalTicketPorcentagens)
+      .where(eq(portalTicketPorcentagens.motoristaId, motoristaId)),
+  );
+  const porcentagens: Record<string, number> = {};
+  // Um valor estragado no banco nunca vira porcentagem: o ponto fica “sem porcentagem”.
+  for (const l of porPonto) if (Number.isInteger(l.centesimos) && l.centesimos >= 1 && l.centesimos <= 10_000) porcentagens[l.codigo] = l.centesimos / 100;
   return {
     motoristaId,
-    porcentagem: linha.porcentagemCentesimos / 100,
+    porcentagens,
     semana: semanaValida(linha.semanaInicio, linha.semanaFim),
     tentativaEm: linha.tentativaEm,
     erro: linha.erro,
@@ -148,27 +248,86 @@ export async function configDoTicket(motoristaId: number): Promise<ConfigDoTicke
 }
 
 /**
- * Cadastra (ou troca) a porcentagem — é o que LIGA a consulta. A próxima
- * leitura fica liberada para já.
+ * O que o motorista mandou salvar: `{ porcentagens: { A032: "18", A063: "20,5" } }`
+ * — a porcentagem de cada ponto, pelo código. O formato da versão anterior,
+ * `{ porcentagem: "18" }`, só vale para quem tem UM ponto no app (é a dele).
+ * Ponto que não é do motorista, ou porcentagem que não é um número de 0 a 100:
+ * nada é salvo, e a resposta diz qual.
  */
-export async function salvarPorcentagemDoTicket(motoristaId: number, centesimos: number) {
-  await garantirTabelasPortal();
-  await comBanco(() =>
-    db
-      .insert(portalTicketConfig)
-      .values({ motoristaId, porcentagemCentesimos: centesimos, proximaLeituraEm: null })
-      .onConflictDoUpdate({
-        target: portalTicketConfig.motoristaId,
-        set: { porcentagemCentesimos: centesimos, atualizadoEm: new Date() },
-      }),
-  );
+export function porcentagensDoPedido(corpo: unknown, codigos: string[]): { porPonto: Record<string, number> } | { erro: string } {
+  if (!codigos.length) return { erro: "Cadastre o seu ponto no app primeiro: a porcentagem é de cada ponto." };
+  const c = corpo && typeof corpo === "object" && !Array.isArray(corpo) ? (corpo as Record<string, unknown>) : {};
+  const mapa = c.porcentagens;
+  if (mapa && typeof mapa === "object" && !Array.isArray(mapa)) {
+    const porPonto: Record<string, number> = {};
+    for (const [chave, valor] of Object.entries(mapa as Record<string, unknown>)) {
+      const codigo = normalizarCodigoPortal(chave);
+      if (!codigos.includes(codigo)) return { erro: "Esse ponto não está cadastrado no app. Atualize a página e tente de novo." };
+      const centesimos = porcentagemEmCentesimos(valor);
+      if (centesimos === null) return { erro: `Digite a porcentagem do ${codigo} (por exemplo 18 ou 18,5).` };
+      porPonto[codigo] = centesimos;
+    }
+    return Object.keys(porPonto).length ? { porPonto } : { erro: "Digite a porcentagem do ponto (por exemplo 18 ou 18,5)." };
+  }
+  if (c.porcentagem !== undefined) {
+    if (codigos.length > 1) return { erro: "Agora cada ponto tem a sua porcentagem. Atualize a página e cadastre a de cada um." };
+    const centesimos = porcentagemEmCentesimos(c.porcentagem);
+    return centesimos === null ? { erro: "Digite a sua porcentagem (por exemplo 18 ou 18,5)." } : { porPonto: { [codigos[0]]: centesimos } };
+  }
+  return { erro: "Digite a porcentagem do ponto (por exemplo 18 ou 18,5)." };
 }
 
-/** Desliga a consulta do motorista: a porcentagem e as viagens guardadas saem do banco. */
+/**
+ * Cadastra (ou troca) a porcentagem de um ou mais pontos (`{ A032: 1850 }`, em
+ * centésimos). A primeira porcentagem é o que LIGA a consulta, com a primeira
+ * leitura liberada para já. Os outros pontos não mudam. A coluna antiga
+ * `portal_ticket_config.porcentagem_centesimos` fica com a última salva (é o
+ * que a versão anterior do app usaria, se o deploy voltasse).
+ */
+export async function salvarPorcentagensDoTicket(motoristaId: number, porPonto: Record<string, number>) {
+  const entradas = Object.entries(porPonto);
+  if (!entradas.length) return;
+  await garantirTabelasPortal();
+  const ultima = entradas[entradas.length - 1][1];
+  // Liga a consulta, se ainda não estava ligada. Ligando agora, nenhuma porcentagem que tenha sobrado de
+  // uma vez anterior vale sem o motorista pôr de novo — num comando só (dois pedidos juntos não se apagam).
+  const criado = await comBanco(() =>
+    db.execute(sql`
+      WITH criado AS (
+        INSERT INTO portal_ticket_config (motorista_id, porcentagem_centesimos, por_ponto_em)
+        VALUES (${motoristaId}, ${ultima}, now())
+        ON CONFLICT (motorista_id) DO NOTHING
+        RETURNING motorista_id
+      ), limpo AS (
+        DELETE FROM portal_ticket_porcentagens WHERE motorista_id IN (SELECT motorista_id FROM criado)
+      )
+      SELECT motorista_id FROM criado
+    `),
+  );
+  if (!criado.rows.length) {
+    // Cadastro da versão anterior: a porcentagem única dele vai para os pontos ANTES — a de agora vale por cima.
+    await converterCadastroAntigo(motoristaId, await codigosDoMotorista(motoristaId));
+  }
+  for (const [codigo, centesimos] of entradas) {
+    await comBanco(() =>
+      db
+        .insert(portalTicketPorcentagens)
+        .values({ motoristaId, codigo, porcentagemCentesimos: centesimos })
+        .onConflictDoUpdate({
+          target: [portalTicketPorcentagens.motoristaId, portalTicketPorcentagens.codigo],
+          set: { porcentagemCentesimos: centesimos, atualizadoEm: new Date() },
+        }),
+    );
+  }
+  await comBanco(() => db.update(portalTicketConfig).set({ porcentagemCentesimos: ultima, atualizadoEm: new Date() }).where(eq(portalTicketConfig.motoristaId, motoristaId)));
+}
+
+/** Desliga a consulta do motorista: as porcentagens e as viagens guardadas saem do banco. */
 export async function desligarTicket(motoristaId: number) {
   if (!temBancoConfigurado) return false;
   await garantirTabelasPortal();
   await comBanco(() => db.delete(portalTickets).where(eq(portalTickets.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalTicketPorcentagens).where(eq(portalTicketPorcentagens.motoristaId, motoristaId)));
   const apagados = await comBanco(() =>
     db.delete(portalTicketConfig).where(eq(portalTicketConfig.motoristaId, motoristaId)).returning({ id: portalTicketConfig.motoristaId }),
   );
@@ -209,10 +368,10 @@ export async function reservarLeituraDoTicket(motoristaId: number, opcoes: { esp
 }
 
 /**
- * Quais pontos consultar nesta leitura: até `MAX_PONTOS_POR_LEITURA`. Primeiro
- * os que nunca foram tentados, depois os de tentativa mais antiga (rodízio);
- * no empate, quem ficou sem leitura na última tentativa vem antes — um ponto
- * que não coube no tempo de uma visita abre a próxima.
+ * Quais pontos consultar nesta leitura, e em que ordem: todos os do app, até
+ * `MAX_PONTOS_POR_LEITURA`. Primeiro os que nunca foram tentados, depois os de
+ * tentativa mais antiga; no empate, quem ficou sem leitura na última tentativa
+ * vem antes — um ponto que não coube no tempo de uma visita abre a próxima.
  */
 export async function pontosDaVez(motoristaId: number, codigos: string[], maximo = MAX_PONTOS_POR_LEITURA): Promise<string[]> {
   const linhas = await comBanco(() =>
@@ -316,18 +475,24 @@ export type LeituraDoTicket = {
  */
 export async function atualizarTicketsDoMotorista(
   motoristaId: number,
-  opcoes: { buscar?: typeof fetch; forcar?: boolean; agora?: Date; jaNaFila?: boolean } = {},
+  opcoes: { buscar?: typeof fetch; forcar?: boolean; agora?: Date; jaNaFila?: boolean; /** Hora (em ms) em que a leitura tem de ter acabado. */ terminarAte?: number } = {},
 ): Promise<LeituraDoTicket> {
   const nada = (motivo: LeituraDoTicket["motivo"]): LeituraDoTicket => ({ tentou: false, motivo, lidos: [], falhas: {}, diagnostico: [] });
   if (!temBancoConfigurado || !ticketLigado()) return nada("desligado");
-  const config = await configDoTicket(motoristaId);
-  if (!config) return nada("sem_porcentagem");
   const codigos = await codigosDoMotorista(motoristaId);
+  const config = await configDoTicket(motoristaId, codigos);
+  if (!config) return nada("sem_porcentagem");
   if (!codigos.length) return nada("sem_pontos");
   if (!(await reservarLeituraDoTicket(motoristaId, { forcar: opcoes.forcar }))) return nada("nao_e_a_hora");
 
   const daVez = await pontosDaVez(motoristaId, codigos);
-  const lida = await lerTicketsNaSessaoGuardada(motoristaId, { buscar: opcoes.buscar, codigos: daVez, agora: opcoes.agora, jaNaFila: opcoes.jaNaFila });
+  const lida = await lerTicketsNaSessaoGuardada(motoristaId, {
+    buscar: opcoes.buscar,
+    codigos: daVez,
+    agora: opcoes.agora,
+    terminarAte: opcoes.terminarAte,
+    jaNaFila: opcoes.jaNaFila,
+  });
   if (!lida) {
     const motivo = "a conta não tem acesso ativo ao Portal do Motorista";
     await comBanco(() =>
@@ -350,9 +515,10 @@ export async function atualizarTicketsDoMotorista(
  * conta e é quem avisa a saída): o Ticket nunca atrasa esse aviso.
  *
  * `comecarAte`: hora (em ms) depois da qual nenhuma leitura nova começa — o
- * que sobrar fica para a próxima rodada (nada fica reservado).
+ * que sobrar fica para a próxima rodada (nada fica reservado). `terminarAte`:
+ * hora em que a leitura em andamento tem de ter acabado (a função tem prazo).
  */
-export async function lerTicketsDevidos(opcoes: { buscar?: typeof fetch; comecarAte: number; limite?: number; agora?: Date }) {
+export async function lerTicketsDevidos(opcoes: { buscar?: typeof fetch; comecarAte: number; terminarAte?: number; limite?: number; agora?: Date }) {
   const resumo = { motoristas: 0, pontos: 0, falhas: 0 };
   if (!temBancoConfigurado || !ticketLigado() || Date.now() >= opcoes.comecarAte) return resumo;
   await garantirTabelasPortal();
@@ -371,7 +537,7 @@ export async function lerTicketsDevidos(opcoes: { buscar?: typeof fetch; comecar
   for (const { motoristaId } of devidos) {
     if (Date.now() >= opcoes.comecarAte) break;
     try {
-      const r = await atualizarTicketsDoMotorista(motoristaId, { buscar: opcoes.buscar, agora: opcoes.agora });
+      const r = await atualizarTicketsDoMotorista(motoristaId, { buscar: opcoes.buscar, agora: opcoes.agora, terminarAte: opcoes.terminarAte });
       if (!r.tentou) continue;
       resumo.motoristas += 1;
       resumo.pontos += r.lidos.length;
@@ -406,6 +572,7 @@ export async function resumoDoTicket(motoristaId: number, agora = Date.now()): P
     disponivel: temBancoConfigurado && ticketLigado(),
     ligado: false,
     porcentagem: null,
+    semPorcentagem: [],
     temAcesso: false,
     totalPontos: 0,
     semana: null,
@@ -421,8 +588,16 @@ export async function resumoDoTicket(motoristaId: number, agora = Date.now()): P
   };
   if (!temBancoConfigurado) return vazio;
   await garantirTabelasPortal();
-  const [config, acesso, codigos] = await Promise.all([configDoTicket(motoristaId), acessoPortalDoMotorista(motoristaId), codigosDoMotorista(motoristaId)]);
-  const base = { ...vazio, temAcesso: Boolean(acesso && acesso.ativo === 1), totalPontos: codigos.length };
+  const [acesso, codigos] = await Promise.all([acessoPortalDoMotorista(motoristaId), codigosDoMotorista(motoristaId)]);
+  const config = await configDoTicket(motoristaId, codigos);
+  const base: ResumoDoTicket = {
+    ...vazio,
+    temAcesso: Boolean(acesso && acesso.ativo === 1),
+    totalPontos: codigos.length,
+    // Antes de ligar, a tela já precisa saber de quais pontos pedir a porcentagem.
+    pontos: codigos.map((codigo) => ({ codigo, porcentagem: null, viagens: null, conta: null, lidoEm: null, tentativaEm: null, erro: null })),
+    semPorcentagem: [...codigos],
+  };
   if (!config) return base;
 
   const semana = config.semana;
@@ -432,10 +607,12 @@ export async function resumoDoTicket(motoristaId: number, agora = Date.now()): P
   const pontosDoResumo: PontoDoResumo[] = codigos.map((codigo) => {
     const linha = linhas.find((l) => l.codigo === codigo);
     const viagens = linha?.lidoEm ? viagensValidas(linha.lancamentos) : null;
+    const porcentagem = config.porcentagens[codigo] ?? null;
     return {
       codigo,
+      porcentagem,
       viagens,
-      conta: viagens ? contaDasViagens(viagens, config.porcentagem) : null,
+      conta: viagens ? contaDoPonto(viagens, porcentagem) : null,
       lidoEm: viagens && linha?.lidoEm ? linha.lidoEm.toISOString() : null,
       tentativaEm: linha?.tentativaEm ? linha.tentativaEm.toISOString() : null,
       erro:
@@ -444,15 +621,18 @@ export async function resumoDoTicket(motoristaId: number, agora = Date.now()): P
     };
   });
   const lidos = pontosDoResumo.filter((p) => p.viagens);
-  const todas = lidos.flatMap((p) => p.viagens ?? []);
   const maisAntiga = lidos.map((p) => p.lidoEm as string).sort()[0] ?? null;
+  const semPorcentagem = pontosDoResumo.filter((p) => p.porcentagem === null).map((p) => p.codigo);
+  const distintas = [...new Set(pontosDoResumo.map((p) => p.porcentagem))];
   return {
     ...base,
     ligado: true,
-    porcentagem: config.porcentagem,
+    // Só quando todos os pontos têm a mesma: a tela escreve “Comissão · 18%”.
+    porcentagem: !semPorcentagem.length && distintas.length === 1 ? distintas[0] : null,
+    semPorcentagem,
     semana,
-    // Uma conta só, sobre todas as viagens (como a calculadora faz com um ticket).
-    conta: todas.length ? contaDasViagens(todas, config.porcentagem) : CONTA_VAZIA,
+    // Um saldo só: todos os pontos somados, cada um com a porcentagem dele.
+    conta: saldoDosPontos(pontosDoResumo),
     pontos: pontosDoResumo,
     completo: codigos.length > 0 && lidos.length === codigos.length,
     lidoEm: maisAntiga,

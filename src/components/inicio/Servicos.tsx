@@ -71,8 +71,9 @@ const CORES: Record<CorServico, { cartao: string; icone: string }> = {
 
 /**
  * Card “Saldo de Ganhos” com leitura: só três números — viagens, valor bruto
- * e comissão da semana — e, quando a leitura é antiga ou parcial, uma linha
- * miúda dizendo isso.
+ * e comissão da semana, somando todos os pontos do motorista — e, quando a
+ * leitura é antiga ou parcial, uma linha miúda dizendo isso. Enquanto falta a
+ * porcentagem de algum ponto, a comissão dá lugar a “Falta %” (em âmbar).
  */
 function NumerosDoTicket({ c }: { c: Extract<CartaoDoTicket, { modo: "numeros" }> }) {
   // Dinheiro nunca é cortado com “…”: quando o valor não cabe ao lado do
@@ -92,9 +93,9 @@ function NumerosDoTicket({ c }: { c: Extract<CartaoDoTicket, { modo: "numeros" }
       </span>
       <span className={linha}>
         <span className={rotulo}>Comissão</span>
-        <span className={`${valor} text-ouro`}>{c.comissao}</span>
+        <span className={`${valor} ${c.faltaPorcentagem ? "text-ambar" : "text-ouro"}`}>{c.comissao}</span>
       </span>
-      {c.nota && <span className={`block pt-0.5 text-[11px] leading-tight ${c.velho ? "text-ambar" : "text-gelo/65"}`}>{c.nota}</span>}
+      {c.nota && <span className={`block pt-0.5 text-[11px] leading-tight ${c.velho || c.faltaPorcentagem ? "text-ambar" : "text-gelo/65"}`}>{c.nota}</span>}
     </span>
   );
 }
