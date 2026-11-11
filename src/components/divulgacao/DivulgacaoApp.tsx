@@ -25,6 +25,7 @@ import {
   Signal,
   Smartphone,
   Truck,
+  Wallet,
   Wrench,
 } from "lucide-react";
 import {
@@ -155,6 +156,7 @@ const ICONES_BENEFICIO = [
   Phone,
   MessagesSquare,
   Ship,
+  Wallet,
 ];
 
 /* ------------------------------------------------------------- página */
