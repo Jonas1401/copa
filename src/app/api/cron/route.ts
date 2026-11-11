@@ -4,7 +4,7 @@ import { garantirAdminDefault } from "@/lib/admin/auth";
 import { enviarTestesDoCiclo } from "@/lib/teste-fechado";
 import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
 import { limparMotoristasInativos } from "@/lib/motorista-inatividade";
-import { monitorarTodos } from "@/lib/portal-monitor";
+import { monitorarTickets, monitorarTodos } from "@/lib/portal-monitor";
 import { fonteDaFila } from "@/lib/portal-fila";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,7 @@ export const maxDuration = 60;
  * Nada muda no visual. O Service Worker existente recebe os avisos com o app fechado.
  */
 export async function GET(req: Request) {
+  const inicio = Date.now();
   const segredos = [process.env.CRON_SECRET?.trim(), process.env.SUPABASE_CRON_SECRET?.trim()]
     .filter((s): s is string => Boolean(s));
   if (segredos.length) {
@@ -41,14 +42,20 @@ export async function GET(req: Request) {
   // Na mesma rodada, uma das contas abre a aba “Fila” (a fila geral do app).
   // Um portal fora do ar nunca impede os navios.
   const tarefaPortal = monitorarTodos().catch(() => null);
+  // Consulta de Ponto: depois da rodada do Status (nunca antes, nunca junto),
+  // a aba “Ticket” de quem cadastrou a porcentagem e está com a leitura vencida
+  // (5 em 5 min por motorista) — só enquanto sobra tempo nesta função.
+  const tarefaTickets = tarefaPortal.then(() => monitorarTickets(inicio)).catch(() => null);
   if (!(await temPontoCadastrado())) {
     const testes = await enviarTestesDoCiclo();
     const navios = await tarefaNavios;
     const portal = await tarefaPortal;
+    const tickets = await tarefaTickets;
     return NextResponse.json({
       rodou: false, motivo: "Nenhum ponto cadastrado — monitoramento da fila em repouso.",
       ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
       ...(portal?.motoristas ? { portal } : {}),
+      ...(tickets?.motoristas ? { tickets } : {}),
       ...(inativos.excluidos ? { inativos } : {}),
     });
   }
@@ -75,6 +82,7 @@ export async function GET(req: Request) {
   }
   const navios = await tarefaNavios;
   const portal = await tarefaPortal;
+  const tickets = await tarefaTickets;
   return NextResponse.json({
     rodou: Boolean(leitura),
     ...(leitura ? {
@@ -83,6 +91,7 @@ export async function GET(req: Request) {
     quando: new Date().toISOString(),
     ...(testes.total ? { testes } : {}), ...(navios ? { navios } : {}),
     ...(portal?.motoristas ? { portal } : {}),
+    ...(tickets?.motoristas ? { tickets } : {}),
     ...(inativos.excluidos ? { inativos } : {}),
   });
 }

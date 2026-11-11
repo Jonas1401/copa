@@ -6,6 +6,7 @@ const ler = (p: string) => readFileSync(p, "utf8");
 const TELAS = [
   "src/components/MonitorApp.tsx",
   "src/components/frete/FreteApp.tsx",
+  "src/components/consulta/ConsultaPontoApp.tsx",
   "src/components/motoristas/BoasVindas.tsx",
   "src/components/divulgacao/DivulgacaoApp.tsx",
   "src/app/contatos/page.tsx",
@@ -104,6 +105,7 @@ test("o app usa a largura do aparelho e não uma coluna fixa de 360 px", () => {
     "src/components/MonitorApp.tsx",
     "src/components/inicio/NavInferior.tsx",
     "src/components/frete/FreteApp.tsx",
+    "src/components/consulta/ConsultaPontoApp.tsx",
     "src/components/tempo/TempoApp.tsx",
     "src/app/contatos/page.tsx",
     "src/components/motoristas/BoasVindas.tsx",

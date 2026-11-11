@@ -46,11 +46,14 @@ export const SERVICOS: Servico[] = [
   {
     id: "consulta-ponto",
     titulo: "Consulta de Ponto",
-    subtitulo: "Tela de caminhões ativos",
+    // Sem leitura, o card mostra este texto; com leitura, três números:
+    // viagens, valor bruto e comissão da semana (ver `ticket-card.ts`).
+    subtitulo: "Viagens da semana",
     cor: "roxo",
     icone: "documento",
-    // Mesmo quadro que o monitor varre a cada 5 segundos.
-    href: "https://intranet.copadubo.com.br/ponto/",
+    // As viagens da semana, lidas na aba “Ticket” do Portal do Motorista. (O
+    // quadro público para onde este card apontava foi desligado em 10/11/2026.)
+    href: "/consulta-ponto",
   },
   {
     id: "frete",

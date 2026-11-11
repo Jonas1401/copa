@@ -1,7 +1,18 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { comBanco, temBancoConfigurado } from "@/db";
 import { db } from "@/db";
-import { motoristas, pontos, portalEventos, portalFila, portalLeituras, portalMotoristaAcessos, portalSaidasPendentes, portalSituacoes } from "@/db/schema";
+import {
+  motoristas,
+  pontos,
+  portalEventos,
+  portalFila,
+  portalLeituras,
+  portalMotoristaAcessos,
+  portalSaidasPendentes,
+  portalSituacoes,
+  portalTicketConfig,
+  portalTickets,
+} from "@/db/schema";
 import { cifrarParaColuna, decifrarDeColuna } from "@/lib/admin/segredos";
 import { enviarPush } from "@/lib/push";
 import { SessaoPortal, type PedidoPortal, type RespostaPortal } from "@/lib/portal-sessao";
@@ -45,6 +56,18 @@ import {
   type LivroDaFila,
   type LivroLido,
 } from "@/lib/portal-fila-parse";
+import {
+  diaMes,
+  ehAbaDoTicket,
+  extrairFormularioDeTicket,
+  hojeEmBrasilia,
+  interpretarTickets,
+  juntarLancamentos,
+  montarPedidoDeTicket,
+  semanaDeHoje,
+  type FormularioDeTicket,
+  type LancamentoDoTicket,
+} from "@/lib/portal-ticket-parse";
 
 /**
  * Monitoramento do PORTAL DO MOTORISTA da Copadubo (`portal.copadubo.com.br`).
@@ -70,6 +93,9 @@ import {
  *     única coisa que ele ENVIA é a escolha do ponto em “Trocar Ponto” (a lista
  *     de pontos da conta + “Confirmar”): o portal mostra o Status de um ponto
  *     por vez, e só é escolhido um ponto que o motorista cadastrou no app;
+ *     e, para quem ligou a “Consulta de Ponto”, a consulta da aba “Ticket” (a
+ *     lista de pontos + a lista de semanas + “Gerar”), que só mostra as viagens
+ *     — o “Gerar PDF” nunca é aberto;
  *   - o conteúdo lido é do PRÓPRIO motorista e só ele (e o administrador,
  *     para diagnóstico) vê. A exceção é a aba “Fila” (a Tela de Ativos): é a
  *     fila geral, igual para todos, e alimenta o card, a posição e os avisos
@@ -404,6 +430,8 @@ export type SessaoGuardada = {
   statusUrl: string | null;
   /** Endereço da aba “Fila” (a Tela de Ativos), como o menu do portal informou. */
   filaUrl?: string | null;
+  /** Endereço da aba “Ticket” (a 2ª Via de Ticket), como o menu do portal informou. */
+  ticketUrl?: string | null;
   /** Momento (ms) dos últimos logins ENVIADOS (o último é a referência do freio). */
   logins: number[];
   /**
@@ -421,7 +449,15 @@ export const LOGINS_SEGUIDOS = 2;
 /** Depois deles, um login automático a cada 10 min (uma ficha do freio volta nesse tempo). */
 const INTERVALO_FREIO_LOGINS_MS = 10 * 60_000;
 
-export const sessaoVazia = (): SessaoGuardada => ({ cookies: {}, statusUrl: null, filaUrl: null, logins: [], falhouEm: null, fichas: LOGINS_SEGUIDOS });
+export const sessaoVazia = (): SessaoGuardada => ({
+  cookies: {},
+  statusUrl: null,
+  filaUrl: null,
+  ticketUrl: null,
+  logins: [],
+  falhouEm: null,
+  fichas: LOGINS_SEGUIDOS,
+});
 
 /** O link do menu é o da aba “Fila” (a Tela de Ativos). */
 export const ehAbaDaFila = (texto: string) => /^(filas?|ativos|tela de ativos)$/i.test(texto.trim());
@@ -863,6 +899,9 @@ async function visitarPortal(credenciais: CredenciaisPortal, opcoes: OpcoesVisit
     // fila vai direto a ela, sem um pedido a mais só para achar o endereço.
     const abaDaFila = abas.find((a) => ehAbaDaFila(a.texto));
     if (abaDaFila) guardada.filaUrl = abaDaFila.url;
+    // …e onde fica a aba “Ticket” (só é aberta para quem ligou a Consulta de Ponto).
+    const abaDoTicket = abas.find((a) => ehAbaDoTicket(a.texto));
+    if (abaDoTicket) guardada.ticketUrl = abaDoTicket.url;
   }
 
   return { ok: telas.some((t) => t.totalLinhas > 0), loginRecusado: false, captcha: false, telas, diagnostico, falha: null, fezLogin };
@@ -1123,12 +1162,36 @@ export async function garantirTabelasPortal() {
         diagnostico TEXT,
         proxima_leitura_em TIMESTAMP WITH TIME ZONE
       );
+      CREATE TABLE IF NOT EXISTS portal_ticket_config (
+        motorista_id INTEGER PRIMARY KEY,
+        porcentagem_centesimos INTEGER NOT NULL,
+        semana_inicio TEXT,
+        semana_fim TEXT,
+        tentativa_em TIMESTAMP WITH TIME ZONE,
+        erro TEXT,
+        diagnostico TEXT,
+        proxima_leitura_em TIMESTAMP WITH TIME ZONE,
+        criado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        atualizado_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS portal_tickets (
+        id SERIAL PRIMARY KEY,
+        motorista_id INTEGER NOT NULL,
+        codigo TEXT NOT NULL,
+        semana_inicio TEXT NOT NULL,
+        semana_fim TEXT NOT NULL,
+        lancamentos JSONB,
+        lido_em TIMESTAMP WITH TIME ZONE,
+        tentativa_em TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        erro TEXT,
+        CONSTRAINT portal_tickets_ponto_semana UNIQUE (motorista_id, codigo, semana_inicio)
+      );
       DO $$
       DECLARE t text;
       BEGIN
         -- Sem policy, o RLS fecha estas tabelas para a API pública do Supabase;
         -- o servidor (dono das tabelas) continua lendo e gravando normalmente.
-        FOREACH t IN ARRAY ARRAY['portal_motorista_acessos', 'portal_leituras', 'portal_eventos', 'portal_saidas_pendentes', 'portal_situacoes', 'portal_fila'] LOOP
+        FOREACH t IN ARRAY ARRAY['portal_motorista_acessos', 'portal_leituras', 'portal_eventos', 'portal_saidas_pendentes', 'portal_situacoes', 'portal_fila', 'portal_ticket_config', 'portal_tickets'] LOOP
           BEGIN
             EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
           EXCEPTION WHEN OTHERS THEN NULL;
@@ -1281,6 +1344,15 @@ export async function removerAcessoPortal(motoristaId: number) {
   await comBanco(() => db.delete(portalLeituras).where(eq(portalLeituras.motoristaId, motoristaId)));
   // Sem acesso, a situação lida no portal deixa de valer para os pontos dele.
   await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
+  // As viagens lidas na aba “Ticket” saem junto (a porcentagem que ele
+  // cadastrou fica: é uma preferência dele, não um dado do portal).
+  await comBanco(() => db.delete(portalTickets).where(eq(portalTickets.motoristaId, motoristaId)));
+  await comBanco(() =>
+    db
+      .update(portalTicketConfig)
+      .set({ semanaInicio: null, semanaFim: null, tentativaEm: null, erro: null, diagnostico: null, proximaLeituraEm: null })
+      .where(eq(portalTicketConfig.motoristaId, motoristaId)),
+  );
   await esquecerMotoristaNaFila(motoristaId);
   return apagados.length > 0;
 }
@@ -1305,6 +1377,8 @@ export async function apagarDadosPortalDoMotorista(motoristaId: number) {
   await comBanco(() => db.delete(portalLeituras).where(eq(portalLeituras.motoristaId, motoristaId)));
   await comBanco(() => db.delete(portalEventos).where(eq(portalEventos.motoristaId, motoristaId)));
   await comBanco(() => db.delete(portalSituacoes).where(eq(portalSituacoes.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalTickets).where(eq(portalTickets.motoristaId, motoristaId)));
+  await comBanco(() => db.delete(portalTicketConfig).where(eq(portalTicketConfig.motoristaId, motoristaId)));
   await esquecerMotoristaNaFila(motoristaId);
 }
 
@@ -1572,7 +1646,15 @@ export const MAX_LEITURAS_GUARDADAS = 300;
 async function abrirSessaoGuardada(cifrada: string | null): Promise<SessaoGuardada> {
   if (!cifrada) return sessaoVazia();
   try {
-    const bruto = JSON.parse(await decifrarDeColuna(cifrada)) as { c?: unknown; u?: unknown; a?: unknown; l?: unknown; f?: unknown; t?: unknown };
+    const bruto = JSON.parse(await decifrarDeColuna(cifrada)) as {
+      c?: unknown;
+      u?: unknown;
+      a?: unknown;
+      k?: unknown;
+      l?: unknown;
+      f?: unknown;
+      t?: unknown;
+    };
     const cookies: Record<string, string> = {};
     if (bruto.c && typeof bruto.c === "object") {
       for (const [nome, valor] of Object.entries(bruto.c as Record<string, unknown>)) {
@@ -1584,6 +1666,7 @@ async function abrirSessaoGuardada(cifrada: string | null): Promise<SessaoGuarda
       cookies,
       statusUrl: typeof bruto.u === "string" && bruto.u ? bruto.u : null,
       filaUrl: typeof bruto.a === "string" && bruto.a && bruto.a.length <= 500 ? bruto.a : null,
+      ticketUrl: typeof bruto.k === "string" && bruto.k && bruto.k.length <= 500 ? bruto.k : null,
       logins: Array.isArray(bruto.l)
         ? bruto.l.filter((t): t is number => typeof t === "number" && t <= agora && agora - t < 3_600_000)
         : [],
@@ -1607,7 +1690,15 @@ async function guardarSessao(motoristaId: number, sessao: SessaoGuardada, senhaC
   const cifrada = vazia
     ? null
     : await cifrarParaColuna(
-        JSON.stringify({ c: sessao.cookies, u: sessao.statusUrl, a: sessao.filaUrl ?? null, l: sessao.logins, f: sessao.falhouEm, t: sessao.fichas }),
+        JSON.stringify({
+          c: sessao.cookies,
+          u: sessao.statusUrl,
+          a: sessao.filaUrl ?? null,
+          k: sessao.ticketUrl ?? null,
+          l: sessao.logins,
+          f: sessao.falhouEm,
+          t: sessao.fichas,
+        }),
       );
   await comBanco(() =>
     db
@@ -1919,6 +2010,228 @@ export function lerFilaNaSessaoGuardada(
   },
 ): Promise<FilaLidaNoPortal | null> {
   const ler = () => comSessaoGuardada(motoristaId, (_credenciais, sessao) => lerFilaComSessao(sessao, opcoes));
+  return opcoes.jaNaFila ? ler() : umPorVez(motoristaId, ler);
+}
+
+/* ---------------------------------------------------------- aba “Ticket” */
+
+/** Prazo da leitura dos tickets (a tela do formulário e um “Gerar” por ponto). */
+const PRAZO_TICKET_MS = 12_000;
+/** Quantas vezes o MESMO código pode aparecer na lista de pontos da conta e ainda ser lido. */
+export const MAX_OPCOES_DO_MESMO_PONTO = 3;
+/** Endereço que nunca recebe a consulta: o do PDF (ou de imprimir / baixar). */
+const RE_DESTINO_DE_ARQUIVO = /pdf|download|baix|imprim|print|export|excel|xls|csv/i;
+
+export type TicketsLidosNoPortal = {
+  /** A aba “Ticket” abriu com a sessão guardada e trouxe o formulário da consulta. */
+  abriu: boolean;
+  /** A semana consultada: a de hoje, na lista do portal (null = não chegou a escolher). */
+  semana: { inicio: string; fim: string } | null;
+  /** Pontos que vieram com a tela de lançamentos inteira (as viagens da semana). */
+  pontos: Record<string, LancamentoDoTicket[]>;
+  /** Pontos pedidos que não vieram, com o motivo. */
+  falhas: Record<string, string>;
+  /** Nunca traz peso nem valor: os números do que a tela mostrou viram “9”. */
+  diagnostico: string[];
+  /** Pedidos feitos ao portal nesta leitura. */
+  pedidos: number;
+};
+
+/**
+ * A leitura da aba “Ticket” com uma sessão já aberta (a parte de rede, sem
+ * banco): abre a “2ª Via de Ticket”, escolhe o ponto e a semana de hoje e
+ * envia o “Gerar” — uma vez por ponto pedido. `sessao` é usada e atualizada:
+ * cookies e o endereço da aba.
+ *
+ * Só envia o formulário da consulta (as duas listas e o “Gerar”), e só para o
+ * endereço que ele mesmo informa, dentro do portal. O “Gerar PDF” nunca é
+ * aberto, e nenhum link da tela de resultado é seguido.
+ */
+export async function lerTicketsComSessao(
+  sessao: SessaoGuardada,
+  opcoes: { buscar?: typeof fetch; codigos: string[]; agora?: Date },
+): Promise<TicketsLidosNoPortal> {
+  const diagnostico: string[] = [];
+  const pontosLidos: TicketsLidosNoPortal["pontos"] = {};
+  const falhas: TicketsLidosNoPortal["falhas"] = {};
+  let semana: TicketsLidosNoPortal["semana"] = null;
+  let visita: SessaoPortal | null = null;
+  const fim = (abriu: boolean): TicketsLidosNoPortal => ({ abriu, semana, pontos: pontosLidos, falhas, diagnostico, pedidos: visita?.pedidos ?? 0 });
+  const semLeitura = (motivo: string, abriu = false): TicketsLidosNoPortal => {
+    for (const codigo of opcoes.codigos) if (!pontosLidos[codigo]) falhas[codigo] ??= motivo;
+    diagnostico.push(`Ticket: ${motivo}.`);
+    return fim(abriu);
+  };
+
+  if (!opcoes.codigos.length) return semLeitura("nenhum ponto para consultar");
+  if (!Object.keys(sessao.cookies).length) return semLeitura("sem sessão aberta no portal nesta conta");
+  const sessaoHttp = new SessaoPortal(opcoes.buscar ?? fetch, urlPortal(""), { cookies: sessao.cookies, prazoTotalMs: PRAZO_TICKET_MS });
+  visita = sessaoHttp;
+
+  // 1) O endereço da aba: o que o menu do portal informou. Sem ele, abre a
+  //    tela de Status (ou a área do motorista) só para ler o menu.
+  let url = sessao.ticketUrl && podeAbrir(sessaoHttp, sessao.ticketUrl) ? sessao.ticketUrl : null;
+  if (!url) {
+    const partida = sessao.statusUrl && sessaoHttp.mesmoSite(sessao.statusUrl) ? sessao.statusUrl : urlPortal(CAMINHO_AREA);
+    const r = await sessaoHttp.pedir(partida);
+    const problema = problemaDaResposta(r);
+    if (problema) return semLeitura(problema);
+    const abas = extrairLinksMenu(r.html, r.url);
+    const aba = abas.find((a) => ehAbaDoTicket(a.texto) && podeAbrir(sessaoHttp, a.url));
+    if (!aba) {
+      return semLeitura(
+        `não achei a aba “Ticket” no menu do portal (em ${caminhoDe(r.url)}: ${abas.length ? abas.map((a) => a.texto).join(", ") : "nenhuma aba reconhecida"})`,
+      );
+    }
+    url = aba.url;
+    sessao.ticketUrl = url;
+  }
+  const enderecoDaAba = url;
+
+  // 2) A tela “2ª Via de Ticket”: a lista de pontos, a de semanas e o “Gerar”.
+  const abrirFormulario = async (): Promise<{ form: FormularioDeTicket; pagina: string } | { problema: string }> => {
+    const tela = await sessaoHttp.pedir(enderecoDaAba);
+    const problema = problemaDaResposta(tela);
+    if (problema) {
+      // Endereço que deixou de existir: a próxima leitura procura a aba de novo.
+      if (tela.ok && tela.status === 404) sessao.ticketUrl = null;
+      return { problema };
+    }
+    const form = extrairFormularioDeTicket(tela.html);
+    if ("motivo" in form) {
+      for (const linha of form.estrutura) diagnostico.push(`Formulário em ${caminhoDe(tela.url)}: ${linha}.`);
+      if (pareceMontadaPorScript(tela.html)) diagnostico.push(`A tela do Ticket (${caminhoDe(tela.url)}) veio sem texto — parece ser montada por JavaScript.`);
+      return { problema: form.motivo };
+    }
+    return { form, pagina: tela.url };
+  };
+  let aberto = await abrirFormulario();
+  if ("problema" in aberto) return semLeitura(aberto.problema);
+  sessao.cookies = sessaoHttp.exportarCookies();
+
+  // 3) A semana: a de hoje, na lista do próprio portal.
+  const hoje = hojeEmBrasilia(opcoes.agora);
+  const escolhida = semanaDeHoje(aberto.form.semanas, hoje);
+  if (!escolhida) {
+    const datas = aberto.form.semanas.flatMap((s) => [s.inicio, s.fim]).sort();
+    return semLeitura(
+      `a lista de semanas do portal não tem a semana de hoje (${diaMes(hoje)}); tem ${aberto.form.semanas.length} semana(s), de ${diaMes(datas[0])} a ${diaMes(datas[datas.length - 1])}`,
+      true,
+    );
+  }
+  semana = { inicio: escolhida.inicio, fim: escolhida.fim };
+  const rotuloDaSemana = `${diaMes(escolhida.inicio)} a ${diaMes(escolhida.fim)}`;
+
+  // 4) Um “Gerar” por ponto (e por opção, quando a lista repete o código).
+  let enviados = 0;
+  for (const codigo of opcoes.codigos) {
+    const quantas = aberto.form.pontos.filter((p) => p.codigo === codigo).length;
+    if (!quantas) {
+      const lista = [...new Set(aberto.form.pontos.map((p) => p.codigo))];
+      falhas[codigo] = `a lista de pontos desta conta no portal não tem o ${codigo}`;
+      diagnostico.push(`Ticket do ${codigo}: ${falhas[codigo]} (tem: ${lista.slice(0, 12).join(", ")}${lista.length > 12 ? "…" : ""}).`);
+      continue;
+    }
+    if (quantas > MAX_OPCOES_DO_MESMO_PONTO) {
+      falhas[codigo] = `o ${codigo} aparece ${quantas} vezes na lista de pontos do portal (a leitura junta até ${MAX_OPCOES_DO_MESMO_PONTO})`;
+      diagnostico.push(`Ticket do ${codigo}: ${falhas[codigo]}.`);
+      continue;
+    }
+    const listas: LancamentoDoTicket[][] = [];
+    let falha: string | null = null;
+    for (let n = 0; n < quantas && !falha; n += 1) {
+      // Campo escondido pode ser um código de uso único: relê o formulário antes de cada envio.
+      if (enviados > 0 && aberto.form.ocultos.length) {
+        const deNovo = await abrirFormulario();
+        if ("problema" in deNovo) {
+          falha = deNovo.problema;
+          break;
+        }
+        aberto = deNovo;
+      }
+      const form: FormularioDeTicket = aberto.form;
+      // A n-ésima opção com este código e a mesma semana, no formulário de agora.
+      const opcao = form.pontos.filter((p) => p.codigo === codigo)[n];
+      const daSemana = form.semanas.find((s) => s.inicio === escolhida.inicio && s.fim === escolhida.fim);
+      if (!opcao || !daSemana) {
+        falha = "a lista de pontos ou de semanas mudou no meio da leitura";
+        break;
+      }
+      const destino = resolverUrl(aberto.pagina, form.action);
+      let caminhoDestino = "?";
+      try {
+        const u = new URL(destino);
+        caminhoDestino = `${u.pathname}${u.search}`;
+      } catch {
+        // endereço inválido: cai na recusa abaixo
+      }
+      if (caminhoDestino === "?" || !sessaoHttp.mesmoSite(destino) || destinoProibido(caminhoDestino) || RE_DESTINO_DE_ARQUIVO.test(caminhoDestino)) {
+        falha = `a consulta não foi enviada: o endereço do formulário (${caminhoDe(destino)}) não é o de uma consulta de ticket`;
+        break;
+      }
+      const corpo = montarPedidoDeTicket(form, opcao.valor, daSemana.valor);
+      let resposta: RespostaPortal;
+      if (form.method === "post") {
+        resposta = await sessaoHttp.pedir(destino, { metodo: "POST", corpo, referer: aberto.pagina });
+      } else {
+        const u = new URL(destino);
+        u.search = corpo;
+        resposta = await sessaoHttp.pedir(u.toString(), { referer: aberto.pagina });
+      }
+      enviados += 1;
+      const problema = problemaDaResposta(resposta);
+      if (problema) {
+        falha = problema;
+        break;
+      }
+      const lida = interpretarTickets(resposta.html, { codigo, inicio: escolhida.inicio, fim: escolhida.fim });
+      if (!lida.ok) {
+        falha = lida.motivo;
+        diagnostico.push(
+          lida.amostra.length
+            ? `Tela depois do “Gerar” (${form.method.toUpperCase()} ${caminhoDe(resposta.url)}), com os números trocados por 9: ${lida.amostra.join(" | ")}.`
+            : `Tela depois do “Gerar” (${form.method.toUpperCase()} ${caminhoDe(resposta.url)}): veio sem texto${pareceMontadaPorScript(resposta.html) ? " — parece ser montada por JavaScript" : ""}.`,
+        );
+        break;
+      }
+      listas.push(lida.lancamentos);
+    }
+    if (falha) {
+      falhas[codigo] = falha;
+      diagnostico.push(`Ticket do ${codigo} (semana ${rotuloDaSemana}): ${falha}.`);
+    } else {
+      pontosLidos[codigo] = juntarLancamentos(listas);
+      diagnostico.push(
+        `Ticket do ${codigo} (semana ${rotuloDaSemana}): tela de lançamentos lida inteira${
+          quantas > 1 ? `; o ponto aparece ${quantas} vezes na lista do portal — as ${quantas} foram lidas e a viagem repetida conta uma vez` : ""
+        }.`,
+      );
+    }
+  }
+  sessao.cookies = sessaoHttp.exportarCookies();
+  return fim(true);
+}
+
+/**
+ * A aba “Ticket” (a 2ª Via de Ticket) na sessão guardada do motorista: a tela
+ * do formulário e um “Gerar” por ponto. NUNCA faz login: se o portal tiver
+ * encerrado a sessão, a leitura para aqui e a próxima olhada do Status entra
+ * de novo, com o freio de logins.
+ *
+ * O que sai daqui é do PRÓPRIO motorista (as viagens dos pontos dele) e só ele
+ * vê. `null` = o motorista não tem acesso ativo.
+ */
+export function lerTicketsNaSessaoGuardada(
+  motoristaId: number,
+  opcoes: {
+    buscar?: typeof fetch;
+    codigos: string[];
+    agora?: Date;
+    /** Quem chama já está dentro do `umPorVez` deste motorista. */
+    jaNaFila?: boolean;
+  },
+): Promise<TicketsLidosNoPortal | null> {
+  const ler = () => comSessaoGuardada(motoristaId, (_credenciais, sessao) => lerTicketsComSessao(sessao, opcoes));
   return opcoes.jaNaFila ? ler() : umPorVez(motoristaId, ler);
 }
 

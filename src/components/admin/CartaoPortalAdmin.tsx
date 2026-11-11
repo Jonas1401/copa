@@ -124,6 +124,25 @@ type Painel = {
   motoristas: MotoristaPortal[];
   /** Quem decide a saída do ponto e o que o monitor do Status tem guardado. */
   monitor?: { fonte: "portal" | "quadro"; intervaloMin: number; situacoes: SituacaoPainel[]; fila?: FilaPainel };
+  /** A leitura da aba “Ticket” (card “Consulta de Ponto”): só a saúde, sem valores. */
+  ticket?: TicketPainel | null;
+};
+
+/** Consulta de Ponto: a leitura da aba “Ticket” está funcionando? (Nenhuma viagem, valor ou porcentagem.) */
+type TicketPainel = {
+  ligado: boolean;
+  intervaloMin: number;
+  /** Motoristas que cadastraram a porcentagem. */
+  motoristas: number;
+  contas: {
+    motoristaId: number;
+    lidoEm: string | null;
+    tentativaEm: string | null;
+    pontosLidos: number;
+    pontosTentados: number;
+    erros: string[];
+    diagnostico: string[];
+  }[];
 };
 
 /** A fila geral do app: o que a aba “Fila” do portal trouxe (ou por que não veio). */
@@ -445,6 +464,46 @@ export default function CartaoPortalAdmin() {
                     )}
                     {f.erro && f.diagnostico.length > 0 && (
                       <p className="mt-0.5 text-[11px] leading-snug text-gelo/45">{f.diagnostico.join(" · ")}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {p?.ticket && (p.ticket.motoristas > 0 || !p.ticket.ligado) && (
+            <div className="mt-3 rounded-[14px] border border-[#183341]/60 bg-[#000D16]/40 px-3 py-2.5" data-ticket="saude">
+              <p className="font-display text-[12.5px] font-bold tracking-[0.04em] text-gelo/85 uppercase">
+                Consulta de Ponto · aba “Ticket” do portal
+              </p>
+              <p className="mt-1 text-[11.5px] leading-snug text-gelo/55">
+                {p.ticket.ligado
+                  ? `Viagens da semana de quem cadastrou a porcentagem (${p.ticket.motoristas}), lidas a cada ${p.ticket.intervaloMin} min com a sessão do próprio motorista, depois da leitura do Status. `
+                  : "Leitura desligada neste servidor (PORTAL_TICKET=desligado). "}
+                Aqui só aparece se a leitura funcionou: viagens, valores, porcentagem e comissão são só do motorista.
+              </p>
+              {p.ticket.contas.map((c) => {
+                const nome = lista.find((m) => m.motoristaId === c.motoristaId)?.nome ?? `Motorista nº ${c.motoristaId}`;
+                const emDia = Boolean(c.lidoEm) && !c.erros.length && c.pontosLidos === c.pontosTentados;
+                return (
+                  <div key={c.motoristaId} className="mt-2 text-[12.5px] leading-snug">
+                    <p className={emDia ? "text-verde" : "text-ambar"}>
+                      <b>{nome}</b>{" "}
+                      {c.pontosTentados
+                        ? `· ${c.pontosLidos} de ${c.pontosTentados} ponto(s) lido(s) nesta semana`
+                        : "· nenhuma leitura ainda"}
+                    </p>
+                    <p className="text-[11.5px] text-gelo/55">
+                      {c.lidoEm ? `Última leitura boa em ${horaMin(c.lidoEm)}` : "Nunca leu."}
+                      {c.tentativaEm ? ` · última tentativa em ${horaMin(c.tentativaEm)}` : ""}
+                    </p>
+                    {c.erros.map((erro) => (
+                      <p key={erro} className="mt-0.5 text-[11.5px] text-ambar [overflow-wrap:anywhere]">
+                        Não veio: {erro}
+                      </p>
+                    ))}
+                    {c.erros.length > 0 && c.diagnostico.length > 0 && (
+                      <p className="mt-0.5 text-[11px] leading-snug text-gelo/45 [overflow-wrap:anywhere]">{c.diagnostico.join(" · ")}</p>
                     )}
                   </div>
                 );

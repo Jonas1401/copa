@@ -29,6 +29,7 @@ import {
   resumoDaFila,
 } from "@/lib/portal-fila";
 import type { LivroDaFila } from "@/lib/portal-fila-parse";
+import { lerTicketsDevidos } from "@/lib/portal-ticket";
 import { lerModoSaida, situacaoDoPontoNasTelas, type ConsultaPortal, type EventoSaida } from "@/lib/portal-saida";
 import {
   avisoDaTroca,
@@ -86,6 +87,13 @@ const SIMULTANEOS = 3;
  * 60 s (25 s para começar leituras); “Ler agora” e o cadastro do acesso, 45 s.
  */
 export const CARONA_DA_FILA_ATE_MS = { periodica: 12_000, manual: 25_000 } as const;
+/**
+ * A aba “Ticket” (Consulta de Ponto) vem DEPOIS da rodada do Status, com a
+ * sessão que ela deixou guardada, e só enquanto sobra tempo na função: cada
+ * leitura leva até 12 s. Contado a partir do começo do cron (60 s no total) e
+ * da rodada do app aberto. O que não couber fica para a próxima rodada.
+ */
+export const TICKET_COMECA_ATE_MS = { cron: 36_000, appAberto: 20_000 } as const;
 
 /** O que a leitura trouxe para UM ponto do motorista. */
 export type SituacaoLida = {
@@ -491,6 +499,17 @@ export async function monitorarTodos(limite = 3, prazoMs = PRAZO_RODADA_MS) {
 }
 
 /**
+ * Consulta de Ponto: as viagens da semana (aba “Ticket”) de quem cadastrou a
+ * porcentagem, de 5 em 5 minutos por motorista. Roda depois da rodada do
+ * Status — que é quem avisa a saída e quem mantém a sessão aberta — e nunca
+ * faz login. `desde`: quando a função (cron) começou.
+ */
+export async function monitorarTickets(desde: number, opcoes: { buscar?: typeof fetch; comecaAteMs?: number; limite?: number } = {}) {
+  if (fontePortal() !== "portal") return { motoristas: 0, pontos: 0, falhas: 0 };
+  return lerTicketsDevidos({ buscar: opcoes.buscar, comecarAte: desde + (opcoes.comecaAteMs ?? TICKET_COMECA_ATE_MS.cron), limite: opcoes.limite });
+}
+
+/**
  * “Ler agora” (motorista ou administrador) e a primeira leitura depois do
  * cadastro da senha. Com a fonte `portal`, usa a sessão guardada e avisa a
  * troca de situação como qualquer leitura.
@@ -545,6 +564,8 @@ export async function monitorarStatusEmSegundoPlano() {
   ultimaRodadaEm = Date.now();
   try {
     await monitorarStatusDeTodos({ prazoMs: 8_000, simultaneos: 2, esperaMs: intervaloStatusMs() });
+    // Com tempo sobrando, a Consulta de Ponto de quem está com a leitura vencida.
+    await monitorarTickets(ultimaRodadaEm, { comecaAteMs: TICKET_COMECA_ATE_MS.appAberto, limite: 2 });
   } catch {
     /* O cron (ou a próxima chamada) retoma. */
   } finally {

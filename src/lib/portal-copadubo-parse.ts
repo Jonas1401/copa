@@ -119,7 +119,7 @@ export function decodificarEntidades(texto: string): string {
 }
 
 /** Atributos de uma tag (`name="x"` ou `name='x'` ou `name=x`). */
-function atributos(tag: string): Record<string, string> {
+export function atributos(tag: string): Record<string, string> {
   const saida: Record<string, string> = {};
   const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
   let m: RegExpExecArray | null;
