@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import { Film, Heart, Tv } from "lucide-react";
 import type { Titulo } from "@/lib/copaflix/tipos";
 import { duracaoTexto } from "@/lib/copaflix/catalogo";
@@ -44,7 +47,10 @@ export function FundoDaCapa({
   prioridade?: boolean;
 }) {
   const endereco = larga ? titulo.fundo ?? titulo.capa : titulo.capa;
-  if (endereco) {
+  // Cartaz de terceiro pode sair do ar: se a imagem falhar, cai para a arte
+  // do app em vez de deixar um quadrado quebrado na fileira.
+  const [falhou, setFalhou] = useState(false);
+  if (endereco && !falhou) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
@@ -53,6 +59,7 @@ export function FundoDaCapa({
         aria-hidden
         loading={prioridade ? "eager" : "lazy"}
         decoding="async"
+        onError={() => setFalhou(true)}
         className="cf-capa-foto"
       />
     );

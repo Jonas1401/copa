@@ -69,6 +69,7 @@ src/app/api/copaflix/epg/route.ts           programa que está no ar (XMLTV)
 src/app/api/copaflix/jellyfin/imagem/[id]/route.ts    cartaz via proxy
 src/app/api/copaflix/jellyfin/stream/[id]/route.ts    vídeo via proxy (Range)
 src/app/api/copaflix/jellyfin/serie/[id]/route.ts     episódios sob demanda
+src/app/api/copaflix/fontes/route.ts                  testa as fontes de um título (HEAD)
 
 src/components/copaflix/CopaFlixApp.tsx     tela principal (abas, busca, fileiras)
 src/components/copaflix/CabecalhoCopaFlix.tsx  topo (logo, busca, minha lista)
@@ -91,9 +92,10 @@ src/lib/copaflix/tmdb.ts                    cartazes do TMDB (opcional)
 src/lib/copaflix/url-segura.ts              validação de URL (anti-SSRF)
 src/lib/copaflix/armazenamento.ts           favoritos/progresso/histórico locais
 src/lib/copaflix/retomada.ts                regra de "continuar de onde parou"
+src/lib/copaflix/fontes-midia.ts            lista de fontes + troca para o espelho
 
 public/images/copaflix/arte-0..5.webp        arte cinematográfica do app
-tests/copaflix.test.ts                      33 testes do módulo
+tests/copaflix.test.ts                      37 testes do módulo
 docs/COPAFLIX.md                            este guia
 ```
 
@@ -226,6 +228,33 @@ Padrão: ligado. Ele contém:
 - **Canais oficiais com transmissão pública**: NASA TV, DW English, Al Jazeera
   English, France 24 English. Podem ter bloqueio por país ou sair do ar.
 
+#### Fontes de vídeo (verificadas) e espelhos
+
+O balde de amostras do Google (`commondatastorage.googleapis.com/gtv-videos-bucket`)
+usado no começo **passou a responder HTTP 403 para todos os arquivos** e foi
+abandonado. As fontes atuais são:
+
+| Título | Fonte principal | Espelho |
+| --- | --- | --- |
+| Nosferatu, A Noite dos Mortos-Vivos, Plano 9 | Internet Archive (MP4) | — |
+| Big Buck Bunny | `archive.org/download/BigBuckBunny_124` (H.264 720p) | HLS do Mux (`x36xhzz.m3u8`) |
+| Sintel | `archive.org/download/Sintel/sintel-2048-surround.mp4` | — |
+| Elephants Dream | `archive.org/download/ElephantsDream/ed_hd.mp4` | — |
+| Tears of Steel | `download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov` | mesmo filme em WebM |
+
+- Se a primeira fonte falhar (fora do ar, CORS, bloqueio regional), o player
+  **troca sozinho** para o espelho e avisa em uma faixa discreta
+  ("A fonte Internet Archive não respondeu — tentando Mux (HLS)…").
+- Só quando todas falham aparece o erro, com a lista das fontes testadas.
+- **Capas reais**: os títulos de demonstração usam a capa do próprio item do
+  Internet Archive (`archive.org/services/img/<id>`), com queda automática para
+  a arte do app se a imagem não existir. Os créditos/licenças seguem na ficha.
+- **Teste de disponibilidade**: na ficha, o botão “Testar as fontes agora” usa
+  `/api/copaflix/fontes?id=…` — o **servidor** faz um `HEAD` em cada fonte
+  (5 s de prazo, cache de 5 min) e devolve “no ar / fora do ar”. A rota só
+  aceita ids do próprio catálogo (nunca uma URL vinda da tela), então não serve
+  para sondar rede interna.
+
 ---
 
 ## 4. O que a interface entrega
@@ -339,16 +368,21 @@ npm run build       # next build
 4. **EPG.** Depende de um guia XMLTV público e do `tvg-id` bater com o canal.
 5. **Fontes do catálogo de demonstração** podem sair do ar (Internet Archive,
    espelho de testes do Blender e emissoras). As URLs ficam em um único arquivo
-   (`src/lib/copaflix/catalogo.ts`) para troca fácil.
-6. **Novelas** não têm acervo de demonstração: novelas completas raramente são
+   (`src/lib/copaflix/catalogo.ts`) para troca fácil; os títulos com espelho
+   trocam de fonte sem intervenção.
+6. **Capa do Internet Archive** nem sempre existe para o item (aí entra a arte
+   do app) e pode ser uma moldura do próprio filme, não o cartaz oficial. Para
+   cartaz oficial de catálogo comercial é preciso TMDB (com chave e atribuição)
+   ou Jellyfin.
+7. **Novelas** não têm acervo de demonstração: novelas completas raramente são
    liberadas para distribuição gratuita. A aba mostra a explicação e passa a
    listar conteúdo assim que houver fonte autorizada (Jellyfin/catálogo).
-7. **Área administrativa de fontes** não foi criada: a configuração é por
+8. **Área administrativa de fontes** não foi criada: a configuração é por
    variável de ambiente (mais simples e sem risco de alterar o painel atual).
    Se for necessário editar fontes pela web, o caminho natural é um cartão novo
    em `/admin` guardando as URLs cifradas no cofre já existente — mudança
    isolada, fora do escopo desta entrega.
-8. **Roda 3D é um coverflow.** A capa em foco aparece inteira e as vizinhas
+9. **Roda 3D é um coverflow.** A capa em foco aparece inteira e as vizinhas
    aparecem em perspectiva nas laterais, cada vez mais estreitas — no celular
    (capa = 62% da largura) sobra um fio de cada lado, no desktop (30%) sobra
    mais. É recorte proposital do palco 3D, não rolagem horizontal: medido a
@@ -363,8 +397,8 @@ npm run build       # next build
 | --- | --- |
 | `npm run typecheck` | sem erros |
 | `npm run lint` | 0 erros (7 avisos de `<img>` já existentes no projeto) |
-| `npm test` | 545 testes · 523 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
-| `tests/copaflix.test.ts` | 33/33 passam |
+| `npm test` | 576 testes · 553 passam · 22 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
+| `tests/copaflix.test.ts` | 37/37 passam |
 | `npm run build` | sucesso; rotas `/copaflix`, `/copaflix/titulo/[id]` e `/api/copaflix/*` publicadas |
 | Navegação `/` → ⋮ → Entretenimento | OK no servidor de desenvolvimento |
 | Roda 3D (arrasto e teclado) | OK (headless Chromium 390 px e 1440 px) |

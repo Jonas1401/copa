@@ -67,12 +67,76 @@ export function nomeDaOrigem(origem: OrigemConteudo) {
 }
 
 /* ---------------------------------------------------------------- vídeos
-   Curta do Blender disponível no espelho público usado nos testes do
-   player (o mesmo arquivo aberto que o Blender distribui sob CC BY).
-   O crédito aparece na ficha do título. */
-const BLENDER = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample";
-const CREDITO_BLENDER = "Blender Foundation · CC BY 3.0 (atribuição obrigatória)";
-const CREDITO_DOMINIO = "Domínio público · Internet Archive";
+   Fontes verificadas uma a uma (o balde de amostras do Google, usado antes,
+   passou a responder HTTP 403 para todos os arquivos e foi abandonado).
+   Cada título tem um espelho em `fontesAlternativas`: se a primeira fonte
+   falhar no aparelho, o player tenta a seguinte sozinho.
+   As capas vêm do próprio item do Internet Archive (`services/img/<id>`), com
+   queda para a arte do app se a imagem não existir. */
+const IA = "https://archive.org/download";
+const IA_CAPA = "https://archive.org/services/img";
+const BLENDER_TOS = "https://download.blender.org/demo/movies/ToS";
+const MUX_BBB = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+const CREDITO_BLENDER =
+  "Blender Foundation · CC BY 3.0 (atribuição obrigatória) · espelho no Internet Archive";
+const CREDITO_DOMINIO = "Domínio público · Internet Archive · capa do próprio acervo";
+
+const CAPA_NOSFERATU = `${IA_CAPA}/nosferatu`;
+const CAPA_MORTOS = `${IA_CAPA}/night_of_the_living_dead`;
+const CAPA_PLANO9 = `${IA_CAPA}/Plan9FromOuterSpace_`;
+const CAPA_BBB = `${IA_CAPA}/BigBuckBunny_124`;
+const CAPA_SINTEL = `${IA_CAPA}/Sintel`;
+const CAPA_ELEFANTES = `${IA_CAPA}/ElephantsDream`;
+
+const FONTE_NOSFERATU = {
+  tipo: "arquivo" as const,
+  url: `${IA}/nosferatu/nosferatu_512kb.mp4`,
+  mime: "video/mp4",
+  rotulo: "Internet Archive",
+};
+const FONTE_MORTOS = {
+  tipo: "arquivo" as const,
+  url: `${IA}/night_of_the_living_dead/night_of_the_living_dead_512kb.mp4`,
+  mime: "video/mp4",
+  rotulo: "Internet Archive",
+};
+const FONTE_PLANO9 = {
+  tipo: "arquivo" as const,
+  url: `${IA}/Plan9FromOuterSpace_/Plan9FromOuterSpace_512kb.mp4`,
+  mime: "video/mp4",
+  rotulo: "Internet Archive",
+};
+const FONTE_BBB = {
+  tipo: "arquivo" as const,
+  url: `${IA}/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4`,
+  mime: "video/mp4",
+  rotulo: "Internet Archive",
+};
+const FONTE_SINTEL = {
+  tipo: "arquivo" as const,
+  url: `${IA}/Sintel/sintel-2048-surround.mp4`,
+  mime: "video/mp4",
+  rotulo: "Internet Archive",
+};
+const FONTE_ELEFANTES = {
+  tipo: "arquivo" as const,
+  url: `${IA}/ElephantsDream/ed_hd.mp4`,
+  mime: "video/mp4",
+  rotulo: "Internet Archive",
+};
+const FONTE_TOS = {
+  tipo: "arquivo" as const,
+  url: `${BLENDER_TOS}/tears_of_steel_720p.mov`,
+  mime: "video/quicktime",
+  rotulo: "Blender Foundation",
+};
+const ALTERNATIVA_BBB = { tipo: "hls" as const, url: MUX_BBB, rotulo: "Mux (HLS)" };
+const ALTERNATIVA_TOS = {
+  tipo: "arquivo" as const,
+  url: `${BLENDER_TOS}/tears_of_steel_surround.webm`,
+  mime: "video/webm",
+  rotulo: "Blender (WebM)",
+};
 
 export const DEMONSTRACAO: Titulo[] = [
   {
@@ -87,11 +151,8 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 94,
     classificacao: "12",
     arte: 2,
-    fonte: {
-      tipo: "arquivo",
-      url: "https://archive.org/download/nosferatu/nosferatu_512kb.mp4",
-      mime: "video/mp4",
-    },
+    capa: CAPA_NOSFERATU,
+    fonte: FONTE_NOSFERATU,
     origem: "dominio-publico",
     credito: CREDITO_DOMINIO,
     popularidade: 82,
@@ -109,11 +170,8 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 96,
     classificacao: "16",
     arte: 3,
-    fonte: {
-      tipo: "arquivo",
-      url: "https://archive.org/download/night_of_the_living_dead/night_of_the_living_dead_512kb.mp4",
-      mime: "video/mp4",
-    },
+    capa: CAPA_MORTOS,
+    fonte: FONTE_MORTOS,
     origem: "dominio-publico",
     credito: CREDITO_DOMINIO,
     popularidade: 71,
@@ -131,11 +189,8 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 79,
     classificacao: "12",
     arte: 4,
-    fonte: {
-      tipo: "arquivo",
-      url: "https://archive.org/download/Plan9FromOuterSpace_/Plan9FromOuterSpace_512kb.mp4",
-      mime: "video/mp4",
-    },
+    capa: CAPA_PLANO9,
+    fonte: FONTE_PLANO9,
     origem: "dominio-publico",
     credito: CREDITO_DOMINIO,
     popularidade: 58,
@@ -152,7 +207,9 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 10,
     classificacao: "L",
     arte: 0,
-    fonte: { tipo: "arquivo", url: `${BLENDER}/BigBuckBunny.mp4`, mime: "video/mp4" },
+    capa: CAPA_BBB,
+    fonte: FONTE_BBB,
+    fontesAlternativas: [ALTERNATIVA_BBB],
     origem: "creative-commons",
     credito: CREDITO_BLENDER,
     popularidade: 90,
@@ -169,7 +226,8 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 15,
     classificacao: "10",
     arte: 1,
-    fonte: { tipo: "arquivo", url: `${BLENDER}/Sintel.mp4`, mime: "video/mp4" },
+    capa: CAPA_SINTEL,
+    fonte: FONTE_SINTEL,
     origem: "creative-commons",
     credito: CREDITO_BLENDER,
     popularidade: 88,
@@ -186,7 +244,8 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 11,
     classificacao: "10",
     arte: 5,
-    fonte: { tipo: "arquivo", url: `${BLENDER}/ElephantsDream.mp4`, mime: "video/mp4" },
+    capa: CAPA_ELEFANTES,
+    fonte: FONTE_ELEFANTES,
     origem: "creative-commons",
     credito: CREDITO_BLENDER,
     popularidade: 64,
@@ -203,7 +262,8 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 12,
     classificacao: "12",
     arte: 4,
-    fonte: { tipo: "arquivo", url: `${BLENDER}/TearsOfSteel.mp4`, mime: "video/mp4" },
+    fonte: FONTE_TOS,
+    fontesAlternativas: [ALTERNATIVA_TOS],
     origem: "creative-commons",
     credito: CREDITO_BLENDER,
     popularidade: 76,
@@ -220,10 +280,7 @@ export const DEMONSTRACAO: Titulo[] = [
     duracaoMin: 10,
     classificacao: "L",
     arte: 0,
-    fonte: {
-      tipo: "hls",
-      url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-    },
+    fonte: { tipo: "hls", url: MUX_BBB, rotulo: "Mux (HLS)" },
     origem: "creative-commons",
     credito: `${CREDITO_BLENDER} · fluxo de teste público (Mux)`,
     popularidade: 40,
@@ -244,7 +301,9 @@ export const DEMONSTRACAO: Titulo[] = [
     popularidade: 69,
     destaque: true,
     temporadas: 1,
-    fonte: { tipo: "arquivo", url: `${BLENDER}/BigBuckBunny.mp4`, mime: "video/mp4" },
+    capa: CAPA_BBB,
+    fonte: FONTE_BBB,
+    fontesAlternativas: [ALTERNATIVA_BBB],
     episodios: [
       {
         id: "blender-open-movies-t1e1",
@@ -253,7 +312,8 @@ export const DEMONSTRACAO: Titulo[] = [
         numero: 1,
         duracaoMin: 10,
         sinopse: "Um coelho gentil enfrenta três roedores travessos.",
-        fonte: { tipo: "arquivo", url: `${BLENDER}/BigBuckBunny.mp4`, mime: "video/mp4" },
+        fonte: FONTE_BBB,
+        fontesAlternativas: [ALTERNATIVA_BBB],
       },
       {
         id: "blender-open-movies-t1e2",
@@ -262,7 +322,7 @@ export const DEMONSTRACAO: Titulo[] = [
         numero: 2,
         duracaoMin: 11,
         sinopse: "Dois personagens dentro de uma máquina surreal.",
-        fonte: { tipo: "arquivo", url: `${BLENDER}/ElephantsDream.mp4`, mime: "video/mp4" },
+        fonte: FONTE_ELEFANTES,
       },
       {
         id: "blender-open-movies-t1e3",
@@ -271,7 +331,7 @@ export const DEMONSTRACAO: Titulo[] = [
         numero: 3,
         duracaoMin: 15,
         sinopse: "Uma jovem caça o dragão que mudou a sua vida.",
-        fonte: { tipo: "arquivo", url: `${BLENDER}/Sintel.mp4`, mime: "video/mp4" },
+        fonte: FONTE_SINTEL,
       },
       {
         id: "blender-open-movies-t1e4",
@@ -280,7 +340,8 @@ export const DEMONSTRACAO: Titulo[] = [
         numero: 4,
         duracaoMin: 12,
         sinopse: "Um grupo tenta salvar o futuro revivendo o passado.",
-        fonte: { tipo: "arquivo", url: `${BLENDER}/TearsOfSteel.mp4`, mime: "video/mp4" },
+        fonte: FONTE_TOS,
+        fontesAlternativas: [ALTERNATIVA_TOS],
       },
     ],
   },
