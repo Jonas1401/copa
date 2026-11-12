@@ -3,6 +3,8 @@
  *
  * Fontes autorizadas (todas opcionais, configuradas por variável de ambiente):
  *   COPAFLIX_M3U_URLS   listas M3U/M3U8 obtidas legalmente pelo administrador
+ *   COPAFLIX_M3U_PRESET preset pronto de lista pública (hoje: br-publicos)
+ *   COPAFLIX_M3U_INCLUIR / _EXCLUIR  curadoria por expressão regular
  *   COPAFLIX_EPG_URL    guia XMLTV (programa que está no ar)
  *   COPAFLIX_JELLYFIN_URL / _API_KEY / _USER_ID   servidor de mídia próprio
  *   COPAFLIX_TMDB_KEY   (ou TMDB_API_KEY) cartazes e fundos do TMDB
@@ -14,7 +16,7 @@
  * mostra o aviso — nunca uma página em branco.
  */
 import { DEMONSTRACAO, destaquesDe, montarCanais, montarCatalogo } from "./catalogo";
-import { canaisDaLista, lerListaM3U } from "./m3u";
+import { canaisDaLista, filtrarItensM3U, lerListaM3U, type FiltroM3U } from "./m3u";
 import { lerEpg } from "./epg";
 import { listarJellyfin } from "./jellyfin";
 import { enriquecerComTmdb } from "./tmdb";
@@ -26,10 +28,29 @@ const TTL_EPG_MS = 10 * 60_000;
 const MAXIMO_M3U_BYTES = 4 * 1024 * 1024;
 const MAXIMO_EPG_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Presets de listas públicas. O CopaFlix não redistribui a lista: ele apenas
+ * aponta para a publicação oficial do iptv-org (compilação em domínio público,
+ * licença Unlicense) e aplica uma curadoria fixa pelas emissoras cuja
+ * transmissão pública é autorizada — no caso, as emissoras públicas
+ * brasileiras (EBC/TV Brasil, TV Câmara, TV Senado, TV Justiça, Canal Gov,
+ * Canal Educação, Canal Saúde, Canal Futura, Cultura Pará).
+ */
+export const PRESETS_M3U: Record<string, { nome: string; url: string; incluir: string }> = {
+  "br-publicos": {
+    nome: "Emissoras públicas brasileiras (iptv-org)",
+    url: "https://iptv-org.github.io/iptv/countries/br.m3u",
+    incluir:
+      "TVBrasil|TVCamara|TVSenado|TVJustica|CanalGov|CanalEducacao|CanalSaude|CanalFutura|CulturaPara",
+  },
+};
+
 export type ConfiguracaoCopaFlix = {
   demo: boolean;
   permitirRedeInterna: boolean;
   listasM3U: string[];
+  presetsM3U: string[];
+  filtroM3U: FiltroM3U;
   epgUrl?: string;
   jellyfin?: { base: string; chave: string; usuarioId?: string };
   tmdbChave?: string;
@@ -48,13 +69,45 @@ function textoLimpo(valor: string | undefined) {
   return (valor ?? "").trim();
 }
 
+/** Compila a curadoria sem derrubar o app: regex inválida é ignorada. */
+function compilarRegex(valor: string | undefined): RegExp | undefined {
+  const texto = textoLimpo(valor);
+  if (!texto || texto.length > 200) return undefined;
+  try {
+    return new RegExp(texto, "i");
+  } catch {
+    console.warn("[copaflix] expressão de curadoria inválida — ignorada");
+    return undefined;
+  }
+}
+
 export function lerConfiguracao(ambiente: NodeJS.ProcessEnv = process.env): ConfiguracaoCopaFlix {
   const permitirRedeInterna = textoLimpo(ambiente.COPAFLIX_PERMITIR_REDE_INTERNA) === "1";
   const opcoesRede = { permitirRedeInterna };
 
-  const listasM3U = listaDeUrls(ambiente.COPAFLIX_M3U_URLS || ambiente.COPAFLIX_M3U_URL).filter(
-    (url) => validarUrlExterna(url, opcoesRede).ok,
-  );
+  const presetsM3U = listaDeUrls(ambiente.COPAFLIX_M3U_PRESET)
+    .map((item) => item.toLowerCase())
+    .filter((item) => Boolean(PRESETS_M3U[item]))
+    .slice(0, 4);
+  if (!presetsM3U.length && textoLimpo(ambiente.COPAFLIX_M3U_PRESET)) {
+    console.warn("[copaflix] preset de lista desconhecido — ignorado");
+  }
+
+  const listasM3U = [
+    ...new Set([
+      ...presetsM3U.map((id) => PRESETS_M3U[id].url),
+      ...listaDeUrls(ambiente.COPAFLIX_M3U_URLS || ambiente.COPAFLIX_M3U_URL),
+    ]),
+  ].filter((url) => validarUrlExterna(url, opcoesRede).ok);
+
+  // Curadoria: a variável do operador manda; sem ela, vale a regra do preset.
+  const incluir =
+    textoLimpo(ambiente.COPAFLIX_M3U_INCLUIR) ||
+    (presetsM3U.length === 1 ? PRESETS_M3U[presetsM3U[0]].incluir : "");
+  const filtroM3U: FiltroM3U = {
+    incluir: compilarRegex(incluir),
+    excluir: compilarRegex(ambiente.COPAFLIX_M3U_EXCLUIR),
+  };
 
   const epg = textoLimpo(ambiente.COPAFLIX_EPG_URL);
   const epgUrl = epg && validarUrlExterna(epg, opcoesRede).ok ? epg : undefined;
@@ -68,6 +121,8 @@ export function lerConfiguracao(ambiente: NodeJS.ProcessEnv = process.env): Conf
     demo: textoLimpo(ambiente.COPAFLIX_DEMO) !== "0",
     permitirRedeInterna,
     listasM3U,
+    presetsM3U,
+    filtroM3U,
     epgUrl,
     jellyfin: jellyfinOk
       ? {
@@ -233,22 +288,37 @@ async function montarAcervo(config: ConfiguracaoCopaFlix): Promise<Acervo> {
           segundos: 7,
           permitirRedeInterna: config.permitirRedeInterna,
         });
-        const itens = lerListaM3U(texto, { permitirRedeInterna: config.permitirRedeInterna });
+        const lidos = lerListaM3U(texto, { permitirRedeInterna: config.permitirRedeInterna });
+        const itens = filtrarItensM3U(lidos, config.filtroM3U);
         return canaisDaLista(itens, { origemNome: `Lista autorizada ${indice + 1}` });
       }),
     );
 
     let falhas = 0;
+    const canaisDasListas: Canal[] = [];
     for (const resultado of resultados) {
-      if (resultado.status === "fulfilled") canaisExtras.push(...resultado.value);
+      if (resultado.status === "fulfilled") canaisDasListas.push(...resultado.value);
       else falhas++;
     }
+    canaisExtras.push(...canaisDasListas);
+
+    const curadoria = config.filtroM3U.incluir || config.filtroM3U.excluir;
+    const nomeDoPreset = config.presetsM3U
+      .map((id) => PRESETS_M3U[id]?.nome ?? id)
+      .join(", ");
     avisos.push({
       id: "m3u",
       nome: "Listas M3U autorizadas",
       configurada: true,
-      itens: canaisExtras.length,
-      detalhe: `${config.listasM3U.length} lista(s)${falhas ? ` · ${falhas} indisponível(is)` : ""}`,
+      itens: canaisDasListas.length,
+      detalhe: [
+        `${config.listasM3U.length} lista(s)`,
+        nomeDoPreset || null,
+        curadoria ? "com curadoria" : null,
+        falhas ? `${falhas} indisponível(is)` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
       erro: falhas === config.listasM3U.length ? "Nenhuma lista respondeu" : undefined,
     });
   } else {

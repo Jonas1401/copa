@@ -32,10 +32,16 @@ import {
   registrarHistorico,
   salvarProgresso,
 } from "../src/lib/copaflix/armazenamento";
-import { canaisDaLista, ehPlaylistDeMidia, lerListaM3U, lerLinhaExtinf } from "../src/lib/copaflix/m3u";
+import {
+  canaisDaLista,
+  ehPlaylistDeMidia,
+  filtrarItensM3U,
+  lerListaM3U,
+  lerLinhaExtinf,
+} from "../src/lib/copaflix/m3u";
 import { lerEpg, parseDataXmltv } from "../src/lib/copaflix/epg";
 import { validarUrlExterna } from "../src/lib/copaflix/url-segura";
-import { lerConfiguracao } from "../src/lib/copaflix/fontes";
+import { PRESETS_M3U, lerConfiguracao } from "../src/lib/copaflix/fontes";
 import { listarJellyfin } from "../src/lib/copaflix/jellyfin";
 
 const ler = (p: string) => readFileSync(p, "utf8");
@@ -203,6 +209,92 @@ test("lê os atributos da linha EXTINF mesmo com vírgulas dentro de aspas", () 
   const { atributos, nome } = lerLinhaExtinf('#EXTINF:-1 tvg-id="a" group-title="Filmes, Séries",Canal Legal');
   assert.equal(atributos["group-title"], "Filmes, Séries");
   assert.equal(nome, "Canal Legal");
+});
+
+/* -------------------------------------------- curadoria de listas públicas */
+
+/**
+ * Lista no formato do iptv-org: traz emissoras públicas e canais comerciais
+ * juntos. A curadoria do CopaFlix precisa manter só o que a operação pode
+ * exibir — o app não decide sozinho o que é legal.
+ */
+const LISTA_PUBLICA = `#EXTM3U
+#EXTINF:-1 tvg-id="TVBrasil.br@SD" group-title="Canais públicos",TV Brasil (720p)
+https://exemplo.com/tvbrasil.m3u8
+#EXTINF:-1 tvg-id="TVCamara.br@SD" group-title="Canais públicos",TV Câmara (1080p)
+https://exemplo.com/camara.m3u8
+#EXTINF:-1 tvg-id="CNNBrasil.br@SD" group-title="Notícias",CNN Brasil (1080p)
+https://exemplo.com/cnn.m3u8
+#EXTINF:-1 group-title="Canais públicos",TV Senado
+https://exemplo.com/senado.m3u8`;
+
+test("curadoria mantém só as emissoras autorizadas (por tvg-id ou por nome)", () => {
+  const itens = lerListaM3U(LISTA_PUBLICA);
+  assert.equal(itens.length, 4);
+
+  const curados = filtrarItensM3U(itens, { incluir: new RegExp(PRESETS_M3U["br-publicos"].incluir, "i") });
+  const nomes = curados.map((item) => item.nome);
+  assert.deepEqual(nomes, ["TV Brasil (720p)", "TV Câmara (1080p)", "TV Senado"]);
+  assert.ok(!nomes.some((nome) => nome.includes("CNN")), "canal comercial fica de fora");
+
+  // Sem filtro, nada é descartado.
+  assert.equal(filtrarItensM3U(itens).length, 4);
+});
+
+test("exclusão vence a inclusão na curadoria", () => {
+  const itens = lerListaM3U(LISTA_PUBLICA);
+  const curados = filtrarItensM3U(itens, {
+    incluir: /TVBrasil|TVCamara/i,
+    excluir: /camara/i,
+  });
+  assert.deepEqual(curados.map((item) => item.nome), ["TV Brasil (720p)"]);
+});
+
+test("preset br-publicos aponta para o iptv-org e já vem com a curadoria", () => {
+  const config = lerConfiguracao({
+    COPAFLIX_M3U_PRESET: "br-publicos",
+    COPAFLIX_DEMO: "0",
+  } as unknown as NodeJS.ProcessEnv);
+
+  assert.deepEqual(config.presetsM3U, ["br-publicos"]);
+  assert.deepEqual(config.listasM3U, ["https://iptv-org.github.io/iptv/countries/br.m3u"]);
+  const incluir = config.filtroM3U.incluir;
+  assert.ok(incluir, "preset precisa trazer a regra de inclusão");
+  assert.equal(incluir.test("TVBrasil.br@SD"), true);
+  assert.equal(incluir.test("CanalGov.br@SD"), true);
+  assert.equal(incluir.test("CNN Brasil"), false);
+});
+
+test("preset desconhecido e regex inválida são ignorados sem derrubar o app", () => {
+  const desconhecido = lerConfiguracao({
+    COPAFLIX_M3U_PRESET: "lista-pirata-inexistente",
+  } as unknown as NodeJS.ProcessEnv);
+  assert.deepEqual(desconhecido.presetsM3U, []);
+  assert.deepEqual(desconhecido.listasM3U, []);
+  assert.equal(desconhecido.filtroM3U.incluir, undefined);
+
+  const invalida = lerConfiguracao({
+    COPAFLIX_M3U_URLS: "https://exemplo.com/lista.m3u",
+    COPAFLIX_M3U_INCLUIR: "[(",
+  } as unknown as NodeJS.ProcessEnv);
+  assert.equal(invalida.filtroM3U.incluir, undefined);
+  assert.deepEqual(invalida.listasM3U, ["https://exemplo.com/lista.m3u"]);
+});
+
+test("a curadoria do operador sobrepõe a do preset e as listas não repetem", () => {
+  const config = lerConfiguracao({
+    COPAFLIX_M3U_PRESET: "br-publicos",
+    COPAFLIX_M3U_URLS: "https://iptv-org.github.io/iptv/countries/br.m3u, https://exemplo.com/minha.m3u",
+    COPAFLIX_M3U_INCLUIR: "CanalGov",
+  } as unknown as NodeJS.ProcessEnv);
+
+  assert.deepEqual(config.listasM3U, [
+    "https://iptv-org.github.io/iptv/countries/br.m3u",
+    "https://exemplo.com/minha.m3u",
+  ]);
+  assert.ok(config.filtroM3U.incluir);
+  assert.equal(config.filtroM3U.incluir.test("CanalGov.br@SD"), true);
+  assert.equal(config.filtroM3U.incluir.test("TVBrasil.br@SD"), false);
 });
 
 /* ------------------------------------------------------------- EPG/XMLTV */

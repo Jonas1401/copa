@@ -118,6 +118,45 @@ export function lerListaM3U(
   return itens;
 }
 
+/** Curadoria aplicada depois da leitura da lista (inclusão/exclusão). */
+export type FiltroM3U = {
+  incluir?: RegExp;
+  excluir?: RegExp;
+};
+
+/**
+ * Textos usados pela curadoria: o `tvg-id` (estável, ex. `TVBrasil.br@SD`), o
+ * nome do canal e o grupo. Devolve também variantes sem espaços e sem acento,
+ * para a mesma regra valer em listas com ou sem `tvg-id` ("TV Senado" casa
+ * com `TVSenado` tanto quanto `TVSenado.br@SD`).
+ */
+export function assinaturasDoItem(item: ItemM3U): string[] {
+  const partes = [item.tvgId ?? "", item.nome, item.grupo ?? ""].filter(Boolean);
+  const cru = partes.join(" ");
+  const colado = partes.join(" ").replace(/\s+/g, " ");
+  const semAcento = colado
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "");
+  return [...new Set([cru, colado, semAcento])];
+}
+
+/**
+ * Filtra os canais de uma lista já lida. Serve para o operador apontar para
+ * uma lista pública grande (ex.: iptv-org) mantendo só as emissoras cuja
+ * transmissão é autorizada — o CopaFlix não decide sozinho o que é legal.
+ */
+export function filtrarItensM3U(itens: ItemM3U[], filtro: FiltroM3U = {}): ItemM3U[] {
+  if (!filtro.incluir && !filtro.excluir) return itens;
+  return itens.filter((item) => {
+    const assinaturas = assinaturasDoItem(item);
+    const casa = (regra: RegExp) => assinaturas.some((assinatura) => regra.test(assinatura));
+    if (filtro.excluir && casa(filtro.excluir)) return false;
+    if (filtro.incluir && !casa(filtro.incluir)) return false;
+    return true;
+  });
+}
+
 /** Id estável e seguro para usar em rota/URL a partir do nome do canal. */
 export function idDoCanal(item: ItemM3U, indice: number) {
   const base = item.nome

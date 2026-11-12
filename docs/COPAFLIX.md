@@ -38,6 +38,7 @@ menu ⋮  →  Entretenimento  →  /copaflix
 | [IPTVnator](https://github.com/4gray/iptvnator) | MIT | **Referência de arquitetura e de experiência**, não código: leitura de listas M3U, agrupamento por `group-title`, busca de canais, favoritos locais e EPG. Nenhum arquivo do projeto foi copiado. |
 | [Jellyfin Web](https://github.com/jellyfin/jellyfin-web) | GPL-2.0 | **Referência de catálogo** (filmes/séries, temporadas e episódios, "continuar assistindo"). Não houve cópia de código — GPL-2.0 não é compatível com incorporar arquivos aqui. |
 | [Jellyfin Server](https://github.com/jellyfin/jellyfin) | GPL-2.0 | Só a **API HTTP pública** (`/Items`, `/Shows/{id}/Episodes`, `/Items/{id}/Images`, `/Videos/{id}/stream`) é consumida via `fetch`, o que independe de licença do cliente. |
+| [iptv-org/iptv](https://github.com/iptv-org/iptv) | Unlicense (domínio público) | Nada foi copiado. O preset opcional `br-publicos` apenas aponta para a playlist publicada pelo projeto e filtra pelas emissoras públicas brasileiras (ver 3.2). A licença cobre a compilação, **não** os fluxos de terceiros. |
 
 > O CopaFlix foi escrito do zero. Os dois projetos acima serviram para decidir
 > o formato dos dados (M3U + XMLTV + Jellyfin) e o comportamento da interface.
@@ -91,7 +92,7 @@ src/lib/copaflix/url-segura.ts              validação de URL (anti-SSRF)
 src/lib/copaflix/armazenamento.ts           favoritos/progresso/histórico locais
 
 public/images/copaflix/arte-0..5.webp        arte cinematográfica do app
-tests/copaflix.test.ts                      24 testes do módulo
+tests/copaflix.test.ts                      29 testes do módulo
 docs/COPAFLIX.md                            este guia
 ```
 
@@ -131,7 +132,50 @@ COPAFLIX_EPG_URL=https://exemplo.com/guia.xml
   4 MB, 7 s de prazo e cache de 5 min.
 - Ao configurar uma lista, os canais de exemplo saem de cena automaticamente.
 
-### 3.2 Jellyfin (biblioteca própria)
+### 3.2 Lista pública do iptv-org, com curadoria
+
+O repositório [iptv-org/iptv](https://github.com/iptv-org/iptv) reúne links de
+milhares de canais públicos do mundo todo. **Não copiamos a lista para dentro
+do app** — e não recomendamos copiar: a compilação está em domínio público
+(Unlicense, o `LICENSE` do repositório), mas os *fluxos* são de terceiros, o
+próprio projeto avisa que não tem controle sobre o destino dos links e a maior
+parte não tem autorização verificada. Colar a lista inteira quebraria a regra
+de "só fonte autorizada" e traria canais instáveis, geo-bloqueados e sem
+licença.
+
+O caminho seguro é apontar para a publicação oficial do iptv-org com curadoria:
+
+```env
+# preset pronto: lista do iptv-org + apenas emissoras públicas brasileiras
+COPAFLIX_M3U_PRESET=br-publicos
+```
+
+O preset faz duas coisas: usa
+`https://iptv-org.github.io/iptv/countries/br.m3u` (buscada pelo servidor a
+cada 5 min, nunca pelo navegador) e mantém somente **TV Brasil, TV Câmara (e
+TV Câmara 2/Salvador), TV Senado, TV Justiça, Canal Gov, Canal Educação, Canal
+Saúde, Canal Futura e Cultura Pará** — emissoras cuja transmissão pública é
+autorizada pelos próprios radiodifusores. Na lista de 12/11/2026 isso
+corresponde a ~10 dos 393 canais do arquivo do Brasil.
+
+Curadoria própria (qualquer lista, com ou sem `tvg-id`):
+
+```env
+COPAFLIX_M3U_URLS=https://iptv-org.github.io/iptv/countries/br.m3u
+COPAFLIX_M3U_INCLUIR="TVBrasil|TVCamara|CanalGov|CanalEducacao"
+COPAFLIX_M3U_EXCLUIR="\[Not 24/7\]"
+```
+
+- A regra é uma expressão regular, sem diferenciar maiúsculas, testada contra
+  `tvg-id + nome + grupo` e contra variantes sem espaço/acento (`TV Senado` casa
+  com `TVSenado`). `COPAFLIX_M3U_INCLUIR` do operador **sobrepõe** a do preset.
+- Expressão inválida é ignorada (com aviso no log) em vez de derrubar a página.
+- O painel "Fontes e licenças" mostra a lista, o preset e se há curadoria
+  ativa em cada carregamento.
+- Continua valendo a regra: **você responde** pelo que a sua operação exibe.
+  O preset só inclui emissoras públicas; qualquer outra coisa exige autorização.
+
+### 3.3 Jellyfin (biblioteca própria)
 
 ```env
 COPAFLIX_JELLYFIN_URL=https://jellyfin.seu-dominio.com
@@ -148,7 +192,7 @@ COPAFLIX_JELLYFIN_USER_ID=opcional
   privado (proteção contra SSRF). Se o CopaLinks roda dentro da mesma rede,
   defina `COPAFLIX_PERMITIR_REDE_INTERNA=1` conscientemente.
 
-### 3.3 TMDB (cartazes e fundos — opcional)
+### 3.4 TMDB (cartazes e fundos — opcional)
 
 ```env
 COPAFLIX_TMDB_KEY=sua-chave-da-api-do-tmdb
@@ -160,7 +204,7 @@ COPAFLIX_TMDB_KEY=sua-chave-da-api-do-tmdb
   _"Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB."_
 - Sem a chave, o app usa a arte própria (nada é enviado ao TMDB).
 
-### 3.4 Catálogo de demonstração
+### 3.5 Catálogo de demonstração
 
 ```env
 COPAFLIX_DEMO=0   # desliga domínio público/Creative Commons
@@ -310,8 +354,8 @@ npm run build       # next build
 | --- | --- |
 | `npm run typecheck` | sem erros |
 | `npm run lint` | 0 erros (7 avisos de `<img>` já existentes no projeto) |
-| `npm test` | 536 testes · 514 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
-| `tests/copaflix.test.ts` | 24/24 passam |
+| `npm test` | 541 testes · 519 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
+| `tests/copaflix.test.ts` | 29/29 passam |
 | `npm run build` | sucesso; rotas `/copaflix`, `/copaflix/titulo/[id]` e `/api/copaflix/*` publicadas |
 | Navegação `/` → ⋮ → Entretenimento | OK no servidor de desenvolvimento |
 | Roda 3D (arrasto e teclado) | OK (headless Chromium 390 px e 1440 px) |
