@@ -32,14 +32,14 @@ import { linhasDaTela } from "@/lib/portal-fila-parse";
  * O que sai daqui vira dinheiro na tela do motorista, então a leitura é
  * RÍGIDA: o formulário só vale com as duas listas (pontos e semanas) e nada
  * para digitar; a tela de lançamentos só vale inteira, com o cabeçalho das
- * seis colunas, e cada linha com ponto, quant, valor, data e hora que façam
- * sentido — do ponto pedido e dentro da semana pedida. Linha que a leitura não
+ * seis colunas ou quatro células com total conferível, e cada linha com dados
+ * válidos do ponto pedido; quando há data, ela deve cair na semana pedida. Linha que a leitura não
  * entendeu nunca é pulada: a tela inteira é recusada, e quem chama fica com a
  * última leitura boa (e sabe o motivo).
  *
- * O HTML de verdade nunca foi visto (só a tela, em foto, e sem nenhum
- * lançamento). Por isso a tabela é aceita nas mesmas três formas da aba
- * “Fila”: células de tabela, tudo numa linha e uma célula por linha.
+ * O HTML de verdade nunca foi visto (a foto tem barra de rolagem horizontal).
+ * Seis colunas são aceitas como tabela, linha inteira ou uma célula por linha;
+ * quatro colunas só como tabela, com total geral de viagens e toneladas.
  */
 
 /** O link do menu é o da aba “Ticket”. */
@@ -335,10 +335,10 @@ export type LancamentoDoTicket = {
   /** R$ por tonelada. */
   valor: number;
   servico: string;
-  /** aaaa-mm-dd */
-  data: string;
-  /** hh:mm */
-  hora: string;
+  /** aaaa-mm-dd, ou null quando o portal não informa. */
+  data: string | null;
+  /** hh:mm, ou null quando o portal não informa. */
+  hora: string | null;
 };
 
 export type TicketsDaTela =
@@ -416,7 +416,7 @@ function lerLinhaInteira(texto: string): LinhaCrua | null {
  * Linha de tabela que começa com um ponto: as seis células, cada uma no seu
  * lugar. Devolve o lançamento ou o nome da coluna que não serviu.
  */
-function lerCelulas(celulas: string[]): LinhaCrua | { coluna: string } {
+function lerCelulas(celulas: string[], semDataHora = false): LinhaCrua | { coluna: string } {
   const [cPonto, cQuant, cValor, cServico, cData, cHora] = celulas;
   const ponto = RE_CELULA_PONTO.exec(cPonto);
   if (!ponto) return { coluna: "PONTO" };
@@ -424,6 +424,7 @@ function lerCelulas(celulas: string[]): LinhaCrua | { coluna: string } {
   if (!quant) return { coluna: "QUANT" };
   const valor = RE_CELULA_VALOR.exec(cValor);
   if (!valor) return { coluna: "VALOR" };
+  if (semDataHora) return { letra: ponto[1], numero: ponto[2], quant: quant[1], unidade: quant[2] ?? "", valor: valor[1], servico: cServico, dia: "", mes: "", ano: "", hora: "", minuto: "" };
   const data = RE_CELULA_DATA.exec(cData);
   if (!data) return { coluna: "DATA" };
   const hora = RE_CELULA_HORA.exec(cHora);
@@ -432,7 +433,7 @@ function lerCelulas(celulas: string[]): LinhaCrua | { coluna: string } {
 }
 
 /** “TOTAL GERAL: 19 VIAGENS - 571.760 TONS” (o rodapé do PDF; a tela pode trazer ou não). */
-const RE_TOTAL_VIAGENS = /(\d{1,4})\s*(?:viagens?|lan[çc]amentos?)\b(?:\s*[-–—:]\s*([\d.,]+)\s*(?:tons?|toneladas?|t)\b)?/i;
+const RE_TOTAL_VIAGENS = /(\d{1,4})\s*(?:viagens?|lan[çc]amentos?)\b(?:\s*[-–—:]\s*([\d.,]+)(?:\s*(?:tons?|toneladas?|t)\b)?)?/i;
 /** “Total: 7” — só a contagem (um total em dinheiro, “Total: R$ 1.234,56”, não é contagem). */
 const RE_TOTAL_SIMPLES = /^total\b[^0-9]{0,30}(\d{1,4})$/i;
 
@@ -519,15 +520,15 @@ function lerToneladasDoTotal(texto: string): number | null {
 
 /**
  * Interpreta a tela “Tickets” (o resultado do “Gerar”) para UM ponto e UMA
- * semana. Só vale a tela inteira, com o cabeçalho das seis colunas e, embaixo
- * dele, as viagens — ou o aviso de que não há nenhuma. Ver as regras no topo.
+ * semana. Só vale a tela inteira, com cabeçalho reconhecido e as viagens
+ * ou o aviso de que não há nenhuma. Ver as regras no topo.
  */
 export function interpretarTickets(html: string, esperado: { codigo: string; inicio: string; fim: string }): TicketsDaTela {
   const linhas = linhasDaTela(html);
   const recusa = (motivo: string, de = 0): TicketsDaTela => ({
     ok: false,
     motivo,
-    amostra: linhas.slice(de, de + 8).map((l) => mascararNumeros(l)),
+    amostra: linhas.slice(de, de + 8).map((l) => /^motorista\s*:/i.test(l) ? "Motorista: [oculto]" : mascararNumeros(l)),
   });
   if (!/<\/(?:body|html)\s*>/i.test(html)) return recusa("a página do Ticket veio cortada (sem o fim da página)", Math.max(0, linhas.length - 8));
 
@@ -540,6 +541,22 @@ export function interpretarTickets(html: string, esperado: { codigo: string; ini
       cabecalho = i;
       inicioDaTabela = i + n;
       break;
+    }
+  }
+  // A foto mostra quatro colunas e uma barra horizontal: podem existir mais
+  // colunas fora da imagem. Só aceitamos quatro se o HTML tiver exatamente
+  // essas quatro células no cabeçalho; não presumimos que estejam ausentes.
+  let quatroColunas = false;
+  if (cabecalho < 0) {
+    for (let i = 0; i < linhas.length; i += 1) {
+      const palavras = palavrasDe(linhas[i]);
+      if (linhas[i].includes("·") && palavras.length === 4 && palavras.every((p, n) => COLUNAS[n].test(p)) &&
+          !/^(?:DATA|HORA)/i.test(semAcento(linhas[i + 1] ?? ""))) {
+        cabecalho = i;
+        inicioDaTabela = i + 1;
+        quatroColunas = true;
+        break;
+      }
     }
   }
   if (cabecalho < 0) {
@@ -575,13 +592,26 @@ export function interpretarTickets(html: string, esperado: { codigo: string; ini
   const lancamentos: LancamentoDoTicket[] = [];
   let avisoDeVazio = false;
   let total: { viagens: number; toneladas: number | null } | null = null;
+  let totalMotorista: { viagens: number; toneladas: number | null } | null = null;
   let pendente: string[] = [];
   for (let i = inicioDaTabela; i < linhas.length; i += 1) {
     const texto = linhas[i].replace(/\s*·\s*/g, " ").trim();
     // Linha de tabela: as células vêm separadas por “·”.
     const celulas = linhas[i].includes("·") ? linhas[i].split("·").map((c) => c.trim()) : null;
     let crua: LinhaCrua | null = null;
-    if (pendente.length) {
+    if (quatroColunas && celulas && RE_CELULA_PONTO.test(celulas[0])) {
+      if (celulas.length !== 4) return recusa(`linha com ${celulas.length} colunas (o quadro tem 4): “${mascararNumeros(linhas[i])}”`, i);
+      const [ponto, quant, valor, servico] = celulas;
+      // Não inventar data/hora: quatro colunas só são aceitas como células,
+      // com o serviço sem outro lançamento ou data escondidos nele.
+      if (/\b[ABM]-?\d{2,4}\b|\d{2}\/\d{2}\/\d{4}|\b\d{1,2}:\d{2}\b/i.test(servico))
+        return recusa("coluna SERVIÇO contém dados de outra coluna ou lançamento", i);
+      const lida = lerCelulas([ponto, quant, valor, servico], true);
+      if ("coluna" in lida) return recusa(`linha com a coluna ${lida.coluna} que a leitura não entendeu: “${mascararNumeros(linhas[i])}”`, i);
+      crua = lida;
+    } else if (quatroColunas && RE_COMECA_COM_PONTO.test(texto)) {
+      return recusa(`linha de lançamento que a leitura não entendeu: “${mascararNumeros(texto)}”`, i);
+    } else if (pendente.length) {
       // Uma célula por linha: junta até fechar um lançamento. Outro ponto
       // antes de fechar = o anterior ficou pela metade.
       if (RE_COMECA_COM_PONTO.test(texto)) {
@@ -608,9 +638,13 @@ export function interpretarTickets(html: string, esperado: { codigo: string; ini
           pendente = [texto];
         } else if (RE_NENHUM.test(texto)) {
           avisoDeVazio = true;
+        } else if (/^motorista\s*:/i.test(texto) && /\btotal\b/i.test(texto)) {
+          // A foto mostra também o subtotal do motorista, sem unidade.
+          const subtotal = /\btotal\s*:\s*(\d+)\s*[-–—]\s*([\d.,]+)/i.exec(texto);
+          if (subtotal) totalMotorista = { viagens: Number(subtotal[1]), toneladas: lerToneladasDoTotal(subtotal[2]) };
         } else if (RE_CODIGO_NA_LINHA.test(texto)) {
           return recusa(`linha com um ponto que a leitura não entendeu: “${mascararNumeros(texto)}”`, i);
-        } else if (RE_DADO_SOLTO.test(texto) || RE_LINHA_COM_DADOS.test(texto)) {
+        } else if (RE_DADO_SOLTO.test(texto) || RE_LINHA_COM_DADOS.test(texto) || (quatroColunas && celulas && celulas.length >= 3 && RE_CELULA_QUANT.test(celulas[1] ?? "") && RE_CELULA_VALOR.test(celulas[2] ?? ""))) {
           return recusa(`linha com cara de lançamento, mas sem o ponto na frente: “${mascararNumeros(texto)}”`, i);
         } else if (RE_MAIS_PAGINAS.test(texto) || Number(RE_PAGINA_DE.exec(texto)?.[1] ?? 1) > 1) {
           return recusa("a tela de lançamentos parece ter mais de uma página (a leitura só vê a primeira)", i);
@@ -641,9 +675,9 @@ export function interpretarTickets(html: string, esperado: { codigo: string; ini
         i,
       );
     }
-    const data = dataDoPortal(crua.dia, crua.mes, crua.ano);
-    if (!data) return recusa(`linha ${n}: data que não existe`, i);
-    if (data < esperado.inicio || data > esperado.fim) {
+    const data = quatroColunas ? null : dataDoPortal(crua.dia, crua.mes, crua.ano);
+    if (!quatroColunas && !data) return recusa(`linha ${n}: data que não existe`, i);
+    if (data && (data < esperado.inicio || data > esperado.fim)) {
       return recusa(`linha ${n}: a data (${diaMes(data)}) está fora da semana pedida (${diaMes(esperado.inicio)} a ${diaMes(esperado.fim)})`, i);
     }
     const [h, min] = [Number(crua.hora), Number(crua.minuto)];
@@ -654,7 +688,7 @@ export function interpretarTickets(html: string, esperado: { codigo: string; ini
       valor,
       servico: crua.servico.replace(/\s+/g, " ").trim().slice(0, 80),
       data,
-      hora: `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`,
+      hora: quatroColunas ? null : `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`,
     });
   }
   if (pendente.length) return recusa(`a tela terminou no meio de um lançamento: “${mascararNumeros(pendente.join(" "))}”`, Math.max(0, linhas.length - 8));
@@ -665,12 +699,18 @@ export function interpretarTickets(html: string, esperado: { codigo: string; ini
     // Tabela que esta leitura não entendeu nunca vira “nenhuma viagem”.
     return recusa("a tela não trouxe nenhum lançamento nem o aviso de que não há nenhum", inicioDaTabela);
   }
-  if (total) {
-    if (total.viagens !== lancamentos.length) {
-      return recusa(`a tela diz ${total.viagens} viagem(ns) no total, mas trouxe ${lancamentos.length} linha(s)`, inicioDaTabela);
+  // Sem data/hora nas linhas, só uma tabela com total de viagens E toneladas
+  // permite detectar uma leitura incompleta; não inventamos datas da semana.
+  if (quatroColunas && lancamentos.length && (!total || total.toneladas === null)) {
+    return recusa("a tabela sem data e hora precisa do total de viagens e toneladas para conferência", inicioDaTabela);
+  }
+  for (const totalLido of [total, totalMotorista]) {
+    if (!totalLido) continue;
+    if (totalLido.viagens !== lancamentos.length) {
+      return recusa(`a tela diz ${totalLido.viagens} viagem(ns) no total, mas trouxe ${lancamentos.length} linha(s)`, inicioDaTabela);
     }
     const soma = lancamentos.reduce((s, l) => s + l.quant, 0);
-    if (total.toneladas !== null && Math.abs(total.toneladas - soma) > 0.0015 * Math.max(1, lancamentos.length)) {
+    if (totalLido.toneladas !== null && Math.abs(totalLido.toneladas - soma) > 0.0015 * Math.max(1, lancamentos.length)) {
       return recusa("as toneladas do total da tela não batem com a soma das linhas", inicioDaTabela);
     }
   }

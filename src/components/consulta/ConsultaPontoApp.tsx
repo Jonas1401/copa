@@ -72,7 +72,7 @@ function ViagensDoPonto({ p }: { p: PontoDoResumo }) {
             <tr key={`${v.data}-${v.hora}-${i}`} className={i % 2 ? "bg-white/[0.03]" : ""}>
               <td className="py-2 pl-3">
                 <span className="block font-semibold text-white">
-                  {diaMesDe(v.data)} <span className="text-gelo/75">{v.hora}</span>
+                  {v.data ? diaMesDe(v.data) : "Data não informada"} {v.hora && <span className="text-gelo/75">{v.hora}</span>}
                 </span>
                 {v.servico && <span className="block text-[11px] leading-tight text-gelo/60 [overflow-wrap:anywhere]">{v.servico}</span>}
               </td>

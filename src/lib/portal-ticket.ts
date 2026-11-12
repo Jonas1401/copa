@@ -167,7 +167,7 @@ export function viagensValidas(v: unknown): ViagemGuardada[] | null {
     const { quant, valor, servico, data, hora } = item as Record<string, unknown>;
     if (typeof quant !== "number" || !Number.isFinite(quant) || quant <= 0 || quant > 1_000) return null;
     if (typeof valor !== "number" || !Number.isFinite(valor) || valor <= 0 || valor > 10_000) return null;
-    if (typeof data !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(data) || typeof hora !== "string" || !/^\d{2}:\d{2}$/.test(hora)) return null;
+    if (!((data === null && hora === null) || (typeof data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(data) && typeof hora === "string" && /^\d{2}:\d{2}$/.test(hora)))) return null;
     saida.push({ quant, valor, servico: typeof servico === "string" ? servico.slice(0, 80) : "", data, hora });
   }
   return saida;
