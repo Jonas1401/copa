@@ -42,6 +42,7 @@ import {
 import { lerEpg, parseDataXmltv } from "../src/lib/copaflix/epg";
 import { validarUrlExterna } from "../src/lib/copaflix/url-segura";
 import { PRESETS_M3U, lerConfiguracao } from "../src/lib/copaflix/fontes";
+import { deveRetomar } from "../src/lib/copaflix/retomada";
 import { listarJellyfin } from "../src/lib/copaflix/jellyfin";
 
 const ler = (p: string) => readFileSync(p, "utf8");
@@ -509,6 +510,29 @@ test("histórico é recente, sem repetição, e tudo pode ser apagado", () => {
 });
 
 /* --------------------------------------------------------- player e roda */
+
+test("retomada vale para vídeos curtos e nunca reinicia no fim do vídeo", () => {
+  assert.equal(deveRetomar(12, 20), true, "curta de 20 s precisa retomar");
+  assert.equal(deveRetomar(19, 20), false, "faltando 1 s, recomeça");
+  assert.equal(deveRetomar(240, 600), true, "episódio de 10 min retoma");
+  assert.equal(deveRetomar(1800, 5640), true, "filme de 94 min retoma");
+  assert.equal(deveRetomar(5635, 5640), false, "últimos segundos do filme recomeçam");
+  assert.equal(deveRetomar(4, 5640), false, "menos de 5 s não conta como começo");
+  assert.equal(deveRetomar(120, 0), false, "sem duração (ao vivo) não retoma");
+});
+
+test("abrir a ficha por link direto lê o progresso do aparelho", () => {
+  const fonte = ler("src/components/copaflix/TituloDetalhe.tsx");
+  assert.ok(
+    fonte.includes("progressoDoAparelho") && fonte.includes("armazenamentoDoAparelho"),
+    "a ficha precisa ler o progresso direto do aparelho no efeito de abertura",
+  );
+  const trecho = fonte.slice(fonte.indexOf('params.get("play")'));
+  assert.ok(
+    trecho.slice(0, 400).includes("doEpisodio?.posicao"),
+    "o link ?play=1 precisa usar a posição salva, não zero",
+  );
+});
 
 test("player cobre HLS, retomada, próximo episódio e erro claro", () => {
   const player = ler("src/components/copaflix/Player.tsx");

@@ -90,9 +90,10 @@ src/lib/copaflix/jellyfin.ts                cliente da API do Jellyfin
 src/lib/copaflix/tmdb.ts                    cartazes do TMDB (opcional)
 src/lib/copaflix/url-segura.ts              validação de URL (anti-SSRF)
 src/lib/copaflix/armazenamento.ts           favoritos/progresso/histórico locais
+src/lib/copaflix/retomada.ts                regra de "continuar de onde parou"
 
 public/images/copaflix/arte-0..5.webp        arte cinematográfica do app
-tests/copaflix.test.ts                      31 testes do módulo
+tests/copaflix.test.ts                      33 testes do módulo
 docs/COPAFLIX.md                            este guia
 ```
 
@@ -241,7 +242,10 @@ Padrão: ligado. Ele contém:
 - **Ficha do título** com fonte, crédito/licença, favoritos, progresso e
   temporadas/episódios (quando houver).
 - **Player** com play/pause, barra de progresso, volume, tela cheia, qualidade
-  (quando o HLS oferece), retomada, próximo episódio e mensagens de erro.
+  (quando o HLS oferece), retomada, próximo episódio e mensagens de erro. A
+  retomada funciona também em vídeos curtos: recomeça do zero só quando falta
+  menos que 10 s **ou** menos que 10% do vídeo — um curta de 20 s continua de
+  onde parou em vez de apagar o progresso.
 - **TV ao vivo** por categoria, busca, atualização da lista, EPG ("agora") e
   player embutido.
 - **Favoritos**, **Continuar assistindo** e **Histórico** no aparelho, com
@@ -359,8 +363,8 @@ npm run build       # next build
 | --- | --- |
 | `npm run typecheck` | sem erros |
 | `npm run lint` | 0 erros (7 avisos de `<img>` já existentes no projeto) |
-| `npm test` | 543 testes · 521 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
-| `tests/copaflix.test.ts` | 31/31 passam |
+| `npm test` | 545 testes · 523 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
+| `tests/copaflix.test.ts` | 33/33 passam |
 | `npm run build` | sucesso; rotas `/copaflix`, `/copaflix/titulo/[id]` e `/api/copaflix/*` publicadas |
 | Navegação `/` → ⋮ → Entretenimento | OK no servidor de desenvolvimento |
 | Roda 3D (arrasto e teclado) | OK (headless Chromium 390 px e 1440 px) |

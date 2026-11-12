@@ -15,6 +15,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import type { FonteMidia } from "@/lib/copaflix/tipos";
+import { deveRetomar } from "@/lib/copaflix/retomada";
 
 /**
  * Player do CopaFlix.
@@ -293,15 +294,13 @@ export default function Player({
       setDuracao(d);
       setAoVivo(video.duration === Infinity);
       progressoRef.current.duracao = d;
-      if (!retomou.current && inicioInicial > 5) {
+      if (!retomou.current && deveRetomar(inicioInicial, d)) {
         retomou.current = true;
-        if (!d || inicioInicial < d - 10) {
-          try {
-            video.currentTime = inicioInicial;
-            setPosicao(inicioInicial);
-          } catch {
-            /* alguns fluxos ao vivo não permitem */
-          }
+        try {
+          video.currentTime = inicioInicial;
+          setPosicao(inicioInicial);
+        } catch {
+          /* alguns fluxos ao vivo não permitem */
         }
       }
       if (autoIniciar) {

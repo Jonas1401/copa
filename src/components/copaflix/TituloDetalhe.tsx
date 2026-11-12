@@ -23,11 +23,28 @@ import {
   temporadasDe,
   duracaoTexto,
 } from "@/lib/copaflix/catalogo";
+import { armazenamentoDoAparelho, lerProgresso, type Progresso } from "@/lib/copaflix/armazenamento";
 import type { Episodio, Titulo } from "@/lib/copaflix/tipos";
 import Fileira from "./Fileira";
 import { ArteDoApp } from "./Cartaz";
 import Player from "./Player";
 import { useCopaFlixLocal } from "./useCopaFlixLocal";
+
+/**
+ * Progresso lido direto do aparelho.
+ *
+ * O estado do hook só é hidratado depois da montagem (para o HTML do servidor
+ * bater com o cliente), então abrir a ficha por link direto (`?play=1`) ler o
+ * estado daria zero e o vídeo começaria do início — apagando o ponto salvo.
+ * Aqui a leitura é síncrona e só acontece no navegador.
+ */
+function progressoDoAparelho(id: string, episodioId?: string | null): Progresso | null {
+  const lista = lerProgresso(armazenamentoDoAparelho());
+  const doTitulo = lista.find((entrada) => entrada.id === id);
+  if (!doTitulo) return null;
+  if (episodioId && doTitulo.episodioId && doTitulo.episodioId !== episodioId) return null;
+  return doTitulo;
+}
 
 const ROTULO_TIPO = { filme: "Filme", serie: "Série", novela: "Novela" } as const;
 
@@ -65,7 +82,8 @@ export default function TituloDetalhe({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const epParam = params.get("ep");
-    const progresso = local.progressoDe(titulo.id);
+    const doAparelho = lerProgresso(armazenamentoDoAparelho()).filter((entrada) => entrada.id === titulo.id);
+    const progresso = doAparelho[0] ?? null;
     const primeiro = titulo.episodios?.[0]?.id ?? null;
     const inicial = epParam ?? progresso?.episodioId ?? primeiro;
 
@@ -75,7 +93,10 @@ export default function TituloDetalhe({
       if (ep) setTemporada(ep.temporada);
     }
     if (params.get("play") === "1") {
-      setInicioPlayer(progresso?.posicao && progresso.posicao > 5 ? progresso.posicao : 0);
+      const doEpisodio =
+        doAparelho.find((entrada) => !inicial || !entrada.episodioId || entrada.episodioId === inicial) ??
+        progresso;
+      setInicioPlayer(doEpisodio?.posicao && doEpisodio.posicao > 5 ? doEpisodio.posicao : 0);
       setRodando(true);
       local.registrarAbertura(titulo);
     }
@@ -125,7 +146,8 @@ export default function TituloDetalhe({
       }
       return;
     }
-    const entrada = local.progressoDe(titulo.id, alvo ?? undefined);
+    const entrada =
+      local.progressoDe(titulo.id, alvo ?? undefined) ?? progressoDoAparelho(titulo.id, alvo ?? undefined);
     setEpisodioAtual(alvo ?? null);
     const ep = episodios.find((e) => e.id === alvo);
     if (ep) setTemporada(ep.temporada);
@@ -228,7 +250,7 @@ export default function TituloDetalhe({
               </button>
               {salvo && salvo.duracao > 0 && salvo.posicao / salvo.duracao < 0.95 && (
                 <span className="cf-chip cf-chip-ciano">
-                  Retomando de {Math.floor(salvo.posicao / 60)}min
+                  Retomando de {salvo.posicao < 60 ? `${Math.floor(salvo.posicao)} s` : `${Math.floor(salvo.posicao / 60)} min`}
                 </span>
               )}
               {episodioObj && (
