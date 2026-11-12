@@ -1346,10 +1346,12 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       try {
         const r = await fetch(`/api/motoristas/${atual.id}`, {
           method: "PATCH",
+          cache: "no-store",
+          credentials: "same-origin",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ nome }),
         });
-        const m = await r.json();
+        const m = await r.json().catch(() => ({}));
         if (!r.ok) {
           setAviso({ texto: m.erro ?? "Não foi possível trocar o nome.", erro: true });
           return false;
