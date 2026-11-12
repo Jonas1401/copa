@@ -40,7 +40,7 @@ export default function MenuConta({
    */
   totalMotoristas?: number | null;
   /** Mesma função da aba "Sobre": PATCH /api/motoristas/[id]. */
-  onRenomear: (nome: string) => Promise<boolean>;
+  onRenomear: (nome: string) => Promise<{ ok: boolean; erro?: string }>;
   /** Abre o painel de notificações já existente. */
   onAtivarNotificacoes: () => void;
   /**
@@ -111,11 +111,11 @@ export default function MenuConta({
     setSalvando(true);
     setErroNome("");
     try {
-      const ok = await onRenomear(limpo);
-      if (ok) {
+      const resultado = await onRenomear(limpo);
+      if (resultado.ok) {
         fechar();
       } else {
-        setErroNome("Não foi possível atualizar seu nome. Confira a conexão e tente novamente.");
+        setErroNome(resultado.erro || "Não foi possível atualizar seu nome. Tente novamente.");
       }
     } catch {
       setErroNome("Falha ao salvar. Confira a conexão e tente novamente.");
