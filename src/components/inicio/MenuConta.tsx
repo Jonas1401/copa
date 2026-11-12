@@ -87,16 +87,23 @@ export default function MenuConta({
     const esc = (evento: KeyboardEvent) => {
       if (evento.key === "Escape") fechar();
     };
-    const rolar = () => setAberto(false);
+    // No celular, abrir o teclado virtual dispara resize/scroll.
+    // Não feche o menu enquanto o campo de nome estiver em edição.
+    const rolar = () => {
+      if (!trocandoNome) setAberto(false);
+    };
+    const redimensionar = () => {
+      if (!trocandoNome) setAberto(false);
+    };
     document.addEventListener("keydown", esc);
     window.addEventListener("scroll", rolar, { passive: true });
-    window.addEventListener("resize", rolar);
+    window.addEventListener("resize", redimensionar);
     return () => {
       document.removeEventListener("keydown", esc);
       window.removeEventListener("scroll", rolar);
-      window.removeEventListener("resize", rolar);
+      window.removeEventListener("resize", redimensionar);
     };
-  }, [aberto]);
+  }, [aberto, trocandoNome]);
 
   useEffect(() => {
     if (trocandoNome) campoNome.current?.focus();
