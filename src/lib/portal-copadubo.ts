@@ -2313,6 +2313,9 @@ export async function lerTicketsComSessao(
       }
       listas.push(lida.lancamentos);
     }
+    if (!falha && listas.length > 1 && listas.some((lista) => lista.some((v) => !v.data || !v.hora))) {
+      falha = "o ponto aparece mais de uma vez e o portal não informa data e hora para distinguir as viagens";
+    }
     if (falha) {
       falhas[codigo] = falha;
       diagnostico.push(`Ticket do ${codigo} (semana ${rotuloDaSemana}): ${falha}.`);

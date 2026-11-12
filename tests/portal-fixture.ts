@@ -76,6 +76,8 @@ export type TicketFalso = {
   lancamentos: Record<string, LancamentoFalso[]>;
   /** Como o quadro é montado (padrão: `tabela`). */
   forma?: "tabela" | "linhas" | "celulas";
+  /** Hipótese de HTML com apenas as quatro colunas visíveis na foto. */
+  quatroColunas?: boolean;
   metodo?: "POST" | "GET";
   /** Endereço que recebe o “Gerar”, relativo a `/moto/` (padrão `ticket_lista.php`). */
   acao?: string;
@@ -377,8 +379,8 @@ export function telaTickets(t: TicketFalso, iPonto: number, iSemana: number): st
   const semana = t.semanas[t.mostraSemana ?? iSemana] ?? "";
   const codigo = t.mostraPonto ?? t.pontos[iPonto] ?? "";
   const linhas = t.lancamentos[`${iPonto}|${iSemana}`] ?? [];
-  const celulas = (l: LancamentoFalso) => [codigo, l.quant, l.valor, l.servico, l.data, l.hora];
-  const cabecalho = ["PONTO", "QUANT", "VALOR", "SERVIÇO", "DATA", "HORA"];
+  const celulas = (l: LancamentoFalso) => [codigo, l.quant, l.valor, l.servico, ...(t.quatroColunas ? [] : [l.data, l.hora])];
+  const cabecalho = ["PONTO", "QUANT", "VALOR", "SERVIÇO", ...(t.quatroColunas ? [] : ["DATA", "HORA"])];
   const vazio = "Nenhum lançamento encontrado para este período.";
   const forma = t.forma ?? "tabela";
   let quadro: string;
@@ -394,7 +396,7 @@ ${linhas.length ? linhas.map((l) => `<div class="linha">${celulas(l).join(" ")}<
 ${linhas.length ? linhas.map((l) => celulas(l).map((c) => `<div>${c}</div>`).join("")).join("\n") : `<p>${vazio}</p>`}</div>`;
   }
   const toneladas = linhas.reduce((s, l) => s + Number(l.quant.replace(",", ".")), 0);
-  const total = t.comTotal ? `<p class="total">TOTAL GERAL: ${linhas.length + (t.totalErrado ? 1 : 0)} VIAGENS - ${toneladas.toFixed(3)} TONS</p>` : "";
+  const total = t.comTotal ? `<p class="total">TOTAL GERAL: ${linhas.length + (t.totalErrado ? 1 : 0)} VIAGENS - ${toneladas.toFixed(3)}${t.quatroColunas ? "" : " TONS"}</p>` : "";
   const pagina = `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Tickets</title></head><body>
 <header><img alt="COPADUBO"></header>
 <h1>Tickets</h1>

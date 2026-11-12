@@ -17,7 +17,7 @@ import { brl } from "@/lib/frete";
  */
 
 /** Uma viagem como fica guardada (o ponto é o da linha). */
-export type ViagemGuardada = { quant: number; valor: number; servico: string; data: string; hora: string };
+export type ViagemGuardada = { quant: number; valor: number; servico: string; data: string | null; hora: string | null };
 
 export type ContaDoTicket = {
   viagens: number;

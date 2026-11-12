@@ -451,7 +451,7 @@ nomes internos continuam `consulta-ponto`.
 **De onde vem.** Da aba **“Ticket”** do Portal do Motorista (“2ª Via de
 Ticket”): o servidor escolhe o ponto na lista PONTO, a semana de hoje na lista
 SEMANA, envia o “Gerar” e lê o cartão “Lançamentos” (PONTO · QUANT · VALOR ·
-SERVIÇO · DATA · HORA). O “Gerar PDF” nunca é aberto.
+SERVIÇO e, quando presentes, DATA · HORA). O “Gerar PDF” nunca é aberto.
 
 **A conta** de cada ponto é a do Cálculo de Frete (`src/lib/frete.ts`, a mesma
 função `calcular`): frete da viagem = Quant (t) × Valor (R$/t); valor bruto do
@@ -506,14 +506,20 @@ viagens guardadas; remover o acesso ao portal apaga as viagens.
   em que duas semanas contêm o dia, vale a que o portal deixa marcada. As
   viagens ficam guardadas por semana (`portal_tickets`) por 70 dias;
 - código que aparece **duas vezes** na lista PONTO: cada opção é lida (até 3) e
-  os lançamentos iguais contam uma vez só.
+  os lançamentos iguais contam uma vez só. Se as linhas não têm data e hora,
+  não é possível distinguir com segurança viagens iguais: o ponto fica sem
+  leitura nova em vez de somar ou descartar viagens por adivinhação.
 
 **Leitura rígida** (`src/lib/portal-ticket-parse.ts`). O HTML de verdade da aba
-nunca foi visto — só as telas, e nunca uma linha de lançamento. Uma leitura só
-vale se a tela é a de “Tickets”, o período é o da semana pedida, cada linha tem
-o ponto pedido, Quant e Valor nos formatos do ticket (toneladas com até três
-casas; R$ por tonelada com centavos) e dentro das faixas da calculadora, e a
-data cai dentro da semana. Sem lançamento, só vale o “Nenhum lançamento
+nunca foi visto. A foto com viagens mostra quatro colunas e uma barra de
+rolagem horizontal, portanto pode haver outras colunas fora da imagem. Os
+valores visíveis foram usados em testes de regressão, não em treinamento de IA.
+Uma leitura só vale se o período escrito, quando presente, é o da semana
+pedida, cada linha tem o ponto pedido, Quant e Valor nos formatos do ticket
+(toneladas com até três casas; R$ por tonelada) e dentro das faixas da
+calculadora, e a data, quando informada, cai dentro da semana. Se o HTML tiver
+só quatro colunas, exige-se também o total geral de viagens e toneladas
+conferido; data e hora não são inventadas. Sem lançamento, só vale o “Nenhum lançamento
 encontrado para este período”. Tela diferente, página cortada ou linha fora do
 padrão: a leitura é **recusada**, com o motivo, e continua valendo a última boa
 — com a hora dela na tela. Um número errado de dinheiro é pior do que nenhum.
