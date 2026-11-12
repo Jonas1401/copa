@@ -10,6 +10,8 @@ import { motoristaDaSessao } from "@/lib/motorista-sessao";
 import { acessoPortalDoMotorista, garantirTabelasPortal, INTERVALO_LEITURA_MS, monitorarSeDevido, ultimaLeituraPortal } from "@/lib/portal-copadubo";
 import { normalizarCodigoPortal } from "@/lib/portal-copadubo-parse";
 import { atualizarFilaEntreCiclos, monitorarStatusEmSegundoPlano } from "@/lib/portal-monitor";
+import { verificarNaviosFertilizantes } from "@/lib/navios-aviso";
+import { linksParaApi, verificarLinksNaAbertura } from "@/lib/monitor-links";
 import { fontePortal, situacaoFresca, situacoesDoMotorista } from "@/lib/portal-situacao";
 import { pontoEmDispensa } from "@/lib/portal-status-ponto";
 
@@ -56,7 +58,35 @@ async function conferirSaidasNoPortal() {
   finally { conferindoSaidas = false; }
 }
 
-export async function GET() {
+/**
+ * ABERTURA DO APP / SESSÃO NOVA — regra do proprietário.
+ *
+ * Verifica na hora TODOS os links de monitoramento ativos (registro em
+ * `monitor-links`) e pede uma rodada imediata aos leitores existentes: Status
+ * do portal, aba “Fila” e navios. Nada espera intervalo, temporizador ou
+ * atualização manual da tela.
+ *
+ * Cada fonte é independente (`allSettled`): uma conexão fora do ar não cancela
+ * as outras, não marca as outras como offline e a próxima tentativa é a do
+ * leitor, no intervalo que já estava configurado. As consultas continuam sem
+ * sobreposição: os leitores têm trava de rodada e reserva no banco, e o
+ * registro de links usa uma consulta por link de cada vez.
+ */
+async function acordarMonitoramentos() {
+  const links = verificarLinksNaAbertura("abertura").catch(() => null);
+  const status = monitorarStatusEmSegundoPlano({ forcar: true }).catch(() => null);
+  // A fila depois do Status, como no ciclo normal (a sessão é a mesma).
+  const fila = status.then(() => atualizarFilaEntreCiclos({ forcar: true })).catch(() => null);
+  const navios = verificarNaviosFertilizantes({ forcar: true }).catch(() => null);
+  await Promise.allSettled([links, status, fila, navios]);
+}
+
+export async function GET(requisicao: Request) {
+  // `?abertura=1` é enviado uma vez, quando o app abre (e ao voltar para a
+  // tela). A verificação começa já, em paralelo com esta resposta; o `after`
+  // segura a função viva até ela terminar.
+  const abertura = new URL(requisicao.url).searchParams.get("abertura") === "1";
+  const acordar = abertura ? acordarMonitoramentos() : null;
   try {
     // Com ponto monitorado, cada chamada pode carregar uma varredura nova do
     // site — nunca mais que 1,5s de espera; o resto termina em segundo plano.
@@ -111,6 +141,8 @@ export async function GET() {
     // da fila entre as olhadas inclui além do Livro A.
     const livrosDoPedido = [...new Set(estado.pontos.map((p) => p.livro))];
     after(async () => {
+      // A rodada da abertura já está em curso: espera terminar antes de sair.
+      if (acordar) await acordar.catch(() => null);
       const inicioDoSegundoPlano = Date.now();
       await garantirTabelasPortal().catch(() => null);
       // A varredura desta chamada pode ainda estar em andamento — e é ela que
@@ -134,9 +166,12 @@ export async function GET() {
       // tempo folgado desta função para a leitura inteira (até 14 s).
       if (Date.now() - inicioDoSegundoPlano < PRAZO_PARA_COMECAR_A_FILA_MS) await atualizarFilaEntreCiclos({ livrosDoPedido }).catch(() => null);
     });
-    return NextResponse.json(estado, {
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    // `linksMonitorados` é diagnóstico (horário e resultado de cada link). O
+    // aplicativo não desenha nada novo com ele: o layout continua o mesmo.
+    return NextResponse.json(
+      { ...estado, linksMonitorados: linksParaApi() },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (erro) {
     return NextResponse.json(
       { erro: "Falha ao ler o monitor" + String(erro) },

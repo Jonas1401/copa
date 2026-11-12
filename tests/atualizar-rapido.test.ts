@@ -58,8 +58,15 @@ test("o /api/estado relê a fila entre ciclos depois da resposta, por último e 
     "só começa com tempo de sobra, e uma falha dela nunca derruba o resto",
   );
   assert.match(segundoPlano, /const inicioDoSegundoPlano = Date\.now\(\);/);
-  // A resposta ao app não espera a leitura da fila: a chamada só existe dentro do after().
-  assert.equal(rota.split("atualizarFilaEntreCiclos(").length - 1, 1);
+  // A resposta ao app não espera a leitura da fila: fora da ABERTURA (que roda no
+  // after), a chamada só existe dentro do after().
+  const semAbertura = rota.replace(/async function acordarMonitoramentos\(\)[\s\S]*?\n}\n/, "");
+  assert.equal(semAbertura.split("atualizarFilaEntreCiclos(").length - 1, 1);
+  assert.match(
+    rota,
+    /async function acordarMonitoramentos\(\)[\s\S]*atualizarFilaEntreCiclos\(\{ forcar: true \}\)/,
+    "a abertura força UMA rodada da fila, sem alterar o intervalo",
+  );
   // Com ela vão os livros dos pontos de quem está com o app aberto (só os dele: o visitante não pede livro nenhum).
   assert.match(rota, /const livrosDoPedido = \[\.\.\.new Set\(estado\.pontos\.map\(\(p\) => p\.livro\)\)\];/);
 
@@ -309,10 +316,13 @@ test("uma resposta atrasada nunca passa por cima de uma mais nova", () => {
   assert.equal(respostaAindaVale(7, 7), false);
 
   const tela = ler("src/components/MonitorApp.tsx");
-  const buscar = tela.slice(tela.indexOf("const buscarEstado = useCallback(async () => {"), tela.indexOf("const entrarEstadoDaAcao = useCallback("));
+  const buscar = tela.slice(
+    tela.indexOf("const buscarEstado = useCallback(async (abertura = false) => {"),
+    tela.indexOf("const entrarEstadoDaAcao = useCallback("),
+  );
   assert.ok(buscar.length > 300 && buscar.length < 1500, "o trecho do buscarEstado");
   const numero = buscar.indexOf("const pedido = ++pedidoDeEstado.current;");
-  const pedidoNaRede = buscar.indexOf('await fetch("/api/estado", { cache: "no-store" })');
+  const pedidoNaRede = buscar.indexOf('await fetch(`/api/estado${abertura ? "?abertura=1" : ""}`');
   const confere = buscar.indexOf("if (!respostaAindaVale(pedido, estadoQueEntrou.current)) return;");
   const marca = buscar.indexOf("estadoQueEntrou.current = pedido;");
   const entra = buscar.indexOf("setEstado(novo);");

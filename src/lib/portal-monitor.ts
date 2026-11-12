@@ -630,12 +630,24 @@ const CONFERENCIA_DA_FILA_A_CADA_MS = 4_000;
  * Sem app aberto nada muda: o despertador de 1 minuto continua lendo o Status
  * e a fila, na carona.
  */
-export async function atualizarFilaEntreCiclos(opcoes: { buscar?: typeof fetch; /** Livros dos pontos de quem está com o app aberto. */ livrosDoPedido?: string[] } = {}) {
+export async function atualizarFilaEntreCiclos(opcoes: {
+  buscar?: typeof fetch;
+  /** Livros dos pontos de quem está com o app aberto. */
+  livrosDoPedido?: string[];
+  /**
+   * Abertura do app: pula as esperas LOCAIS (4 s entre conferências e a folga
+   * do intervalo). A reserva no banco continua valendo — é ela que impede duas
+   * instâncias de abrirem a aba juntas — e a sessão do leitor continua tendo de
+   * servir. Nenhum intervalo configurado é alterado.
+   */
+  forcar?: boolean;
+} = {}) {
   const nada = { tentou: false, lidos: [] as LivroDaFila[], motoristaId: null as number | null };
   if (!temBancoConfigurado || fonteDaFila() !== "portal" || intervaloDaFilaMs() === null) return nada;
   // Antes de qualquer espera: a marca tem de ficar mesmo quando esta chamada não é a que vai ler.
   if (opcoes.livrosDoPedido?.length) await marcarLivrosPedidos(opcoes.livrosDoPedido).catch(() => null);
-  if (filaEntreCiclosEmAndamento || Date.now() - ultimaConferenciaDaFilaEm < CONFERENCIA_DA_FILA_A_CADA_MS) return nada;
+  if (filaEntreCiclosEmAndamento) return nada;
+  if (!opcoes.forcar && Date.now() - ultimaConferenciaDaFilaEm < CONFERENCIA_DA_FILA_A_CADA_MS) return nada;
   filaEntreCiclosEmAndamento = true;
   ultimaConferenciaDaFilaEm = Date.now();
   try {
@@ -651,7 +663,7 @@ export async function atualizarFilaEntreCiclos(opcoes: { buscar?: typeof fetch; 
     if (!emDia.length) return nada;
     // Cedo demais: nem tenta a reserva (que é quem decide de verdade, no banco).
     const ultimaTentativa = Math.max(...emDia.map((g) => g.tentativaEm?.getTime() ?? g.lidoEm?.getTime() ?? 0));
-    if (agora - ultimaTentativa < esperaDaFilaMs()) return nada;
+    if (!opcoes.forcar && agora - ultimaTentativa < esperaDaFilaMs()) return nada;
     const leitor = [...emDia].sort((a, b) => (b.lidoEm?.getTime() ?? 0) - (a.lidoEm?.getTime() ?? 0))[0].motoristaId as number;
     // A sessão do leitor tem de servir (conta ativa, endereço da aba guardado, nenhum login há
     // pouco). Conferido ANTES da reserva: uma leitura que não vai acontecer não pode segurar a
@@ -683,12 +695,16 @@ let ultimaRodadaEm = 0;
  * em dia mesmo se o despertador da hospedagem não rodar a cada minuto. Uma por
  * vez nesta instância e no máximo uma a cada 10 s.
  */
-export async function monitorarStatusEmSegundoPlano() {
-  if (fontePortal() !== "portal" || rodadaEmAndamento || Date.now() - ultimaRodadaEm < 10_000) return;
+export async function monitorarStatusEmSegundoPlano(opcoes: { forcar?: boolean } = {}) {
+  if (fontePortal() !== "portal" || rodadaEmAndamento) return;
+  if (!opcoes.forcar && Date.now() - ultimaRodadaEm < 10_000) return;
   rodadaEmAndamento = true;
   ultimaRodadaEm = Date.now();
   try {
-    await monitorarStatusDeTodos({ prazoMs: 8_000, simultaneos: 2, esperaMs: intervaloStatusMs() });
+    // `forcar` (abertura do app): todo mundo que está devendo é lido agora.
+    // O freio de login de cada motorista continua valendo dentro da leitura —
+    // a abertura não atropela a regra do portal.
+    await monitorarStatusDeTodos({ prazoMs: 8_000, simultaneos: 2, esperaMs: opcoes.forcar ? 0 : intervaloStatusMs() });
     // Com tempo sobrando, o Saldo de Ganhos de quem está com a leitura vencida.
     await monitorarTickets(ultimaRodadaEm, { comecaAteMs: TICKET_COMECA_ATE_MS.appAberto, terminaAteMs: TICKET_TERMINA_ATE_MS.appAberto, limite: 2 });
   } catch {

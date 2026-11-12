@@ -23,7 +23,8 @@ const LEASE_LEITURA_MS = 45000;
 const LEASE_ENVIO_MS = 45000;
 const RETENTATIVA_MS = 60000;
 
-function intervaloMs() {
+/** Intervalo já configurado do monitor de navios (5 min por padrão). */
+export function intervaloNaviosMs() {
   const n = Number(process.env.NAVIOS_MONITOR_MIN);
   return (Number.isFinite(n) && n >= 1 ? n : 5) * 60000;
 }
@@ -94,7 +95,7 @@ async function reservarLeitura(fonte: Fonte, forcar: boolean) {
   }).where(and(
     eq(naviosMonitorFontes.fonte, fonte.id),
     or(isNull(naviosMonitorFontes.leituraAte), lt(naviosMonitorFontes.leituraAte, agora)),
-    forcar ? sql`true` : or(isNull(naviosMonitorFontes.tentativaEm), lt(naviosMonitorFontes.tentativaEm, new Date(agora.getTime() - intervaloMs()))),
+    forcar ? sql`true` : or(isNull(naviosMonitorFontes.tentativaEm), lt(naviosMonitorFontes.tentativaEm, new Date(agora.getTime() - intervaloNaviosMs()))),
   )).returning({ fonte: naviosMonitorFontes.fonte });
   return r ? token : null;
 }
