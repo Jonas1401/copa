@@ -43,6 +43,11 @@ import { lerEpg, parseDataXmltv } from "../src/lib/copaflix/epg";
 import { validarUrlExterna } from "../src/lib/copaflix/url-segura";
 import { PRESETS_M3U, lerConfiguracao } from "../src/lib/copaflix/fontes";
 import { deveRetomar } from "../src/lib/copaflix/retomada";
+import {
+  montarListaDeFontes,
+  proximaFonte,
+  rotuloDaFonte,
+} from "../src/lib/copaflix/fontes-midia";
 import { listarJellyfin } from "../src/lib/copaflix/jellyfin";
 
 const ler = (p: string) => readFileSync(p, "utf8");
@@ -103,11 +108,15 @@ test("catálogo de demonstração: ids únicos, gêneros conhecidos e fonte lega
   // espelho de testes do player — nenhum agregador de conteúdo pirata.
   const hostsPermitidos = new Set([
     "archive.org",
-    "commondatastorage.googleapis.com",
+    "download.blender.org",
     "test-streams.mux.dev",
   ]);
   for (const titulo of DEMONSTRACAO) {
-    const urls = [titulo.fonte?.url, ...(titulo.episodios ?? []).map((e) => e.fonte?.url)];
+    const urls = [
+      titulo.fonte?.url,
+      ...(titulo.fontesAlternativas ?? []).map((f) => f.url),
+      ...(titulo.episodios ?? []).flatMap((e) => [e.fonte?.url, ...(e.fontesAlternativas ?? []).map((f) => f.url)]),
+    ];
     for (const url of urls.filter(Boolean) as string[]) {
       const host = new URL(url).hostname;
       assert.ok(hostsPermitidos.has(host), `${titulo.id} aponta para host não previsto: ${host}`);
@@ -561,6 +570,86 @@ test("a roda 3D é interativa de verdade (toque, arraste, teclado e foco)", () =
 });
 
 /* ----------------------------------------------------------------- legal */
+
+test("nenhuma fonte de demonstração usa o balde morto do Google", () => {
+  const catalogo = ler("src/lib/copaflix/catalogo.ts");
+  assert.ok(
+    !catalogo.includes("gtv-videos-bucket") && !catalogo.includes("commondatastorage"),
+    "o balde de amostras do Google responde 403 para todos os arquivos",
+  );
+
+  const fontesDe = (titulo: (typeof DEMONSTRACAO)[number]) => [
+    ...(titulo.fonte ? [titulo.fonte] : []),
+    ...(titulo.fontesAlternativas ?? []),
+    ...(titulo.episodios ?? []).flatMap((episodio) => [
+      ...(episodio.fonte ? [episodio.fonte] : []),
+      ...(episodio.fontesAlternativas ?? []),
+    ]),
+  ];
+
+  for (const titulo of DEMONSTRACAO) {
+    const fontes = fontesDe(titulo);
+    for (const fonte of fontes) {
+      if (fonte.tipo !== "arquivo" && fonte.tipo !== "hls") continue;
+      assert.match(String(fonte.url), /^https:\/\//, `${titulo.id}: fonte precisa ser HTTPS`);
+      assert.ok(fonte.rotulo, `${titulo.id}: fonte sem rótulo para mostrar ao usuário`);
+    }
+    const doTitulo = [titulo.fonte, ...(titulo.fontesAlternativas ?? [])]
+      .filter((fonte) => Boolean(fonte))
+      .map((fonte) => fonte!.url);
+    assert.equal(
+      new Set(doTitulo).size,
+      doTitulo.length,
+      `${titulo.id}: espelho repetindo o mesmo endereço`,
+    );
+  }
+
+  // Big Buck Bunny e Tears of Steel precisam de espelho (eram os que quebravam).
+  const comEspelho = DEMONSTRACAO.filter((t) => (t.fontesAlternativas ?? []).length > 0).map((t) => t.id);
+  assert.ok(comEspelho.includes("big-buck-bunny-2008"));
+  assert.ok(comEspelho.includes("tears-of-steel-2012"));
+});
+
+test("capas de demonstração vêm do acervo do Internet Archive", () => {
+  const comCapa = DEMONSTRACAO.filter((titulo) => Boolean(titulo.capa));
+  assert.ok(comCapa.length >= 5, "pelo menos cinco títulos com capa real do acervo");
+  for (const titulo of comCapa) {
+    assert.match(String(titulo.capa), /^https:\/\/archive\.org\/services\/img\//);
+  }
+  // Quem não tem capa real continua com a arte do app (nunca um quadrado vazio).
+  for (const titulo of DEMONSTRACAO) {
+    if (!titulo.capa) assert.equal(typeof titulo.arte, "number");
+  }
+});
+
+test("lista de fontes: sem repetição, ordem preservada e próxima só quando existe", () => {
+  const principal = { tipo: "arquivo" as const, url: "https://exemplo.com/a.mp4", rotulo: "A" };
+  const espelho = { tipo: "hls" as const, url: "https://exemplo.com/b.m3u8", rotulo: "B" };
+
+  const lista = montarListaDeFontes(principal, [espelho, principal]);
+  assert.deepEqual(lista.map((f) => f.rotulo), ["A", "B"], "principal primeiro, sem repetir");
+
+  assert.equal(proximaFonte(lista, 0)?.para.rotulo, "B");
+  assert.equal(proximaFonte(lista, 1), null, "sem próxima depois da última");
+  assert.equal(proximaFonte([], 0), null);
+  assert.equal(proximaFonte(lista, 9), null, "índice fora da lista não quebra");
+
+  assert.equal(rotuloDaFonte(principal), "A");
+  assert.equal(rotuloDaFonte(null, "fonte desconhecida"), "fonte desconhecida");
+  assert.equal(montarListaDeFontes(null).length, 0);
+});
+
+test("player tenta o espelho antes de mostrar erro", () => {
+  const player = ler("src/components/copaflix/Player.tsx");
+  assert.ok(player.includes("alternativas"), "o player precisa receber os espelhos");
+  assert.ok(player.includes("tentarProxima"), "o player precisa trocar de fonte sozinho");
+  assert.ok(
+    /if \(tentarProxima\(\)\) return;/.test(player),
+    "o erro do elemento e o erro do HLS precisam tentar o espelho antes de desistir",
+  );
+  const ficha = ler("src/components/copaflix/TituloDetalhe.tsx");
+  assert.ok(ficha.includes("fontesAlternativas"), "a ficha precisa repassar os espelhos ao player");
+});
 
 test("nenhum link pirata, torrent ou contorno de proteção no módulo", () => {
   const proibidos = [

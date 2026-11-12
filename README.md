@@ -765,6 +765,17 @@ administrador. **Não foram modificados componentes, telas, estilos ou imagens.*
 
 Veja [a documentação do monitor](docs/MONITORAMENTO_NAVIOS.md).
 
+### Verificação na abertura do app
+
+Ao abrir o CopaLinks (ou iniciar uma sessão nova), **todos os links de
+monitoramento ativos são verificados na hora** — sem esperar o intervalo, o
+temporizador ou uma atualização manual da tela. Depois da primeira consulta,
+cada monitoramento continua no intervalo que já estava configurado. Cada link
+tem horário e resultado próprios; um link fora do ar não cancela nem marca os
+outros como offline, e é tentado de novo automaticamente.
+
+Detalhes: [docs/ABERTURA_MONITORAMENTO.md](docs/ABERTURA_MONITORAMENTO.md).
+
 ## Filtro do grupo SEM APK (pelo servidor)
 
 Um site/PWA não consegue ler notificações nem mensagens de outros apps. Para o

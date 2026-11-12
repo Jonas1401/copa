@@ -29,6 +29,8 @@ export type FonteMidia = {
   mime?: string;
   /** Nome do serviço quando a reprodução é externa. */
   provedor?: string;
+  /** Nome curto mostrado ao usuário (ex.: "Internet Archive", "Mux"). */
+  rotulo?: string;
 };
 
 /** De onde o título veio — mostrado na ficha, sem prometer o que não temos. */
@@ -47,6 +49,8 @@ export type Episodio = {
   duracaoMin?: number;
   sinopse?: string;
   fonte?: FonteMidia;
+  /** Espelhos: o player tenta na ordem se a fonte principal falhar. */
+  fontesAlternativas?: FonteMidia[];
   /** Item do Jellyfin de onde o episódio veio (informativo). */
   referencia?: string;
 };
@@ -71,6 +75,8 @@ export type Titulo = {
   arte?: number;
   /** Fonte principal (filme, ou episódio 1 da série). */
   fonte?: FonteMidia;
+  /** Espelhos da fonte principal (mesmo filme em outro endereço). */
+  fontesAlternativas?: FonteMidia[];
   episodios?: Episodio[];
   origem: OrigemConteudo;
   /** Texto de crédito/licença mostrado na ficha (ex.: "CC BY 3.0 — Blender"). */

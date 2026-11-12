@@ -14,6 +14,7 @@ import {
   Radio,
   ShieldCheck,
   Sparkles,
+  Wifi,
 } from "lucide-react";
 import {
   episodiosDaTemporada,
@@ -174,12 +175,41 @@ export default function TituloDetalhe({
   }
 
   const capa = titulo.fundo ?? titulo.capa;
+  // Se a imagem de terceiro não carregar, o hero usa a arte do app.
+  const [capaFalhou, setCapaFalhou] = useState(false);
+  // Teste de disponibilidade feito pelo servidor (o aparelho pode ter bloqueio
+  // diferente do servidor — por isso o aviso embaixo do resultado).
+  const [testeFontes, setTesteFontes] = useState<
+    { rotulo: string; ok: boolean; status?: number }[] | null
+  >(null);
+  const [testandoFontes, setTestandoFontes] = useState(false);
   const meta = [
     titulo.ano,
     titulo.duracaoMin ? duracaoTexto(titulo.duracaoMin) : null,
     titulo.classificacao,
     titulo.temporadas ? `${titulo.temporadas} temporada(s)` : null,
   ].filter(Boolean);
+
+  async function testarFontes() {
+    setTestandoFontes(true);
+    try {
+      const resposta = await fetch(`/api/copaflix/fontes?id=${encodeURIComponent(titulo.id)}`, {
+        cache: "no-store",
+      });
+      if (!resposta.ok) throw new Error("não foi possível testar agora");
+      const dados: { fontes?: { rotulo: string; ok: boolean; status?: number }[] } =
+        await resposta.json();
+      setTesteFontes(Array.isArray(dados.fontes) ? dados.fontes : []);
+    } catch {
+      setTesteFontes([]);
+    } finally {
+      setTestandoFontes(false);
+    }
+  }
+
+  const temFonteExterna = Boolean(
+    fonteAtual?.url?.startsWith("https://") && titulo.origem !== "jellyfin",
+  );
 
   return (
     <div className="copaflix">
@@ -224,6 +254,7 @@ export default function TituloDetalhe({
                   : ROTULO_TIPO[titulo.tipo]
               }
               fonte={fonteAtual}
+              alternativas={episodioObj?.fontesAlternativas ?? titulo.fontesAlternativas ?? []}
               inicio={inicioPlayer}
               capa={capa}
               aoProgredir={(posicao, duracao) =>
@@ -262,9 +293,15 @@ export default function TituloDetalhe({
           </section>
         ) : (
           <section className="cf-destaque mb-5 min-h-[280px] sm:min-h-[340px]">
-            {capa ? (
+            {capa && !capaFalhou ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={capa} alt="" aria-hidden className="cf-destaque-fundo" />
+              <img
+                src={capa}
+                alt=""
+                aria-hidden
+                onError={() => setCapaFalhou(true)}
+                className="cf-destaque-fundo"
+              />
             ) : (
               <ArteDoApp arte={titulo.arte} prioridade />
             )}
@@ -391,6 +428,44 @@ export default function TituloDetalhe({
                 </div>
               )}
             </dl>
+            {temFonteExterna && (
+              <div className="mt-2 border-t border-borda/60 pt-2">
+                <button
+                  type="button"
+                  onClick={() => void testarFontes()}
+                  disabled={testandoFontes}
+                  className="cf-botao-fantasma !min-h-[34px] !px-3 !text-[11.5px] disabled:opacity-60"
+                >
+                  <Wifi size={13} /> {testandoFontes ? "Testando fontes…" : "Testar as fontes agora"}
+                </button>
+                {testeFontes && testeFontes.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-[11.5px]">
+                    {testeFontes.map((fonte) => (
+                      <li key={fonte.rotulo} className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          aria-hidden
+                          className={`inline-block h-1.5 w-1.5 rounded-full ${fonte.ok ? "bg-ciano" : "bg-ouro"}`}
+                        />
+                        <span className="font-semibold text-gelo">{fonte.rotulo}</span>
+                        <span className="text-discreto">
+                          {fonte.ok ? "no ar" : "fora do ar"}
+                          {fonte.status ? ` · HTTP ${fonte.status}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {testeFontes && testeFontes.length === 0 && (
+                  <p className="mt-1.5 text-[11.5px] text-ouro">
+                    Não foi possível testar agora — tente de novo em instantes.
+                  </p>
+                )}
+                <p className="mt-1.5 text-[10.5px] leading-relaxed text-discreto">
+                  Teste feito pelo servidor do CopaLinks. O seu aparelho pode ter bloqueio
+                  diferente (operadora, país, DNS).
+                </p>
+              </div>
+            )}
             <p className="mt-2 border-t border-borda/60 pt-2 text-[11px] leading-relaxed text-discreto">
               Favoritos e progresso ficam apenas neste aparelho. Fontes com DRM ou bloqueio
               geográfico não abrem — o player avisa.

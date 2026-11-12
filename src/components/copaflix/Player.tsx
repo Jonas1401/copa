@@ -10,12 +10,14 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Shuffle,
   SkipForward,
   Volume2,
   VolumeX,
 } from "lucide-react";
 import type { FonteMidia } from "@/lib/copaflix/tipos";
 import { deveRetomar } from "@/lib/copaflix/retomada";
+import { chaveDaFonte, montarListaDeFontes, proximaFonte, rotuloDaFonte } from "@/lib/copaflix/fontes-midia";
 
 /**
  * Player do CopaFlix.
@@ -90,6 +92,7 @@ export default function Player({
   titulo,
   subtitulo,
   fonte,
+  alternativas = [],
   inicio = 0,
   capa,
   aoProgredir,
@@ -101,6 +104,8 @@ export default function Player({
   titulo: string;
   subtitulo?: string;
   fonte: FonteMidia | null;
+  /** Espelhos: tentados em ordem se a fonte principal falhar. */
+  alternativas?: FonteMidia[];
   /** Segundos para retomar. */
   inicio?: number;
   capa?: string;
@@ -124,10 +129,32 @@ export default function Player({
   aoProgredirRef.current = aoProgredir;
   aoTerminarRef.current = aoTerminar;
 
+  /**
+   * Lista de fontes: a principal e os espelhos, sem repetir endereço. O player
+   * troca sozinho quando uma fonte falha (fora do ar, CORS, bloqueio regional)
+   * e só mostra erro quando todas falharam.
+   */
+  const chavePrincipal = chaveDaFonte(fonte);
+  const fontes = montarListaDeFontes(fonte, alternativas);
+
+  const [indiceFonte, setIndiceFonte] = useState(0);
+  const [avisoFonte, setAvisoFonte] = useState<string | null>(null);
+  const fonteAtiva = fontes[Math.min(indiceFonte, Math.max(fontes.length - 1, 0))] ?? null;
+
   // Só recarrega quando a MÍDIA muda de verdade (tipo + endereço + item).
-  const fonteRef = useRef(fonte);
-  fonteRef.current = fonte;
-  const fonteChave = fonte ? `${fonte.tipo}|${fonte.url ?? ""}|${fonte.itemId ?? ""}` : "vazio";
+  const fonteRef = useRef<FonteMidia | null>(fonteAtiva);
+  fonteRef.current = fonteAtiva;
+  const fonteChave = chaveDaFonte(fonteAtiva);
+  const fontesRef = useRef(fontes);
+  fontesRef.current = fontes;
+  const indiceRef = useRef(indiceFonte);
+  indiceRef.current = indiceFonte;
+
+  // Trocou o título/episódio: volta para a primeira fonte.
+  useEffect(() => {
+    setIndiceFonte(0);
+    setAvisoFonte(null);
+  }, [chavePrincipal]);
   const inicioInicial = useRef(inicio).current;
 
   const [tocando, setTocando] = useState(false);
@@ -146,6 +173,17 @@ export default function Player({
   const [precisaToque, setPrecisaToque] = useState(false);
   const [retomando, setRetomando] = useState(inicio > 5);
   const [aoVivo, setAoVivo] = useState(false);
+
+  /** Passa para o próximo espelho; devolve false quando acabaram. */
+  const tentarProxima = useCallback(() => {
+    const passo = proximaFonte(fontesRef.current, indiceRef.current);
+    if (!passo) return false;
+    setAvisoFonte(
+      `A fonte ${rotuloDaFonte(passo.de)} não respondeu — tentando ${rotuloDaFonte(passo.para, "outra fonte")}…`,
+    );
+    setIndiceFonte(passo.indice);
+    return true;
+  }, []);
 
   const salvar = useCallback((forcar = false) => {
     const salvarCb = aoProgredirRef.current;
@@ -245,12 +283,13 @@ export default function Player({
                   /* cai para a mensagem abaixo */
                 }
               }
+              setPreparando(false);
+              if (tentarProxima()) return;
               setErro(
                 info.details?.includes("manifestLoadError")
                   ? "A fonte não liberou o acesso a partir deste site (CORS) ou saiu do ar."
                   : "A transmissão falhou. Pode ser bloqueio geográfico ou fonte indisponível.",
               );
-              setPreparando(false);
             });
             hls.on("hlsManifestParsed", () => {
               const lista = (hls.levels ?? []).map((nivel, indice) => ({
@@ -281,7 +320,7 @@ export default function Player({
       hlsRef.current?.destroy();
       hlsRef.current = null;
     };
-  }, [fonteChave, tentativa, inicioInicial, salvar]);
+  }, [fonteChave, tentativa, inicioInicial, salvar, tentarProxima]);
 
   /* --------------------------------------------------- eventos do elemento */
   useEffect(() => {
@@ -290,6 +329,7 @@ export default function Player({
 
     const aoCarregarMetadados = () => {
       setPreparando(false);
+      setAvisoFonte(null);
       const d = Number.isFinite(video.duration) ? video.duration : 0;
       setDuracao(d);
       setAoVivo(video.duration === Infinity);
@@ -340,6 +380,7 @@ export default function Player({
     const aoReproduzir = () => setPreparando(false);
     const aoErro = () => {
       setPreparando(false);
+      if (tentarProxima()) return;
       setErro(explicarErro(video.error?.code));
     };
     const aoTerminarVideo = () => {
@@ -369,7 +410,7 @@ export default function Player({
       video.removeEventListener("error", aoErro);
       video.removeEventListener("ended", aoTerminarVideo);
     };
-  }, [autoIniciar, inicioInicial, salvar, tentativa]);
+  }, [autoIniciar, inicioInicial, salvar, tentativa, tentarProxima]);
 
   /* --------------------------------------------------------- tela cheia */
   useEffect(() => {
@@ -541,6 +582,8 @@ export default function Player({
             <div className="mt-3 flex flex-wrap justify-center gap-2">
               <button type="button" className="cf-botao-fantasma !min-h-[40px] !px-4" onClick={() => {
                 setErro(null);
+                setAvisoFonte(null);
+                setIndiceFonte(0);
                 setTentativa((n) => n + 1);
               }}>
                 <RotateCcw size={15} /> Tentar de novo
@@ -551,7 +594,12 @@ export default function Player({
                 </a>
               )}
             </div>
-            <p className="mt-3 text-[11.5px] leading-relaxed text-discreto">
+            {fontes.length > 1 && (
+              <p className="mt-3 text-[11.5px] leading-relaxed text-aco">
+                Fontes testadas: {fontes.map((f) => f.rotulo ?? "fonte").join(", ")}.
+              </p>
+            )}
+            <p className="mt-2 text-[11.5px] leading-relaxed text-discreto">
               Canais e títulos de terceiros podem ter bloqueio geográfico, sair do ar ou exigir
               DRM. O CopaLinks respeita essas restrições.
             </p>
@@ -560,6 +608,11 @@ export default function Player({
       )}
 
       <div className="cf-player-controles">
+        {avisoFonte && !erro && (
+          <span className="mb-1.5 mr-1.5 inline-flex items-center gap-1.5 rounded-full border border-ouro/45 bg-ouro/10 px-2.5 py-1 text-[11px] font-semibold text-ouro">
+            <Shuffle size={11} /> {avisoFonte}
+          </span>
+        )}
         {retomando && !erro && (
           <span className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-ciano/45 bg-ciano/10 px-2.5 py-1 text-[11px] font-semibold text-ciano">
             <RotateCcw size={11} /> Retomando de {tempo(inicioInicial)}

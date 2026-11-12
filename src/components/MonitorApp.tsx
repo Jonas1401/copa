@@ -1022,11 +1022,13 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
 
   // Estado com SÓ os pontos do motorista deste aparelho. Se o motorista mudou
   // enquanto a resposta vinha, descarta (nunca mostra pontos de outro).
-  const buscarEstado = useCallback(async () => {
+  const buscarEstado = useCallback(async (abertura = false) => {
     const id = motoristaRef.current?.id ?? 0;
     const pedido = ++pedidoDeEstado.current;
     try {
-      const r = await fetch("/api/estado", { cache: "no-store" });
+      // `abertura=1`: uma vez por abertura, o servidor verifica NA HORA todos os
+      // links de monitoramento. A resposta é a mesma — usada aqui.
+      const r = await fetch(`/api/estado${abertura ? "?abertura=1" : ""}`, { cache: "no-store" });
       if (!r.ok) return;
       const novo = (await r.json()) as EstadoDTO;
       // O monitor respondeu (mesmo que a resposta seja de outro motorista e não entre).
@@ -1049,9 +1051,27 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     setEstado(novo);
   }, []);
 
+  /**
+   * ABERTURA DO APP: pede ao servidor a verificação IMEDIATA de todos os links
+   * de monitoramento ativos (sem esperar intervalo nem atualização manual).
+   * Uma vez por abertura; ao voltar para a tela, no máximo uma vez por minuto.
+   * O servidor também não repete a rodada dentro de 10 s.
+   */
+  const aberturaPedidaEm = useRef(0);
+  const pedirVerificacaoDaAbertura = useCallback(() => {
+    if (Date.now() - aberturaPedidaEm.current < 60_000) return;
+    aberturaPedidaEm.current = Date.now();
+    void buscarEstado(true);
+  }, [buscarEstado]);
+
+  useEffect(() => {
+    if (perfilPronto) pedirVerificacaoDaAbertura();
+  }, [perfilPronto, pedirVerificacaoDaAbertura]);
+
   // Voltou para o app (saiu do segundo plano, a rede voltou): pede tudo na hora,
   // sem esperar a próxima volta de cada ciclo.
   useAoVoltarParaATela(() => {
+    pedirVerificacaoDaAbertura();
     void buscarEstado();
     void carregarContagem();
     void carregarNaviosAtracados();
