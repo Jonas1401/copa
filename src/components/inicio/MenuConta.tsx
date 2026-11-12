@@ -53,6 +53,7 @@ export default function MenuConta({
   const [trocandoNome, setTrocandoNome] = useState(false);
   const [novoNome, setNovoNome] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [erroNome, setErroNome] = useState("");
   const [posicao, setPosicao] = useState({ top: 0, left: 12 });
   const botao = useRef<HTMLButtonElement>(null);
   const campoNome = useRef<HTMLInputElement>(null);
@@ -61,6 +62,7 @@ export default function MenuConta({
     setAberto(false);
     setTrocandoNome(false);
     setSalvando(false);
+    setErroNome("");
   }
 
   /**
@@ -102,11 +104,24 @@ export default function MenuConta({
 
   async function salvarNome() {
     const limpo = novoNome.replace(/\s+/g, " ").trim();
-    if (limpo.length < 2 || salvando) return;
+    if (limpo.length < 2 || salvando) {
+      setErroNome("Digite um nome com pelo menos 2 caracteres.");
+      return;
+    }
     setSalvando(true);
-    const ok = await onRenomear(limpo);
-    setSalvando(false);
-    if (ok) fechar();
+    setErroNome("");
+    try {
+      const ok = await onRenomear(limpo);
+      if (ok) {
+        fechar();
+      } else {
+        setErroNome("Não foi possível atualizar seu nome. Confira a conexão e tente novamente.");
+      }
+    } catch {
+      setErroNome("Falha ao salvar. Confira a conexão e tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
   }
 
   /**
@@ -185,6 +200,7 @@ export default function MenuConta({
                       if (e.key === "Enter") void salvarNome();
                     }}
                     maxLength={60}
+                    disabled={salvando}
                     autoComplete="name"
                     autoCapitalize="words"
                     placeholder="Seu nome"
@@ -199,7 +215,7 @@ export default function MenuConta({
                     aria-label="Salvar nome"
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ouro text-[#000D16] disabled:opacity-45"
                   >
-                    <CheckCircle2 size={17} strokeWidth={2.6} />
+                    {salvando ? <span className="text-[11px] font-extrabold">…</span> : <CheckCircle2 size={17} strokeWidth={2.6} />}
                   </button>
                   <button
                     type="button"
@@ -210,6 +226,7 @@ export default function MenuConta({
                     <X size={16} />
                   </button>
                 </div>
+                {erroNome && <p role="alert" className="mt-2 rounded-[10px] bg-red-500/10 px-2.5 py-2 text-[11.5px] leading-snug text-red-300">{erroNome}</p>}
               </div>
             ) : (
               <>
@@ -218,6 +235,7 @@ export default function MenuConta({
                   role="menuitem"
                   onClick={() => {
                     setNovoNome(nome ?? "");
+                    setErroNome("");
                     setTrocandoNome(true);
                   }}
                   disabled={!nome}
