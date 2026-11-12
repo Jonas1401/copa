@@ -779,6 +779,15 @@ CREATE TABLE IF NOT EXISTS public.portal_ticket_porcentagens (
 ALTER TABLE public.portal_ticket_config
   ADD COLUMN IF NOT EXISTS por_ponto_em TIMESTAMPTZ;
 
+-- FILA, o livro de cada ponto cadastrado (11/11/2026): além do Livro A, o app
+-- lê o livro dos pontos cadastrados (B, M). `pedido_em` é a última vez em que
+-- um app aberto, de um motorista com ponto no livro, pediu o estado: só os
+-- livros pedidos há pouco são relidos entre as olhadas do Status; os outros
+-- ficam na carona, de minuto em minuto. (O app cria a coluna sozinho na
+-- primeira abertura; aqui é só para quem prepara o banco à mão.)
+ALTER TABLE public.portal_fila
+  ADD COLUMN IF NOT EXISTS pedido_em TIMESTAMPTZ;
+
 /* ==================================== 13. SEGURANÇA (RLS + PRIVILÉGIOS) ==== */
 
 -- O navegador/APK nunca consulta o banco direto: tudo passa pelo backend

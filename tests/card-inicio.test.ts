@@ -250,7 +250,14 @@ test("a leitura do monitor só aparece quando há o que avisar", () => {
   assert.match(TELA, /\{blocoSeusPontos\}\s+\{\/\* a leitura do monitor e o botão de reler ficam aqui dentro \*\/\}\s+\{linhaDaLeitura\}/);
   assert.equal((TELA.match(/\{linhaDaLeitura\}/g) ?? []).length, 2);
   // Ao abrir o app o aviso espera a 1ª resposta (ou 8 s): não pisca toda vez.
-  assert.match(TELA, /const leituraEmDia = monitorEmDia\(estado, semRespostaMs\);/);
+  assert.match(TELA, /const leituraEmDia = monitorEmDia\(\{ temLeitura: estado\.temLeitura, online: quadroEmDia \}, semRespostaMs\);/);
+  // Cada livro tem a sua leitura: a linha fala do livro do ponto que está na tela.
+  assert.match(TELA, /const leituraDoQuadro = cardFila\.lidoEm \?\? estado\.atualizadoEm;/);
+  assert.match(TELA, /const quadroEmDia = estado\.online && !cardFila\.velha;/);
+  assert.match(TELA, /const semConexao = estado\.temLeitura !== false && quadroEmDia && !leituraEmDia;/);
+  assert.match(TELA, /`Atualizado há \$\{decorrido\(leituraDoQuadro, agora \+ desvioRelogio\)\}`/);
+  assert.match(TELA, /`Última leitura real da fila: \$\{hora\(leituraDoQuadro\)\}`/);
+  assert.ok(!/decorrido\(estado\.atualizadoEm|hora\(estado\.atualizadoEm/.test(TELA), "a hora geral (a mais antiga entre os livros) não vai mais direto para a tela");
   assert.match(TELA, /const avisarLeitura = !leituraEmDia && \(respondeu \|\| semRespostaMs > 8000\);/);
   // O tempo sem resposta só conta com a tela aberta (voltando do segundo plano, cada volta vale no máximo 2 s)…
   assert.match(TELA, /const passo = Math\.min\(Math\.max\(0, agoraMs - anterior\), 2000\);/);
@@ -259,7 +266,7 @@ test("a leitura do monitor só aparece quando há o que avisar", () => {
   assert.equal((TELA.match(/setSemRespostaMs\(0\);/g) ?? []).length, 2);
   // Os textos de sempre, e o botão continua relendo o monitor.
   assert.match(TELA, /selo=\{leituraEmDia \? "ONLINE" : semConexao \? "SEM CONEXÃO" : "OFFLINE"\}/);
-  assert.match(TELA, /\? "Aguardando 1ª leitura"\s+: `Atualizado há \$\{decorrido\(estado\.atualizadoEm, agora \+ desvioRelogio\)\}`/);
+  assert.match(TELA, /\? "Aguardando 1ª leitura"\s+: `Atualizado há \$\{decorrido\(leituraDoQuadro, agora \+ desvioRelogio\)\}`/);
   assert.match(TELA, /onReler=\{atualizar\}/);
 });
 

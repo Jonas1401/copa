@@ -47,6 +47,11 @@ test("a aba “Fila” do portal alimenta o card, a posição e os avisos de vez
   delete process.env.PORTAL_INTERVALO_MIN;
   delete process.env.FONTE_FILA;
   delete process.env.PORTAL_FILA_LIVROS;
+  // Este percurso é o da fila do Livro A com a CHAVE DE RETORNO ligada: os livros dos pontos
+  // cadastrados não entram sozinhos (o delta tem um ponto no Livro B, e o Livro B só é lido quando
+  // `PORTAL_FILA_LIVROS` manda — passo 8). O caminho de hoje, em que o livro de cada ponto é lido
+  // sem configurar nada, está em `portal-fila-livros-cron.test.ts`.
+  process.env.PORTAL_FILA_LIVROS_DOS_PONTOS = "0";
 
   const { db, pool } = await import("../src/db");
   const { eventos, motoristas, pontos, portalFila, subscriptions } = await import("../src/db/schema");
@@ -429,6 +434,7 @@ test("a aba “Fila” do portal alimenta o card, a posição e os avisos de vez
     Object.defineProperty(webpush, "sendNotification", { configurable: true, value: originalSend });
     globalThis.fetch = fetchReal;
     delete process.env.PORTAL_FILA_LIVROS;
+    delete process.env.PORTAL_FILA_LIVROS_DOS_PONTOS;
     await pool.end();
   }
 });

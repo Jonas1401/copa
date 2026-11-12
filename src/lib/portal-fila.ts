@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { comBanco, db, temBancoConfigurado } from "@/db";
-import { portalFila } from "@/db/schema";
+import { pontos, portalFila } from "@/db/schema";
 import { garantirTabelasPortal } from "@/lib/portal-copadubo";
 import { LIVROS_DA_FILA, resumoDoLivro, type LivroDaFila, type LivroLido, type TipoDaFila } from "@/lib/portal-fila-parse";
 import { esperaEntreLeiturasMs, intervaloStatusMs } from "@/lib/portal-situacao";
@@ -40,9 +40,10 @@ export function fonteDaFila(): FonteDaFila {
 }
 
 /**
- * Livros lidos na aba “Fila”. O padrão é só o Livro A. `PORTAL_FILA_LIVROS`
- * (ex.: `A,B,M`) acrescenta os outros — cada livro a mais é uma página a mais
- * por leitura.
+ * Livros lidos SEMPRE na aba “Fila”, com ou sem ponto cadastrado neles. O
+ * padrão é só o Livro A (é o que o cartão mostra a quem não tem ponto).
+ * `PORTAL_FILA_LIVROS` (ex.: `A,B,M`) acrescenta os outros. Os livros dos
+ * pontos cadastrados entram sozinhos: ver `livrosEmUso`.
  */
 export function livrosDaFila(): LivroDaFila[] {
   const pedidos = (process.env.PORTAL_FILA_LIVROS ?? "")
@@ -51,6 +52,108 @@ export function livrosDaFila(): LivroDaFila[] {
     .filter((x): x is LivroDaFila => (LIVROS_DA_FILA as readonly string[]).includes(x));
   const unicos = LIVROS_DA_FILA.filter((l) => pedidos.includes(l));
   return unicos.length ? unicos : ["A"];
+}
+
+/**
+ * Os livros dos pontos cadastrados entram sozinhos na leitura?
+ * `PORTAL_FILA_LIVROS_DOS_PONTOS=0` (ou `desligado`) é a chave de retorno:
+ * volta a ler só os livros de `PORTAL_FILA_LIVROS`.
+ */
+export function livrosDosPontosLigados(): boolean {
+  const bruto = (process.env.PORTAL_FILA_LIVROS_DOS_PONTOS ?? "").trim().toLowerCase();
+  return !["0", "desligado", "desligada", "off", "nao", "não"].includes(bruto);
+}
+
+/** Dado um conjunto de livros com ponto cadastrado, os livros a ler (na ordem A, B, M). */
+export function livrosALer(comPonto: Iterable<string>, sempre: LivroDaFila[] = livrosDaFila(), ligado = livrosDosPontosLigados()): LivroDaFila[] {
+  const dosPontos = new Set(ligado ? [...comPonto].map((l) => String(l).trim().toUpperCase()) : []);
+  return LIVROS_DA_FILA.filter((l) => sempre.includes(l) || dosPontos.has(l));
+}
+
+/**
+ * Por quanto tempo um livro continua “pedido” depois do último pedido de um
+ * app aberto com ponto nele (o app pergunta a cada 5 s; fechado o app, o livro
+ * ainda é relido entre as olhadas por este tempo e depois volta à carona).
+ */
+export const LIVRO_PEDIDO_VALE_MS = 45_000;
+/** O pedido de um livro é regravado, por instância, no máximo uma vez a cada tanto. */
+export const REGRAVAR_PEDIDO_A_CADA_MS = 10_000;
+const ultimoPedidoGravado = new Map<LivroDaFila, number>();
+
+/** O livro foi pedido há pouco por um app aberto? */
+export function pedidoHaPouco(g: Pick<FilaGuardada, "pedidoEm">, agora = Date.now()): boolean {
+  return g.pedidoEm !== null && agora - g.pedidoEm.getTime() <= LIVRO_PEDIDO_VALE_MS;
+}
+/** A mesma pergunta, feita ao banco sobre a linha do livro. */
+const SQL_PEDIDO_HA_POUCO = sql`(${portalFila.pedidoEm} is not null and ${portalFila.pedidoEm} > now() - (${LIVRO_PEDIDO_VALE_MS}::int * interval '1 millisecond'))`;
+
+/**
+ * Um app aberto, de um motorista com ponto nestes livros, acabou de pedir o
+ * estado: os livros ficam marcados como PEDIDOS. É o que faz o Livro B (ou o
+ * M) ser relido entre as olhadas do Status só enquanto alguém que tem ponto
+ * nele está com o app aberto — sem ninguém olhando, ele fica na carona, de
+ * minuto em minuto, e a aba do portal não é aberta à toa.
+ *
+ * Os livros lidos sempre (`livrosDaFila`) não precisam de marca. Custa, no
+ * máximo, uma gravação por livro a cada 10 s por instância. Devolve os livros
+ * que gravou agora.
+ */
+export async function marcarLivrosPedidos(livros: Iterable<string>, agora = Date.now()): Promise<LivroDaFila[]> {
+  if (!temBancoConfigurado || !livrosDosPontosLigados()) return [];
+  const sempre = livrosDaFila();
+  const pedidos = new Set([...livros].map((l) => String(l).trim().toUpperCase()));
+  const novos = LIVROS_DA_FILA.filter(
+    (l) => pedidos.has(l) && !sempre.includes(l) && agora - (ultimoPedidoGravado.get(l) ?? 0) >= REGRAVAR_PEDIDO_A_CADA_MS,
+  );
+  if (!novos.length) return [];
+  await garantirTabelasPortal();
+  const curta = esperaDaFilaMs();
+  // Livro que ainda não tem linha (nunca foi reservado) fica sem marca: não há leitura boa para continuar.
+  await comBanco(() =>
+    db
+      .update(portalFila)
+      .set({
+        pedidoEm: sql`now()`,
+        // O livro que passa a ser pedido não espera o resto da espera longa (a da carona): vale a curta, contada
+        // da última tentativa. Livro com a última tentativa em erro continua na espera dele (quem tenta de novo é a carona).
+        proximaLeituraEm: sql`case when ${portalFila.proximaLeituraEm} is null or ${portalFila.erro} is not null then ${portalFila.proximaLeituraEm} else least(${portalFila.proximaLeituraEm}, ${portalFila.tentativaEm} + (${curta}::int * interval '1 millisecond')) end`,
+      })
+      .where(inArray(portalFila.livro, novos)),
+  );
+  for (const l of novos) ultimoPedidoGravado.set(l, agora);
+  return novos;
+}
+
+/** Só para os testes: esquece o que esta instância já gravou. */
+export function esquecerPedidosGravados() {
+  ultimoPedidoGravado.clear();
+}
+
+/** O último resultado bom de `livrosEmUso` nesta instância: vale quando o banco não responde. */
+let ultimosLivrosEmUso: LivroDaFila[] | null = null;
+
+/**
+ * OS LIVROS EM USO — os que a leitura da aba “Fila” abre: os de sempre
+ * (`livrosDaFila`) e o livro de cada ponto cadastrado no app. Quem cadastra o
+ * A032 faz o leitor tocar em “Livro A”; o B032, em “Livro B”; o M032, em
+ * “Livro M”. A fila é geral (igual para todas as contas), então conta o ponto
+ * de QUALQUER motorista — inclusive de quem não cadastrou o acesso ao portal:
+ * quem abre a tela é a conta de quem tem.
+ *
+ * Cada livro a mais é um toque (um pedido) a mais por leitura. Sem nenhum
+ * ponto num livro, ele deixa de ser lido e o quadro dele volta a “sem leitura”.
+ */
+export async function livrosEmUso(): Promise<LivroDaFila[]> {
+  const sempre = livrosDaFila();
+  if (!temBancoConfigurado || !livrosDosPontosLigados()) return sempre;
+  try {
+    const linhas = await comBanco(() => db.selectDistinct({ livro: pontos.livro }).from(pontos));
+    ultimosLivrosEmUso = livrosALer(linhas.map((l) => l.livro), sempre);
+    return ultimosLivrosEmUso;
+  } catch {
+    // O banco não respondeu: um livro que estava sendo lido não some da tela por isso.
+    return ultimosLivrosEmUso ?? sempre;
+  }
 }
 
 /**
@@ -64,6 +167,13 @@ export function validadeDaFilaMs(intervaloMs = intervaloStatusMs()): number {
 
 /** Depois de uma tentativa que não serviu, outra conta pode tentar em seguida. */
 export const ESPERA_APOS_FALHA_DA_FILA_MS = 20_000;
+/**
+ * …mas um livro que não tem nenhuma fila boa valendo (nunca foi lido, ou parou
+ * de vir há mais tempo que a validade) espera mais: se o motivo é da própria
+ * tela — um botão “Livro B” que a leitura não sabe usar, por exemplo —, tentar
+ * de novo a cada 20 s só bate à porta do portal à toa.
+ */
+export const ESPERA_APOS_FALHA_SEM_FILA_MS = 50_000;
 
 /** De quanto em quanto tempo a fila é relida com o app aberto, se nada for configurado. */
 export const INTERVALO_DA_FILA_PADRAO_S = 20;
@@ -116,6 +226,8 @@ export type FilaGuardada = {
   tentativaEm: Date | null;
   erro: string | null;
   diagnostico: string[];
+  /** A última vez em que um app aberto, de quem tem ponto neste livro, pediu o estado (`marcarLivrosPedidos`). */
+  pedidoEm: Date | null;
 };
 
 const inteiros = (v: unknown): number[] | null =>
@@ -156,16 +268,26 @@ export async function filaGuardada(): Promise<FilaGuardada[]> {
         tentativaEm: l.tentativaEm,
         erro: l.erro,
         diagnostico: linhasDe(l.diagnostico),
+        pedidoEm: l.pedidoEm,
       };
     });
 }
 
 /**
- * Reserva os livros cuja leitura já pode começar e marca a próxima para daqui
- * a `esperaMs`. A reserva é atômica: duas funções rodando juntas (cron + app
- * aberto, ou dois motoristas lidos no mesmo instante) nunca abrem a fila do
- * mesmo livro ao mesmo tempo. `forcar` (alguém tocou em “Ler agora”) não
- * espera a hora, mas marca a reserva do mesmo jeito.
+ * Reserva os livros cuja leitura já pode começar e marca a próxima de cada um.
+ * A reserva é atômica: duas funções rodando juntas (cron + app aberto, ou dois
+ * motoristas lidos no mesmo instante) nunca abrem a fila do mesmo livro ao
+ * mesmo tempo. `forcar` (alguém tocou em “Ler agora”, ou o livro vai de carona
+ * numa visita que já ia acontecer) não espera a hora, mas marca a reserva do
+ * mesmo jeito.
+ *
+ * A ESPERA É DE CADA LIVRO. Os lidos sempre (`livrosDaFila`) e os pedidos há
+ * pouco por um app aberto (`marcarLivrosPedidos`) ficam livres de novo depois
+ * da espera curta (`esperaDaFilaMs`: 18 s) — são os relidos entre as olhadas
+ * do Status. Um livro que só é lido por causa de um ponto cadastrado, e que
+ * ninguém está olhando, espera o mesmo que o Status (`esperaEntreLeiturasMs`:
+ * 45 s): com várias contas olhadas no mesmo minuto, ele é lido uma vez por
+ * minuto, não a cada conta.
  */
 export async function reservarLivrosDaFila(
   livros: LivroDaFila[],
@@ -173,24 +295,28 @@ export async function reservarLivrosDaFila(
 ): Promise<LivroDaFila[]> {
   if (!temBancoConfigurado || !livros.length) return [];
   await garantirTabelasPortal();
-  const espera = Math.max(5_000, Math.round(opcoes.esperaMs ?? esperaDaFilaMs()));
-  const reservados: LivroDaFila[] = [];
-  for (const livro of livros) {
-    await comBanco(() => db.insert(portalFila).values({ livro }).onConflictDoNothing());
-    const linhas = await comBanco(() =>
-      db
-        .update(portalFila)
-        .set({ proximaLeituraEm: sql`now() + (${espera} * interval '1 millisecond')`, tentativaEm: sql`now()` })
-        .where(
-          opcoes.forcar
-            ? eq(portalFila.livro, livro)
-            : sql`${portalFila.livro} = ${livro} and (${portalFila.proximaLeituraEm} is null or ${portalFila.proximaLeituraEm} <= now())`,
-        )
-        .returning({ livro: portalFila.livro }),
-    );
-    if (linhas.length) reservados.push(livro);
-  }
-  return reservados;
+  const curta = Math.max(5_000, Math.round(opcoes.esperaMs ?? esperaDaFilaMs()));
+  const longa = Math.max(curta, Math.round(opcoes.esperaMs ?? esperaEntreLeiturasMs()));
+  await comBanco(() => db.insert(portalFila).values(livros.map((livro) => ({ livro }))).onConflictDoNothing());
+  // UM comando para todos os livros: com duas contas lidas no mesmo instante, uma leva todos os
+  // livros que estão na hora e a outra, nenhum — os livros nunca se dividem entre duas visitas
+  // (cada visita abre a aba de novo, e seriam dois pedidos onde basta um).
+  const linhas = await comBanco(() =>
+    db
+      .update(portalFila)
+      .set({
+        proximaLeituraEm: sql`now() + (case when ${inArray(portalFila.livro, livrosDaFila())} or ${SQL_PEDIDO_HA_POUCO} then ${curta}::int else ${longa}::int end * interval '1 millisecond')`,
+        tentativaEm: sql`now()`,
+      })
+      .where(
+        opcoes.forcar
+          ? inArray(portalFila.livro, livros)
+          : and(inArray(portalFila.livro, livros), sql`(${portalFila.proximaLeituraEm} is null or ${portalFila.proximaLeituraEm} <= now())`),
+      )
+      .returning({ livro: portalFila.livro }),
+  );
+  const reservados = new Set(linhas.map((l) => l.livro));
+  return LIVROS_DA_FILA.filter((l) => reservados.has(l));
 }
 
 /** Uma fila com mais pontos do que isto não fica vazia de uma leitura para a outra… */
@@ -256,7 +382,8 @@ export async function registrarFalhaDaFila(livro: LivroDaFila, erro: string, mot
         diagnostico: diagnostico.join("\n").slice(0, 2_000),
         motoristaId,
         tentativaEm: sql`now()`,
-        proximaLeituraEm: sql`now() + (${ESPERA_APOS_FALHA_DA_FILA_MS} * interval '1 millisecond')`,
+        // Com uma fila boa ainda valendo, outra conta tenta logo; sem nenhuma, a espera é maior.
+        proximaLeituraEm: sql`now() + (case when ${portalFila.lidoEm} is not null and ${portalFila.lidoEm} > now() - (${validadeDaFilaMs()} * interval '1 millisecond') then ${ESPERA_APOS_FALHA_DA_FILA_MS}::int else ${ESPERA_APOS_FALHA_SEM_FILA_MS}::int end * interval '1 millisecond')`,
       })
       .where(eq(portalFila.livro, livro)),
   );
@@ -290,7 +417,7 @@ export async function resumoDaFila(): Promise<ResumoDaFila> {
   const agora = Date.now();
   return {
     fonte,
-    livros: livrosDaFila().map((livro) => {
+    livros: (await livrosEmUso()).map((livro) => {
       const g = guardadas.find((x) => x.livro === livro);
       return {
         livro,

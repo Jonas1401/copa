@@ -341,6 +341,11 @@ export const portalFila = pgTable("portal_fila", {
   // A partir de quando a próxima leitura pode começar (null = já). É também a
   // reserva: duas funções não leem a fila do mesmo livro ao mesmo tempo.
   proximaLeituraEm: timestamp("proxima_leitura_em", { withTimezone: true }),
+  // A última vez em que um app ABERTO, de um motorista com ponto neste livro,
+  // pediu o estado. Só os livros pedidos há pouco (e os lidos sempre) são
+  // relidos entre as olhadas do Status; os outros ficam na carona, de minuto
+  // em minuto.
+  pedidoEm: timestamp("pedido_em", { withTimezone: true }),
 });
 
 // SALDO DE GANHOS — as viagens da semana, lidas na aba “Ticket” do portal

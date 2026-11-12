@@ -26,13 +26,16 @@ import {
   guardarFilaLida,
   intervaloDaFilaMs,
   livrosDaFila,
+  livrosEmUso,
+  marcarLivrosPedidos,
   motivoDaFilaSumida,
+  pedidoHaPouco,
   registrarFalhaDaFila,
   reservarLivrosDaFila,
   resumoDaFila,
   validadeDaFilaMs,
 } from "@/lib/portal-fila";
-import type { LivroDaFila } from "@/lib/portal-fila-parse";
+import { LIVROS_DA_FILA, type LivroDaFila } from "@/lib/portal-fila-parse";
 import { lerTicketsDevidos } from "@/lib/portal-ticket";
 import { lerModoSaida, situacaoDoPontoNasTelas, type ConsultaPortal, type EventoSaida } from "@/lib/portal-saida";
 import {
@@ -226,15 +229,31 @@ async function avisarTroca(dados: {
  * `entreCiclos`: a leitura não veio de uma olhada do Status
  * (`atualizarFilaEntreCiclos`) — a sessão guardada é só usada, nada dela é
  * gravado de volta.
+ *
+ * Os livros lidos são os EM USO (`livrosEmUso`): os de sempre e o de cada
+ * ponto cadastrado no app — para cada um que não esteja na tela, o leitor toca
+ * no botão “Livro X” dela. `livros` restringe a leitura a alguns deles (a
+ * leitura entre ciclos só relê os que estão dando certo).
  */
 export async function atualizarFilaDoPortal(
   motoristaId: number,
-  opcoes: { buscar?: typeof fetch; forcar?: boolean; entreCiclos?: boolean } = {},
+  opcoes: { buscar?: typeof fetch; forcar?: boolean; entreCiclos?: boolean; livros?: LivroDaFila[] } = {},
 ): Promise<{ tentou: boolean; lidos: LivroDaFila[]; diagnostico: string[] }> {
   const nada = { tentou: false, lidos: [] as LivroDaFila[], diagnostico: [] as string[] };
   if (!temBancoConfigurado || fonteDaFila() !== "portal") return nada;
-  const devidos = await reservarLivrosDaFila(livrosDaFila(), { forcar: opcoes.forcar });
+  const conjunto = opcoes.livros ?? (await livrosEmUso());
+  let devidos = await reservarLivrosDaFila(conjunto, { forcar: opcoes.forcar });
   if (!devidos.length) return nada;
+  // Os livros lidos sempre vão em TODA visita, mesmo sem estar na hora: a aba
+  // abre neles, então vêm sem pedido a mais — e a hora deles é adiada junto.
+  // Sem isto, a visita que só veio buscar o Livro B abriria a aba, jogaria fora
+  // o Livro A que está nela e, segundos depois, outra visita abriria a aba de
+  // novo só para ele.
+  const juntos = livrosDaFila().filter((l) => conjunto.includes(l) && !devidos.includes(l));
+  if (juntos.length) {
+    await reservarLivrosDaFila(juntos, { forcar: true });
+    devidos = LIVROS_DA_FILA.filter((l) => devidos.includes(l) || juntos.includes(l));
+  }
 
   const lida = await lerFilaNaSessaoGuardada(motoristaId, { buscar: opcoes.buscar, livros: devidos, somenteLeitura: opcoes.entreCiclos });
   if (!lida) {
@@ -588,10 +607,20 @@ const CONFERENCIA_DA_FILA_A_CADA_MS = 4_000;
  * (20 por padrão) — UM pedido, para o app inteiro (a reserva no banco é a
  * mesma da carona: duas funções nunca abrem a aba juntas).
  *
+ * QUE LIVROS: os lidos sempre (`livrosDaFila`: o Livro A) e, dos livros que
+ * só são lidos por causa de um ponto cadastrado (B, M), os PEDIDOS há pouco —
+ * `livrosDoPedido` são os livros dos pontos do motorista cujo app aberto fez
+ * esta chamada (`marcarLivrosPedidos`). O Livro B é relido entre as olhadas
+ * enquanto alguém com ponto nele está com o app aberto; sem ninguém olhando,
+ * fica na carona, de minuto em minuto. Todos os livros da vez vão na MESMA
+ * visita: a aba e um toque em cada botão de livro.
+ *
  * Só CONTINUA uma leitura que está dando certo:
- *   - todos os livros configurados têm uma fila boa, ainda valendo, e a última
- *     tentativa não falhou — depois de qualquer falha, quem volta a ler é a
- *     carona do Status (é ela que entra de novo no portal, com o freio);
+ *   - entram só os livros que têm uma fila boa, ainda valendo, e cuja
+ *     última tentativa não falhou — depois de qualquer falha num livro, quem
+ *     volta a ler ESSE livro é a carona do Status (é ela que entra de novo no
+ *     portal, com o freio). Um livro que falha não segura os outros: o Livro B
+ *     sem leitura não tira do Livro A a releitura de 20 em 20 s;
  *   - quem lê é a conta que leu por último, com a sessão guardada. NUNCA faz
  *     login e não grava nada da sessão de volta (`somenteLeitura`);
  *   - a sessão dessa conta tem de estar assentada: sem login há 30 minutos
@@ -601,21 +630,25 @@ const CONFERENCIA_DA_FILA_A_CADA_MS = 4_000;
  * Sem app aberto nada muda: o despertador de 1 minuto continua lendo o Status
  * e a fila, na carona.
  */
-export async function atualizarFilaEntreCiclos(opcoes: { buscar?: typeof fetch } = {}) {
+export async function atualizarFilaEntreCiclos(opcoes: { buscar?: typeof fetch; /** Livros dos pontos de quem está com o app aberto. */ livrosDoPedido?: string[] } = {}) {
   const nada = { tentou: false, lidos: [] as LivroDaFila[], motoristaId: null as number | null };
   if (!temBancoConfigurado || fonteDaFila() !== "portal" || intervaloDaFilaMs() === null) return nada;
+  // Antes de qualquer espera: a marca tem de ficar mesmo quando esta chamada não é a que vai ler.
+  if (opcoes.livrosDoPedido?.length) await marcarLivrosPedidos(opcoes.livrosDoPedido).catch(() => null);
   if (filaEntreCiclosEmAndamento || Date.now() - ultimaConferenciaDaFilaEm < CONFERENCIA_DA_FILA_A_CADA_MS) return nada;
   filaEntreCiclosEmAndamento = true;
   ultimaConferenciaDaFilaEm = Date.now();
   try {
-    const livros = livrosDaFila();
-    const guardadas = (await filaGuardada()).filter((g) => livros.includes(g.livro));
+    const livros = await livrosEmUso();
+    const sempre = livrosDaFila();
     const agora = Date.now();
+    // Os lidos sempre e os pedidos há pouco por um app aberto.
+    const guardadas = (await filaGuardada()).filter((g) => livros.includes(g.livro) && (sempre.includes(g.livro) || pedidoHaPouco(g, agora)));
     const validade = validadeDaFilaMs();
     const emDia = guardadas.filter(
       (g) => g.dados && g.lidoEm && !g.erro && g.motoristaId != null && agora - g.lidoEm.getTime() <= validade,
     );
-    if (!emDia.length || emDia.length < livros.length) return nada;
+    if (!emDia.length) return nada;
     // Cedo demais: nem tenta a reserva (que é quem decide de verdade, no banco).
     const ultimaTentativa = Math.max(...emDia.map((g) => g.tentativaEm?.getTime() ?? g.lidoEm?.getTime() ?? 0));
     if (agora - ultimaTentativa < esperaDaFilaMs()) return nada;
@@ -624,7 +657,8 @@ export async function atualizarFilaEntreCiclos(opcoes: { buscar?: typeof fetch }
     // pouco). Conferido ANTES da reserva: uma leitura que não vai acontecer não pode segurar a
     // carona do Status, nem deixar um erro registrado.
     if (!(await sessaoServeParaAFilaEntreCiclos(leitor))) return nada;
-    const r = await atualizarFilaDoPortal(leitor, { buscar: opcoes.buscar, entreCiclos: true });
+    // Só os livros em dia: os outros esperam a carona do Status.
+    const r = await atualizarFilaDoPortal(leitor, { buscar: opcoes.buscar, entreCiclos: true, livros: emDia.map((g) => g.livro) });
     return { tentou: r.tentou, lidos: r.lidos, motoristaId: leitor };
   } catch (e) {
     console.error("[portal-monitor] leitura da fila entre ciclos falhou:", e instanceof Error ? e.message : e);

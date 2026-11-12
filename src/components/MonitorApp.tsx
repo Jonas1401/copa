@@ -1433,17 +1433,21 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   // A leitura do monitor: com tudo em dia, nada aparece na tela inicial. Nos
   // primeiros segundos (antes da 1ª resposta) o aviso espera, para não piscar
   // toda vez que o app abre.
-  const leituraEmDia = monitorEmDia(estado, semRespostaMs);
-  const semConexao = estado.temLeitura !== false && estado.online && !leituraEmDia;
+  // Cada livro tem a sua leitura: a linha fala do livro que está na tela. Se a
+  // leitura DELE ficou velha, é OFFLINE para este ponto, mesmo com outro livro em dia.
+  const leituraDoQuadro = cardFila.lidoEm ?? estado.atualizadoEm;
+  const quadroEmDia = estado.online && !cardFila.velha;
+  const leituraEmDia = monitorEmDia({ temLeitura: estado.temLeitura, online: quadroEmDia }, semRespostaMs);
+  const semConexao = estado.temLeitura !== false && quadroEmDia && !leituraEmDia;
   const avisarLeitura = !leituraEmDia && (respondeu || semRespostaMs > 8000);
   const linhaDaLeitura = (
     <LinhaDaLeitura
       texto={
         estado.temLeitura === false
           ? "Aguardando 1ª leitura"
-          : `Atualizado há ${decorrido(estado.atualizadoEm, agora + desvioRelogio)}`
+          : `Atualizado há ${decorrido(leituraDoQuadro, agora + desvioRelogio)}`
       }
-      dica={estado.temLeitura ? `Última leitura real da fila: ${hora(estado.atualizadoEm)}` : undefined}
+      dica={estado.temLeitura ? `Última leitura real da fila: ${hora(leituraDoQuadro)}` : undefined}
       selo={leituraEmDia ? "ONLINE" : semConexao ? "SEM CONEXÃO" : "OFFLINE"}
       emDia={leituraEmDia}
       ocupado={ocupado}

@@ -8,7 +8,7 @@ do seu número na fila e **avisa no celular quando ele é chamado**.
 
 | Área | O que faz |
 |---|---|
-| **Início** | ponto monitorado ao vivo, último escalado e contadores da fila (TRUCK e CAVALO/C), lidos na aba **Fila** do Portal do Motorista — Livro A por padrão; os Livros B e M entram com `PORTAL_FILA_LIVROS` |
+| **Início** | ponto monitorado ao vivo, último escalado e contadores da fila (TRUCK e CAVALO/C), lidos na aba **Fila** do Portal do Motorista — o Livro A e o livro de cada ponto cadastrado (B, M); ao arrastar para um ponto de outro livro, os quadros mostram a fila desse livro |
 | **Cadastrar ponto** | tipo + livro + número, com ativação de notificações |
 | **Notificações** | Web Push (VAPID) quando o ponto é chamado, sai da tabela ou chega perto da vez |
 | **Tempo em Paranaguá** | previsão e estação do porto (APPA/SIMPORT), 15 dias, rolagem lateral; sem boletins ou alertas automáticos no chat; leituras disponíveis para a IA responder perguntas |
@@ -341,8 +341,12 @@ a conta de um motorista acabou de abrir e a fila guardada já tem um ciclo, a
 **mesma sessão** abre a aba “Fila” — **um pedido a mais por ciclo, para o app
 inteiro** (não um por motorista; a reserva em `portal_fila.proxima_leitura_em`
 é atômica). Sem ninguém com o app aberto é só isso: o despertador de 1 minuto
-abre a aba uma vez por rodada — cerca de 1.440 aberturas por dia. Depois de uma
-tentativa que não serviu, outra conta pode tentar 20 s depois. Fora do ciclo, a aba só é aberta quando o motorista salva o
+abre a aba uma vez por rodada — cerca de 1.440 aberturas por dia, mais um toque
+em “Livro B” ou “Livro M” por rodada para cada um desses livros que tiver ponto
+cadastrado (ver **Livros**, abaixo). Depois de uma
+tentativa que não serviu, outra conta pode tentar 20 s depois — 50 s se o livro
+não tem nenhuma fila boa valendo (nunca foi lido, ou parou de vir): um motivo
+que é da própria tela não se resolve batendo à porta de 20 em 20 s. Fora do ciclo, a aba só é aberta quando o motorista salva o
 acesso ou toca em ler o portal, e no “Ler agora” do `/admin`. Se o portal
 estiver lento e a conta levar mais de 12 s para abrir (25 s no “Ler agora”), a
 aba fica para a próxima leitura — a abertura da aba pode levar até 14 s e não
@@ -364,9 +368,18 @@ resposta — o app não espera por ela):
 - com a **sessão guardada da conta que leu a fila por último**. Nunca faz login
   e não grava nada da sessão de volta: quem cuida da sessão continua sendo só a
   olhada do Status. Sem o endereço da aba já guardado nessa conta, não há pedido;
-- só **continua uma leitura que está dando certo**: todos os livros
-  configurados precisam ter uma fila boa, ainda valendo e sem erro. Depois de
-  qualquer falha ela para, e quem volta a ler é a carona do Status;
+- **que livros**: o Livro A (os lidos sempre) e, dos livros que só são lidos
+  por causa de um ponto cadastrado, os **pedidos** — o Livro B entra na
+  releitura enquanto **alguém com ponto no Livro B está com o app aberto**; sem
+  ninguém olhando, ele fica na carona, de minuto em minuto (ver **Livros**,
+  abaixo). Todos os livros da vez vão na mesma visita: a aba e um toque em cada
+  botão. Com alguém olhando A, B e M são 3 pedidos a cada 18 s, no máximo; com
+  só o Livro A sendo olhado continua 1;
+- só **continua uma leitura que está dando certo**: entram os livros que têm
+  uma fila boa, ainda valendo e sem erro. Depois de qualquer falha num livro,
+  quem volta a ler esse livro é a carona do Status — e **um livro que falha não
+  segura os outros** (o Livro B sem leitura não tira do Livro A a releitura de
+  20 em 20 s, nem o contrário);
 - só usa uma **sessão assentada**: a conta precisa estar há **30 minutos sem
   login** no portal. É o freio dela: se as consultas a mais fizerem o portal
   encerrar a sessão de uma conta, ela entra de novo na olhada do Status (como
@@ -391,16 +404,73 @@ apaga os dados do portal). Nada da conta de quem abriu: o aviso “Seu ponto (�
 da tela não é guardado nem vai para o diagnóstico. Ao navegador vão só as
 contagens e o último escalado, como antes.
 
-**Livros.** O padrão é ler só o **Livro A** (Truck e Carreta).
-`PORTAL_FILA_LIVROS=A,B,M` acrescenta os outros — cada livro a mais é uma página
-a mais por ciclo. Ponto de um livro que não é lido aparece com “sem leitura da
-fila”: sem posição e sem aviso de vez (o aviso de saída, que vem do Status,
-continua).
+**Livros: o de cada ponto cadastrado.** A Tela de Ativos mostra um livro por
+vez, com três botões no alto: **Livro A · Livro B · Livro M**. O app lê os
+**livros em uso** (`livrosEmUso`, em `src/lib/portal-fila.ts`): o **Livro A**,
+sempre, e **o livro de cada ponto cadastrado no app** — quem cadastra o A032
+faz o leitor ler o Livro A; o B032, tocar em “Livro B”; o M032, em “Livro M”. A
+fila é geral (igual para todas as contas), então vale o ponto de qualquer
+motorista, tenha ele o acesso ao portal ou não: quem abre a tela é a conta de
+quem tem. Tirado o último ponto de um livro, ele deixa de ser lido.
+
+- **O toque no botão** (`extrairToquesDeLivro`, em `src/lib/portal-fila-parse.ts`).
+  O HTML de verdade nunca foi visto, então o botão é aceito nas formas em que um
+  site de páginas inteiras costuma fazê-lo: link (`<a href>`), botão que leva a
+  um endereço (`onclick="location.href='…'"`, `data-href`) e botão de formulário,
+  GET ou POST (com os campos escondidos e o nome do botão, como o navegador
+  manda). Sempre só o controle cujo texto é exatamente “Livro X”; nunca um
+  endereço com cara de ação; formulário só se não tem nada para digitar nem fala
+  de dispensa, exclusão, saída ou senha. Não achou o botão: o livro fica sem
+  leitura e o diagnóstico do `/admin` diz **o que a tela tem** com o texto
+  “Livro …” (a tag e os atributos) — é o que falta para ensinar a forma nova.
+- **Quantos pedidos.** Um por livro lido: a aba (que já abre num livro) e um
+  toque para cada outro.
+- **O ritmo de cada livro.** O **Livro A** é o de sempre: na carona do Status e,
+  com qualquer app aberto, de 20 em 20 s. Um livro que só é lido por causa de um
+  ponto (**B, M**) tem dois ritmos:
+  - **alguém com ponto nele está com o app aberto** → ele é relido junto com o
+    Livro A, de 20 em 20 s (um toque a mais por visita). O `/api/estado` manda,
+    depois da resposta, os livros dos pontos de quem perguntou
+    (`marcarLivrosPedidos` grava `portal_fila.pedido_em`, no máximo uma vez a
+    cada 10 s por instância); o livro continua “pedido” por 45 s depois da
+    última pergunta. Ao ser pedido, ele não espera o resto do minuto: a espera
+    cai para 18 s, contados da última tentativa;
+  - **ninguém olhando** → só na carona do Status, **uma vez por minuto** (a
+    reserva dele dura 45 s, a mesma espera do Status — com várias contas olhadas
+    no mesmo minuto, ele não é lido a cada conta).
+
+  A visita que só veio buscar o Livro B leva o Livro A junto (a aba já abre
+  nele: nenhum pedido a mais) e adia a hora do A — a aba não é aberta de novo,
+  segundos depois, só por ele. Com A, B e M em uso e ninguém com o app aberto:
+  3 pedidos por minuto; com um motorista do Livro B olhando: 2 a cada 18 s.
+- **Livro novo.** O primeiro dado de um livro que acabou de ganhar o primeiro
+  ponto vem na próxima olhada do Status (até 1 minuto); até lá o cartão mostra
+  “sem leitura da fila”.
+- **`PORTAL_FILA_LIVROS`** (padrão `A`) são os livros lidos **sempre**, com ou
+  sem ponto neles; `A,B,M` lê os três o tempo todo.
+  **`PORTAL_FILA_LIVROS_DOS_PONTOS=0`** (ou `desligado`) é a chave de retorno:
+  os livros dos pontos deixam de entrar sozinhos e volta a valer só a lista de
+  cima.
+
+Ponto de um livro que não é lido (ou cuja leitura não veio) aparece com “sem
+leitura da fila”: sem posição e sem aviso de vez (o aviso de saída, que vem do
+Status, continua).
 
 **O que o card mostra** (`src/lib/fila-card.ts`): “Pontos no quadro TRUCK” e
 “Pontos no quadro CAVALO/C” com a contagem e, embaixo, o último escalado de cada
-quadro; “Último escalado” é o do quadro do ponto mostrado. Quadro sem leitura
-mostra “—”, nunca um número antigo.
+quadro — **do livro do ponto que está na tela**. Arrastando o número para o
+lado, se o ponto que entra é do Livro B ou do Livro M, os dois quadros passam a
+ser os desse livro. Sem ponto na tela (visitante, ou quem ainda não cadastrou),
+são os do Livro A — nunca a soma dos livros que os pontos de outros motoristas
+fizeram o app ler. Quadro sem leitura mostra “—”, nunca um número antigo.
+
+**Cada livro tem a hora da sua leitura.** Cada quadro vai para o app com a hora
+em que o livro dele foi lido (`lidoEm`) e, se essa leitura passou da validade
+(3 min), com a marca `velha`. “Atualizado há…” fala do livro do ponto que está
+na tela, e **OFFLINE é por livro**: se o Livro B parou de vir, quem olha um
+ponto do Livro B vê os últimos números com a idade verdadeira e o selo OFFLINE;
+quem olha o Livro A continua ONLINE. O monitor inteiro só fica OFFLINE quando
+nenhum livro tem leitura valendo.
 
 **Leitura rígida** (`src/lib/portal-fila-parse.ts`). O HTML de verdade da aba
 nunca foi visto — só a tela. Um quadro só vale se o SEQ vai de 1 a N sem pular,
@@ -1010,7 +1080,8 @@ no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
 | `SECRETS_MASTER_KEY` | não | chave mestra das API Keys do painel (e do CPF/senha/sessão do Portal do Motorista) |
 | `PORTAL_FONTE_SAIDA` | não | quem decide a saída do ponto: vazio/`portal` = o Status do Portal do Motorista (padrão); `quadro` = o quadro da intranet, com uma consulta ao portal na saída |
 | `FONTE_FILA` | não | de onde vem a fila: vazio/`portal` = a aba “Fila” do Portal do Motorista (padrão); `quadro` = o quadro público antigo, desligado pela Copadubo em 10/11/2026 |
-| `PORTAL_FILA_LIVROS` | não | livros lidos na aba “Fila” (padrão `A`); ex.: `A,B,M` — cada livro a mais é uma página a mais por ciclo |
+| `PORTAL_FILA_LIVROS` | não | livros lidos **sempre** na aba “Fila” (padrão `A`); ex.: `A,B,M`. O livro de cada ponto cadastrado entra sozinho — cada livro a mais é um pedido a mais por leitura |
+| `PORTAL_FILA_LIVROS_DOS_PONTOS` | não | `0` (ou `desligado`) = chave de retorno: só os livros de `PORTAL_FILA_LIVROS` são lidos, como era antes |
 | `PORTAL_FILA_INTERVALO_S` | não | com o app aberto, de quantos em quantos segundos a aba “Fila” é relida entre as olhadas do Status (10 a 60; padrão 20). `0` ou `desligado` = só na carona do Status, uma vez por ciclo |
 | `PORTAL_INTERVALO_MIN` | não | de quantos em quantos minutos o Status de cada motorista é lido (1 a 60; padrão 1) |
 | `PORTAL_TICKET` | não | Saldo de Ganhos: vazio = a aba “Ticket” é lida, com todos os pontos do app, para quem cadastrou a porcentagem (padrão); `desligado` = nenhuma leitura do Ticket |

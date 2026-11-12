@@ -1,4 +1,4 @@
-import { decodificarEntidades, enderecoDeAcao, limparHtml } from "@/lib/portal-copadubo-parse";
+import { atributos, decodificarEntidades, destinoProibido, enderecoDeAcao, limparHtml } from "@/lib/portal-copadubo-parse";
 
 /**
  * ABA “FILA” DO PORTAL DO MOTORISTA — a “Tela de Ativos”.
@@ -383,6 +383,233 @@ export function extrairLinksDeLivro(html: string, paginaUrl: string): { livro: L
     if (!saida.some((x) => x.livro === livro)) saida.push({ livro, url: url.toString() });
   }
   return saida;
+}
+
+/* ------------------------------------------------- os botões “Livro A · B · M” */
+
+/**
+ * Como o leitor “toca” no botão de um livro da Tela de Ativos: o pedido que o
+ * navegador faria. O HTML de verdade nunca foi visto (só a tela, com três
+ * botões lado a lado), então o botão é aceito nas formas em que um site de
+ * páginas inteiras costuma fazê-lo: link, botão que leva a um endereço e botão
+ * de formulário (GET ou POST).
+ */
+export type ToqueNoLivro = {
+  livro: LivroDaFila;
+  url: string;
+  metodo: "GET" | "POST";
+  /** Corpo do POST (`application/x-www-form-urlencoded`). */
+  corpo?: string;
+  /** De que forma de botão saiu (vai para o diagnóstico). */
+  forma: "link" | "botão com endereço" | "formulário GET" | "formulário POST";
+};
+
+/** O texto do botão tem de ser EXATAMENTE o nome do livro: “Livro B”. */
+const RE_TEXTO_DE_LIVRO = /^livro\s+([ABM])$/i;
+/** Um formulário que fala disto não é a troca de livro: é uma ação. */
+const RE_FORMULARIO_QUE_AGE = /dispensa|motivo|exclu|apag|remov|\bsair\b|senha|password/i;
+/** Um botão não tem um texto maior que isto (com as tags de dentro). */
+const MAIOR_BOTAO = 400;
+
+/**
+ * Os elementos que podem ser um botão feito à mão — `button`, `a`, `div`,
+ * `span`, `li`, `label` — com o texto de dentro. Só as “folhas”: uma caixa que
+ * contém outra da mesma tag não é o botão (os botões são os de dentro, e cada
+ * um é visto com os SEUS atributos).
+ */
+function elementosClicaveis(limpo: string): { tag: string; at: Record<string, string>; texto: string }[] {
+  const saida: { tag: string; at: Record<string, string>; texto: string }[] = [];
+  const minusculo = limpo.toLowerCase();
+  const reAbre = /<(button|a|div|span|li|label)\b([^>]*)>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = reAbre.exec(limpo))) {
+    const tag = m[1].toLowerCase();
+    const inicio = m.index + m[0].length;
+    const fim = minusculo.indexOf(`</${tag}`, inicio);
+    if (fim < 0 || fim - inicio > MAIOR_BOTAO) continue;
+    const dentro = limpo.slice(inicio, fim);
+    if (new RegExp(`<${tag}\\b`, "i").test(dentro)) continue;
+    saida.push({ tag, at: atributos(m[2]), texto: textoDoHtml(dentro) });
+  }
+  return saida;
+}
+const textoDoHtml = (html: string) => decodificarEntidades(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+const livroDoTexto = (texto: string): LivroDaFila | null => (RE_TEXTO_DE_LIVRO.exec(texto)?.[1].toUpperCase() as LivroDaFila | undefined) ?? null;
+
+/** O endereço para onde um botão feito à mão leva: `data-href` (e parecidos) ou `onclick="location.href='…'"`. */
+function enderecoDoControle(at: Record<string, string>): string | null {
+  for (const nome of ["data-href", "data-url", "data-link", "data-location"]) {
+    if (at[nome]?.trim()) return at[nome].trim();
+  }
+  const m = /(?:location(?:\.href)?\s*=\s*|location\.(?:assign|replace)\s*\(\s*|window\.open\s*\(\s*)(["'])([^"']+)\1/i.exec(at.onclick ?? "");
+  return m ? m[2].trim() : null;
+}
+
+/** Endereço de navegação do próprio portal (http/https, sem cara de ação), já resolvido — ou `null`. */
+function enderecoDeNavegacao(bruto: string, paginaUrl: string): URL | null {
+  if (!bruto || bruto.startsWith("#") || /^(javascript|mailto|tel|data|blob):/i.test(bruto)) return null;
+  let url: URL;
+  try {
+    url = new URL(bruto, paginaUrl);
+  } catch {
+    return null;
+  }
+  if (!/^https?:$/.test(url.protocol)) return null;
+  url.hash = "";
+  const caminho = `${url.pathname}${url.search}`;
+  return enderecoDeAcao(caminho) || destinoProibido(caminho) ? null : url;
+}
+
+/** Os botões de livro que são de formulário: um pedido por botão “Livro X”. */
+function toquesDeFormulario(limpo: string, paginaUrl: string): ToqueNoLivro[] {
+  const saida: ToqueNoLivro[] = [];
+  const reForm = /<form\b([^>]*)>([\s\S]*?)<\/form\s*>/gi;
+  let f: RegExpExecArray | null;
+  while ((f = reForm.exec(limpo))) {
+    const doForm = atributos(f[1]);
+    const corpo = f[2];
+    // Só uma ESCOLHA: nada para digitar, marcar, anexar ou selecionar.
+    if (/<(?:textarea|select)\b/i.test(corpo)) continue;
+    const ocultos: [string, string][] = [];
+    const botoes: { at: Record<string, string>; texto: string }[] = [];
+    let outroCampo = false;
+    const reInput = /<input\b([^>]*?)\/?>/gi;
+    let i: RegExpExecArray | null;
+    while ((i = reInput.exec(corpo))) {
+      const at = atributos(i[1]);
+      const tipo = (at.type ?? "text").toLowerCase();
+      if (tipo === "hidden") {
+        if (at.name) ocultos.push([at.name, at.value ?? ""]);
+      } else if (tipo === "submit") {
+        botoes.push({ at, texto: (at.value ?? "").replace(/\s+/g, " ").trim() });
+      } else if (tipo !== "button" && tipo !== "reset") {
+        outroCampo = true;
+      }
+    }
+    if (outroCampo) continue;
+    const reButton = /<button\b([^>]*)>([\s\S]*?)<\/button\s*>/gi;
+    let b: RegExpExecArray | null;
+    while ((b = reButton.exec(corpo))) {
+      const at = atributos(b[1]);
+      if ((at.type ?? "submit").toLowerCase() === "submit") botoes.push({ at, texto: textoDoHtml(b[2]) });
+    }
+    if (!botoes.some((x) => livroDoTexto(x.texto))) continue;
+    // Campo escondido que nomeia uma ação (acao=excluir…), ou formulário que fala de uma: fora.
+    if (ocultos.some(([, valor]) => /^[a-z_\- ]{3,40}$/i.test(valor) && destinoProibido(valor))) continue;
+    if (RE_FORMULARIO_QUE_AGE.test(textoDoHtml(corpo))) continue;
+
+    for (const botao of botoes) {
+      const livro = livroDoTexto(botao.texto);
+      if (!livro) continue;
+      const metodo = (botao.at.formmethod ?? doForm.method ?? "get").toLowerCase();
+      if (metodo !== "get" && metodo !== "post") continue;
+      const destino = enderecoDeNavegacao((botao.at.formaction ?? doForm.action ?? "").trim() || paginaUrl, paginaUrl);
+      if (!destino) continue;
+      const campos = new URLSearchParams();
+      for (const [nome, valor] of ocultos) campos.append(nome, valor);
+      if (botao.at.name) campos.append(botao.at.name, botao.at.value ?? "");
+      if (metodo === "get") {
+        // Como o navegador faz: os campos do formulário ENTRAM NO LUGAR dos parâmetros do endereço.
+        destino.search = campos.toString();
+        if (enderecoDeAcao(`${destino.pathname}${destino.search}`)) continue;
+        saida.push({ livro, url: destino.toString(), metodo: "GET", forma: "formulário GET" });
+      } else {
+        saida.push({ livro, url: destino.toString(), metodo: "POST", corpo: campos.toString(), forma: "formulário POST" });
+      }
+    }
+  }
+  return saida;
+}
+
+/**
+ * Os botões “Livro A · Livro B · Livro M” da tela, cada um com o pedido que o
+ * toque nele faz. Um por livro, na ordem de preferência: link, botão que leva
+ * a um endereço, formulário GET, formulário POST.
+ *
+ * O leitor entra com a conta do motorista, então a regra é a mesma do resto:
+ * só o controle cujo texto é exatamente “Livro X”; nunca um endereço com cara
+ * de ação; formulário só se não tem nada para digitar nem fala de dispensa,
+ * exclusão, saída ou senha. E dois livros que dariam O MESMO pedido não valem
+ * (três botões sem nome no mesmo formulário: quem troca o livro é um script,
+ * e esta leitura não saberia qual livro pediu).
+ */
+export function extrairToquesDeLivro(html: string, paginaUrl: string): ToqueNoLivro[] {
+  const limpo = limparHtml(html);
+  const candidatos: ToqueNoLivro[] = extrairLinksDeLivro(html, paginaUrl).map((l) => ({ ...l, metodo: "GET" as const, forma: "link" as const }));
+
+  const comEndereco = (livro: LivroDaFila | null, at: Record<string, string>) => {
+    if (!livro) return;
+    const url = enderecoDeNavegacao(enderecoDoControle(at) ?? "", paginaUrl);
+    if (url) candidatos.push({ livro, url: url.toString(), metodo: "GET", forma: "botão com endereço" });
+  };
+  for (const e of elementosClicaveis(limpo)) comEndereco(livroDoTexto(e.texto), e.at);
+  let m: RegExpExecArray | null;
+  const reInputBotao = /<input\b([^>]*?)\/?>/gi;
+  while ((m = reInputBotao.exec(limpo))) {
+    const at = atributos(m[1]);
+    if ((at.type ?? "").toLowerCase() === "button") comEndereco(livroDoTexto((at.value ?? "").replace(/\s+/g, " ").trim()), at);
+  }
+
+  candidatos.push(...toquesDeFormulario(limpo, paginaUrl));
+
+  const pedido = (t: ToqueNoLivro) => `${t.metodo} ${t.url} ${t.corpo ?? ""}`;
+  const ordem: ToqueNoLivro["forma"][] = ["link", "botão com endereço", "formulário GET", "formulário POST"];
+  const saida: ToqueNoLivro[] = [];
+  for (const forma of ordem) {
+    for (const t of candidatos) {
+      if (t.forma !== forma || saida.some((x) => x.livro === t.livro)) continue;
+      // O mesmo pedido para livros diferentes não diz qual livro abre.
+      if (candidatos.some((x) => x.livro !== t.livro && pedido(x) === pedido(t))) continue;
+      saida.push(t);
+    }
+  }
+  return saida;
+}
+
+/** Para o diagnóstico: texto curto que COMEÇA pelo nome de um livro (“Livro B”, “Livro B (27)”…) e só fala de UM livro. */
+const pareceBotaoDeLivro = (texto: string) => /^livro\s+[ABM]\b.{0,24}$/i.test(texto) && (texto.match(/\blivro\s+[ABM]\b/gi) ?? []).length === 1;
+
+/**
+ * Para o diagnóstico (só do administrador), quando o botão de um livro não foi
+ * encontrado: o que a tela TEM com um texto curto que começa por “Livro X” — a
+ * tag e os atributos, nunca o conteúdo da fila. É o que permite ensinar a
+ * forma nova numa rodada só. Mais frouxo que a leitura de propósito: um botão
+ * escrito “Livro B (27)” não é tocado, mas aparece aqui.
+ */
+export function descreverBotoesDeLivro(html: string, limite = 4): string[] {
+  const limpo = limparHtml(html);
+  const saida: string[] = [];
+  const formularios: string[] = [];
+  const curto = (v: string) => v.replace(/\d{6,}/g, "…").replace(/\s+/g, " ").trim().slice(0, 70);
+  const descrever = (tag: string, at: Record<string, string>, texto: string) => {
+    const partes = Object.entries(at)
+      .filter(([nome]) => nome !== "class" && nome !== "style" && nome !== "id")
+      .map(([nome, valor]) => (/^(href|type|name|value|onclick|formaction|formmethod|role)$|^data-/.test(nome) ? `${nome}="${curto(valor)}"` : nome));
+    const linha = `${texto}: <${tag}${partes.length ? ` ${partes.join(" ")}` : ""}>`;
+    if (!saida.includes(linha)) saida.push(linha);
+  };
+  for (const e of elementosClicaveis(limpo)) {
+    if (pareceBotaoDeLivro(e.texto)) descrever(e.tag, e.at, e.texto);
+  }
+  let m: RegExpExecArray | null;
+  const reInput = /<input\b([^>]*?)\/?>/gi;
+  while ((m = reInput.exec(limpo))) {
+    const at = atributos(m[1]);
+    const texto = (at.value ?? "").replace(/\s+/g, " ").trim();
+    if (/^(submit|button)$/i.test(at.type ?? "") && pareceBotaoDeLivro(texto)) descrever("input", at, texto);
+  }
+  const reForm = /<form\b([^>]*)>([\s\S]*?)<\/form\s*>/gi;
+  while ((m = reForm.exec(limpo))) {
+    if (!/livro\s+[ABM]\b/i.test(textoDoHtml(m[2]) + " " + m[2])) continue;
+    const at = atributos(m[1]);
+    const campos = [...m[2].matchAll(/<(?:input|select|textarea)\b([^>]*?)\/?>/gi)]
+      .map((c) => atributos(c[1]))
+      .filter((c) => c.name)
+      .map((c) => `${curto(c.name)}${(c.type ?? "").toLowerCase() === "hidden" ? " (oculto)" : ""}`);
+    formularios.push(`formulário ${(at.method ?? "get").toUpperCase()} ${curto((at.action ?? "(a própria página)").split("?")[0])} — campos: ${[...new Set(campos)].join(", ") || "nenhum"}`);
+  }
+  // Os controles (os três botões e mais um, se houver) e, depois, até dois formulários.
+  return [...saida.slice(0, limite), ...formularios.slice(0, 2)];
 }
 
 /**

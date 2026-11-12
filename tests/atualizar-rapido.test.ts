@@ -50,16 +50,18 @@ test("o /api/estado relê a fila entre ciclos depois da resposta, por último e 
   const segundoPlano = rota.slice(rota.indexOf("after(async () => {"), rota.indexOf("return NextResponse.json(estado"));
   assert.ok(segundoPlano.length > 200, "o bloco after() da rota");
   const status = segundoPlano.indexOf("await monitorarStatusEmSegundoPlano()");
-  const fila = segundoPlano.indexOf("await atualizarFilaEntreCiclos()");
+  const fila = segundoPlano.indexOf("await atualizarFilaEntreCiclos({ livrosDoPedido })");
   assert.ok(status > 0 && fila > status, "a fila entre ciclos vem DEPOIS da olhada do Status (é o Status que avisa a saída)");
   assert.match(
     segundoPlano,
-    /if \(Date\.now\(\) - inicioDoSegundoPlano < PRAZO_PARA_COMECAR_A_FILA_MS\) await atualizarFilaEntreCiclos\(\)\.catch\(\(\) => null\);/,
+    /if \(Date\.now\(\) - inicioDoSegundoPlano < PRAZO_PARA_COMECAR_A_FILA_MS\) await atualizarFilaEntreCiclos\(\{ livrosDoPedido \}\)\.catch\(\(\) => null\);/,
     "só começa com tempo de sobra, e uma falha dela nunca derruba o resto",
   );
   assert.match(segundoPlano, /const inicioDoSegundoPlano = Date\.now\(\);/);
   // A resposta ao app não espera a leitura da fila: a chamada só existe dentro do after().
   assert.equal(rota.split("atualizarFilaEntreCiclos(").length - 1, 1);
+  // Com ela vão os livros dos pontos de quem está com o app aberto (só os dele: o visitante não pede livro nenhum).
+  assert.match(rota, /const livrosDoPedido = \[\.\.\.new Set\(estado\.pontos\.map\(\(p\) => p\.livro\)\)\];/);
 
   // A conta do tempo: começa até 35 s, e a função tem 60 s. Nem com o prazo cheio de uma leitura da
   // fila (14 s) estouraria; a leitura entre ciclos usa um prazo próprio, mais curto (6 s), para não

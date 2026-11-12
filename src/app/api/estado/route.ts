@@ -107,6 +107,9 @@ export async function GET() {
     // motorista não depende de ninguém rodar SQL para ver a tela) e as idas ao
     // portal rodam em segundo plano, depois da resposta.
     const temPontoFora = estado.pontos.some((p) => p.status === "SAIU");
+    // Os livros dos pontos de quem está com o app aberto: são os que a leitura
+    // da fila entre as olhadas inclui além do Livro A.
+    const livrosDoPedido = [...new Set(estado.pontos.map((p) => p.livro))];
     after(async () => {
       const inicioDoSegundoPlano = Date.now();
       await garantirTabelasPortal().catch(() => null);
@@ -129,7 +132,7 @@ export async function GET() {
       // portal é relida sem esperar o próximo ciclo de 1 minuto. Vem por
       // último (o Status é quem avisa a saída) e só começa se ainda sobra
       // tempo folgado desta função para a leitura inteira (até 14 s).
-      if (Date.now() - inicioDoSegundoPlano < PRAZO_PARA_COMECAR_A_FILA_MS) await atualizarFilaEntreCiclos().catch(() => null);
+      if (Date.now() - inicioDoSegundoPlano < PRAZO_PARA_COMECAR_A_FILA_MS) await atualizarFilaEntreCiclos({ livrosDoPedido }).catch(() => null);
     });
     return NextResponse.json(estado, {
       headers: { "Cache-Control": "private, no-store" },

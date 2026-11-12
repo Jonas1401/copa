@@ -49,7 +49,8 @@ import {
 } from "@/lib/portal-copadubo-parse";
 import {
   amostraDaTela,
-  extrairLinksDeLivro,
+  descreverBotoesDeLivro,
+  extrairToquesDeLivro,
   interpretarFilaDoPortal,
   quadrosDoLivro,
   resumoDoLivro,
@@ -1196,6 +1197,7 @@ export async function garantirTabelasPortal() {
         CONSTRAINT portal_ticket_porcentagens_ponto UNIQUE (motorista_id, codigo)
       );
       ALTER TABLE portal_ticket_config ADD COLUMN IF NOT EXISTS por_ponto_em TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE portal_fila ADD COLUMN IF NOT EXISTS pedido_em TIMESTAMP WITH TIME ZONE;
       DO $$
       DECLARE t text;
       BEGIN
@@ -2018,19 +2020,44 @@ export async function lerFilaComSessao(
   const temQuadro = (fila: FilaDoPortal, livro: LivroDaFila) =>
     fila.quadros.some((q) => q.livro === livro) || fila.recusados.some((r) => r.titulo.startsWith(`Livro ${livro} `));
 
+  // A última Tela de Ativos que abriu: os botões que valem são os dela (um
+  // formulário pode levar um código que muda a cada tela).
+  let ultima = tela;
   for (const livro of opcoes.livros) {
     let lido = quadrosDoLivro(naTela, livro);
     let onde = caminhoDe(tela.url);
     if ("motivo" in lido && !temQuadro(naTela, livro)) {
-      // A tela está em outro livro: a aba “Livro X” é um link da própria tela.
-      const link = extrairLinksDeLivro(tela.html, tela.url).find((l) => l.livro === livro);
-      if (link && podeAbrir(visita, link.url)) {
-        const outra = await visita.pedir(link.url, { referer: tela.url });
+      // A tela está em outro livro: o leitor toca no botão “Livro X” da própria
+      // tela — link, botão que leva a um endereço ou botão de formulário.
+      const toque = [ultima, tela]
+        .flatMap((t) => extrairToquesDeLivro(t.html, t.url))
+        .find((t) => t.livro === livro && podeAbrir(visita as SessaoPortal, t.url));
+      if (toque) {
+        const outra = await visita.pedir(
+          toque.url,
+          toque.metodo === "POST" ? { metodo: "POST", corpo: toque.corpo ?? "", referer: ultima.url } : { referer: ultima.url },
+        );
         const falhou = problemaDaResposta(outra);
-        onde = caminhoComParametros(link.url);
-        lido = falhou ? { motivo: `aba “Livro ${livro}” (${onde}): ${falhou}` } : quadrosDoLivro(interpretarFilaDoPortal(outra.html), livro);
+        onde = `${toque.metodo === "POST" ? "POST " : ""}${caminhoComParametros(toque.url)}`;
+        if (falhou) {
+          lido = { motivo: `botão “Livro ${livro}” (${onde}): ${falhou}` };
+        } else {
+          ultima = outra;
+          lido = quadrosDoLivro(interpretarFilaDoPortal(outra.html), livro);
+          if ("motivo" in lido) {
+            lido = { motivo: `toquei em “Livro ${livro}” (${toque.forma}, ${onde}) e ${lido.motivo}` };
+            // O que a tela mostrou depois do toque (para o administrador): o botão pode não ter trocado de livro.
+            const amostra = amostraDaTela(outra.html);
+            if (amostra.length) diagnostico.push(`Tela depois do toque em “Livro ${livro}”, primeiras linhas: ${amostra.join(" | ")}.`);
+          }
+        }
       } else {
-        lido = { motivo: `${lido.motivo}, e a tela não tem um link “Livro ${livro}”` };
+        const achados = descreverBotoesDeLivro(ultima.html);
+        lido = {
+          motivo: `${lido.motivo}, e não achei na tela um botão “Livro ${livro}” que eu saiba usar (${
+            achados.length ? `a tela tem: ${achados.join(" | ")}` : "nenhum controle com o texto “Livro …”"
+          })`,
+        };
       }
     }
     if ("motivo" in lido) {
