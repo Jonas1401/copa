@@ -17,7 +17,7 @@ import { comBanco, db } from "@/db";
 import { amostras, eventos, pontos } from "@/db/schema";
 import { nomeDoMotorista, notificarEvento } from "@/lib/push";
 import { fontePortal } from "@/lib/portal-situacao";
-import { filaGuardada, fonteDaFila, livrosDaFila, validadeDaFilaMs, type FilaGuardada } from "@/lib/portal-fila";
+import { filaGuardada, fonteDaFila, livrosEmUso, validadeDaFilaMs, type FilaGuardada } from "@/lib/portal-fila";
 import { composioConfigurado, lerPaginas } from "@/lib/composio";
 
 export type Tipo = "TRUCK" | "CAVALO";
@@ -48,10 +48,21 @@ export type LinhaFila = {
   historico: number[];
   /**
    * Este quadro não tem leitura: a fila do livro dele não é lida na aba “Fila”
-   * do portal (só os livros de `PORTAL_FILA_LIVROS`) ou ainda não veio nenhuma
+   * do portal (só os livros em uso: `livrosEmUso`) ou ainda não veio nenhuma
    * vez. Os números ficam zerados e a tela mostra “—”, nunca um número velho.
    */
   semLeitura?: boolean;
+  /**
+   * Hora da leitura REAL deste quadro na aba “Fila” do portal. Cada livro tem
+   * a sua: o Livro A pode ter sido lido há 10 s e o Livro B, há 50 s.
+   */
+  lidoEm?: string | null;
+  /**
+   * A leitura deste quadro passou da validade (`validadeDaFilaMs`): os números
+   * são os últimos lidos, não os de agora. Só vem na resposta ao app — é
+   * conferido na hora do pedido.
+   */
+  velha?: boolean;
 };
 
 export type FilaEstado = Record<string, LinhaFila>;
@@ -546,7 +557,8 @@ async function varrerPeloPortal(
   // Só uma varredura feita pelo portal deixa `livros`: a fila dela continua valendo.
   const anterior = snapAnterior?.livros !== undefined ? snapAnterior.fila : null;
   const guardadas = await filaGuardada().catch(() => [] as FilaGuardada[]);
-  const configurados = livrosDaFila();
+  // Os livros de sempre e os dos pontos cadastrados (`livrosEmUso`).
+  const configurados = await livrosEmUso();
   const agora = Date.now();
   const validade = validadeDaFilaMs();
 
@@ -578,6 +590,7 @@ async function varrerPeloPortal(
         historico: historicoDe(ant, quadro.ultimo),
         // O último escalado mudou entre uma leitura e outra: vale a hora da leitura.
         ultimoDesde: ant && ant.ultimo !== quadro.ultimo ? lidoEm.toISOString() : (ant?.ultimoDesde ?? null),
+        lidoEm: lidoEm.toISOString(),
       };
     }
     if (!lidoEm) continue;
@@ -1092,6 +1105,12 @@ async function lerEstado(dono: number | null): Promise<EstadoDTO> {
   // A aba “Fila” do portal é lida de minuto em minuto (o quadro antigo era a
   // cada 5 s): a leitura dela vale por mais tempo antes de contar como velha.
   const leituraVelha = snapshot.origem === "portal" ? validadeDaFilaMs() : LEITURA_VELHA_MS;
+  // Com mais de um livro lido, a hora do snapshot é a da leitura MAIS ANTIGA
+  // entre as que valiam na varredura. O monitor está ONLINE enquanto a de
+  // ALGUM livro vale: o Livro B que parou de vir não põe OFFLINE quem olha o
+  // Livro A (o quadro do B leva a marca `velha`, abaixo).
+  const idadeDoQuadro = (l: LinhaFila) => (l.lidoEm ? agoraMs - new Date(l.lidoEm).getTime() : Infinity);
+  const idadeMaisNova = Math.min(idadeLeitura, ...fila.map(idadeDoQuadro));
   // Ponto de um livro sem leitura da fila: a posição guardada não vale.
   const semFila = (livro: string) => snapshot.livros !== undefined && snapshot.fila[chave("TRUCK", livro)]?.semLeitura === true;
 
@@ -1100,10 +1119,19 @@ async function lerEstado(dono: number | null): Promise<EstadoDTO> {
     temLeitura: Boolean(lidoEm),
     servidorAgora: new Date(agoraMs).toISOString(),
     origem: snapshot.origem,
-    online: snapshot.origem !== "offline" && idadeLeitura <= leituraVelha,
+    online: snapshot.origem !== "offline" && idadeMaisNova <= leituraVelha,
     // A interface usa contagens e último escalado; números individuais da
     // intranet não devem ir ao navegador (só o servidor precisa deles).
-    fila: fila.map((l) => ({ ...l, codigos: [], vermelhos: [], historico: [] })),
+    // Cada quadro leva a hora da leitura dele e, se ela passou da validade, a
+    // marca de leitura velha: com mais de um livro lido, um pode estar em dia
+    // e o outro não.
+    fila: fila.map((l) => ({
+      ...l,
+      codigos: [],
+      vermelhos: [],
+      historico: [],
+      ...(l.lidoEm && idadeDoQuadro(l) > validadeDaFilaMs() ? { velha: true } : {}),
+    })),
     pontos: lista
       .map(paraDTO)
       .map((p) => (semFila(p.livro) ? { ...p, semFila: true, detalhe: `sem leitura da fila do Livro ${p.livro}` } : p)),

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   amostraDaTela,
+  descreverBotoesDeLivro,
   extrairLinksDeLivro,
+  extrairToquesDeLivro,
   interpretarFilaDoPortal,
   linhasDaTela,
   quadrosDoLivro,
@@ -20,10 +22,17 @@ import {
   FILA_QUE_NAO_SOME,
   FOLGA_DA_FILA_MS,
   INTERVALO_DA_FILA_PADRAO_S,
+  LIVRO_PEDIDO_VALE_MS,
   PRAZO_DA_FILA_QUE_SOME_MS,
+  REGRAVAR_PEDIDO_A_CADA_MS,
   esperaDaFilaMs,
   intervaloDaFilaMs,
+  livrosALer,
+  livrosDaFila,
+  livrosDosPontosLigados,
+  marcarLivrosPedidos,
   motivoDaFilaSumida,
+  pedidoHaPouco,
   validadeDaFilaMs,
 } from "../src/lib/portal-fila";
 import { esperaEntreLeiturasMs } from "../src/lib/portal-situacao";
@@ -35,6 +44,7 @@ import {
   quadroFalso,
   telaAtivos,
   telaStatus,
+  type BotoesDeLivroFalsos,
   type FilaFalsa,
 } from "./portal-fixture";
 
@@ -406,6 +416,296 @@ test("a tela abre em outro livro: a leitura segue o link “Livro A” da própr
   assert.deepEqual(portal.acoes, []);
 });
 
+/* ------------------------------------------------ os botões “Livro A · B · M” */
+
+/** Os três livros com fila, e o mesmo número (32) na Carreta de cada um — o exemplo do dono do app: A32, B32, M32. */
+const tresLivros = (extra: Partial<FilaFalsa> = {}): FilaFalsa => ({
+  livros: {
+    A: { truck: quadroFalso("A", 196, TRUCKS, "TRUCK BA 2E"), carreta: quadroFalso("A", 25, CARRETAS) },
+    B: { truck: quadroFalso("B", 164, [3, 7, 12], "TRUCK 4 EIXOS"), carreta: quadroFalso("B", 20, [30, 32, 40]) },
+    M: { truck: quadroFalso("M", 107, [9], "TRUCK 4 EIXOS"), carreta: quadroFalso("M", 17, [11, 15, 32]) },
+  },
+  ...extra,
+});
+const PAGINA_DA_FILA = `${BASE_FALSA}/moto/fila`;
+const comoTexto = (html: string) =>
+  extrairToquesDeLivro(html, PAGINA_DA_FILA).map(
+    (t) => `${t.livro} ${t.metodo} ${new URL(t.url).pathname}${new URL(t.url).search}${t.corpo !== undefined ? ` [${t.corpo}]` : ""} (${t.forma})`,
+  );
+const cadaLivro = (modelo: string) => ["A", "B", "M"].map((l) => modelo.replaceAll("#", l));
+
+test("o toque no botão do livro, em cada forma de botão: o pedido que o navegador faria", () => {
+  const toques = (botoes: BotoesDeLivroFalsos, codigo?: string) => comoTexto(telaAtivos(tresLivros({ botoes }), "A", codigo));
+  assert.deepEqual(toques("links"), cadaLivro("# GET /moto/fila?livro=# (link)"));
+  assert.deepEqual(toques("links-relativos"), cadaLivro("# GET /moto/fila?livro=# (link)"));
+  assert.deepEqual(toques("onclick"), cadaLivro("# GET /moto/fila?livro=# (botão com endereço)"));
+  assert.deepEqual(toques("data-href"), cadaLivro("# GET /moto/fila?livro=# (botão com endereço)"));
+  assert.deepEqual(toques("form-get"), cadaLivro("# GET /moto/fila?livro=# (formulário GET)"));
+  assert.deepEqual(toques("form-get", "cod1"), cadaLivro("# GET /moto/fila?_token=cod1&livro=# (formulário GET)"));
+  // <input type="submit">: o que vai no pedido é o texto do botão.
+  assert.deepEqual(toques("input-submit"), cadaLivro("# GET /moto/fila?livro=Livro+# (formulário GET)"));
+  assert.deepEqual(toques("form-post"), cadaLivro("# POST /moto/fila [livro=#] (formulário POST)"));
+  assert.deepEqual(toques("form-post", "cod1"), cadaLivro("# POST /moto/fila [livro=#&_token=cod1] (formulário POST)"));
+  assert.deepEqual(toques("form-post-unico"), cadaLivro("# POST /moto/fila [livro=#] (formulário POST)"));
+  assert.deepEqual(toques("form-post-unico", "cod1"), cadaLivro("# POST /moto/fila [_token=cod1&livro=#] (formulário POST)"));
+  // Botão que só um script saberia usar: nenhum toque — e o diagnóstico diz o que a tela tem.
+  const soScript = telaAtivos(tresLivros({ botoes: "script" }), "A");
+  assert.deepEqual(comoTexto(soScript), []);
+  assert.deepEqual(descreverBotoesDeLivro(soScript), cadaLivro('Livro #: <button type="button" data-livro="#">'));
+});
+
+test("o toque no botão do livro: endereços relativos, `formaction`, e o link ganha do formulário", () => {
+  // Como o navegador: num formulário GET os campos ENTRAM NO LUGAR dos parâmetros que o endereço já tinha.
+  assert.deepEqual(
+    comoTexto(`<form action="fila.php?aba=1"><input type="hidden" name="v" value="2"><button name="l" value="B">Livro B</button></form>`),
+    ["B GET /moto/fila.php?v=2&l=B (formulário GET)"],
+  );
+  // Num POST o endereço fica como está, e sem `action` o formulário vai para a própria página.
+  assert.deepEqual(comoTexto(`<form method="POST"><button name="l" value="M"> Livro  M </button></form>`), ["M POST /moto/fila [l=M] (formulário POST)"]);
+  assert.deepEqual(
+    comoTexto(`<form method="get" action="/moto/x"><button formaction="/moto/fila_b.php" formmethod="post" name="l" value="B">Livro B</button></form>`),
+    ["B POST /moto/fila_b.php [l=B] (formulário POST)"],
+  );
+  // Um formulário por livro, cada um com o seu endereço e sem campo nenhum.
+  assert.deepEqual(
+    comoTexto(`<form action="/moto/fila_a.php"><button>Livro A</button></form><form action="/moto/fila_b.php"><button>Livro B</button></form>`),
+    ["A GET /moto/fila_a.php (formulário GET)", "B GET /moto/fila_b.php (formulário GET)"],
+  );
+  assert.deepEqual(comoTexto(`<a href="#" onclick="window.location = 'fila.php?livro=B'; return false;">Livro B</a>`), ["B GET /moto/fila.php?livro=B (botão com endereço)"]);
+  assert.deepEqual(comoTexto(`<div class="pilula" onclick="location.assign(&quot;?livro=M&quot;)"><span>Livro M</span></div>`), ["M GET /moto/fila?livro=M (botão com endereço)"]);
+  assert.deepEqual(comoTexto(`<input type="button" value="Livro B" data-url="/moto/fila?livro=B">`), ["B GET /moto/fila?livro=B (botão com endereço)"]);
+  // Botões dentro de uma caixa da mesma tag: cada um com os SEUS atributos.
+  assert.deepEqual(
+    comoTexto(`<div class="livros"><div data-href="?livro=A">Livro A</div><div data-href="?livro=B">Livro B</div></div>`),
+    ["A GET /moto/fila?livro=A (botão com endereço)", "B GET /moto/fila?livro=B (botão com endereço)"],
+  );
+  // O mesmo livro em mais de uma forma: link, depois botão com endereço, depois formulário GET, depois POST.
+  const variasFormas = `<form method="post" action="/moto/p"><button name="l" value="B">Livro B</button></form>
+    <form method="get" action="/moto/g"><button name="l" value="B">Livro B</button></form>
+    <button data-href="/moto/d?l=B">Livro B</button>`;
+  assert.deepEqual(comoTexto(`${variasFormas}<a href="/moto/fila?livro=B">Livro B</a>`), ["B GET /moto/fila?livro=B (link)"]);
+  assert.deepEqual(comoTexto(variasFormas), ["B GET /moto/d?l=B (botão com endereço)"]);
+  assert.deepEqual(comoTexto(variasFormas.split("\n").slice(0, 2).join("\n")), ["B GET /moto/g?l=B (formulário GET)"]);
+});
+
+test("botão de livro que não é só uma troca de tela nunca é tocado", () => {
+  const nenhum = (html: string, porque: string) => assert.deepEqual(comoTexto(html), [], porque);
+  const botao = `<button name="livro" value="B">Livro B</button>`;
+  nenhum(`<form method="post" action="/moto/sair.php">${botao}</form>`, "o formulário vai para um endereço de saída");
+  nenhum(`<form method="post" action="/moto/fila/excluir">${botao}</form>`, "o formulário vai para um endereço de ação");
+  nenhum(`<form method="post" action="/moto/fila"><input type="hidden" name="acao" value="excluir">${botao}</form>`, "campo escondido que nomeia uma ação");
+  nenhum(`<form method="post" action="/moto/fila"><input type="text" name="obs">${botao}</form>`, "formulário com algo para digitar");
+  nenhum(`<form method="post" action="/moto/fila"><input type="checkbox" name="todos">${botao}</form>`, "formulário com algo para marcar");
+  nenhum(`<form method="post" action="/moto/fila"><select name="x"><option>1</option></select>${botao}</form>`, "formulário com lista");
+  nenhum(`<form method="post" action="/moto/fila"><textarea name="t"></textarea>${botao}</form>`, "formulário com texto longo");
+  nenhum(`<form method="post" action="/moto/fila"><p>Entrar na dispensa</p>${botao}</form>`, "formulário que fala de dispensa");
+  nenhum(`<form method="post" action="/moto/fila"><button name="livro" value="B">Livro B - trocar</button></form>`, "o texto não é só o nome do livro");
+  nenhum(`<form method="dialog" action="/moto/fila">${botao}</form>`, "método que não é GET nem POST");
+  nenhum(`<form method="get" action="/moto/fila"><button name="acao" value="B">Livro B</button></form>`, "o pedido montado tem cara de ação");
+  nenhum(`<form method="post" action="/moto/fila"><button>Livro A</button><button>Livro B</button><button>Livro M</button></form>`, "três botões que dariam o mesmo pedido");
+  nenhum(`<form method="post" action="/moto/fila"><button type="button" name="livro" value="B">Livro B</button></form>`, "botão que não envia o formulário");
+  nenhum(`<a href="/moto/fila">Livro A</a><a href="/moto/fila">Livro B</a>`, "dois livros no mesmo endereço");
+  nenhum(`<button onclick="trocarLivro('B')">Livro B</button>`, "onclick sem endereço");
+  nenhum(`<button onclick="location.href='/moto/sair'">Livro B</button>`, "onclick para um endereço de saída");
+  nenhum(`<button data-href="javascript:trocar('B')">Livro B</button>`, "endereço que não é de página");
+  nenhum(`<button data-href="#livro-b">Livro B</button>`, "âncora da própria página");
+  nenhum(`<button data-href="ftp://portal.example/fila?livro=B">Livro B</button>`, "protocolo que não é http");
+  nenhum(`<button data-href="/moto/fila?livro=B">Ver o Livro B</button>`, "o texto não é só o nome do livro (botão com endereço)");
+  // O que é de fora do portal a função devolve — quem recusa é o leitor (ver a leitura, abaixo).
+  assert.deepEqual(extrairToquesDeLivro(`<a href="https://outro-site.example/fila?livro=B">Livro B</a>`, PAGINA_DA_FILA).length, 1);
+});
+
+test("diagnóstico dos botões de livro: a tag e os atributos, sem o conteúdo da tela", () => {
+  const html = `<h1>Tela de Ativos</h1>
+    <form method="post" action="/moto/fila.php?x=1"><input type="hidden" name="_token" value="segredo123456789">
+      <button class="pilula ativa" id="a" style="color:red" type="button" role="tab" aria-selected="true" onclick="abrir('A')">Livro A</button>
+      <input type="submit" name="livro" value="Livro B"></form>
+    <li data-livro="M" title="Livro M">Livro M</li>
+    <p>Seu ponto (A032) não está na fila deste livro no momento.</p><table><tr><td>1</td><td>A199</td></tr></table>`;
+  assert.deepEqual(descreverBotoesDeLivro(html), [
+    `Livro A: <button type="button" role="tab" aria-selected onclick="abrir('A')">`,
+    `Livro M: <li data-livro="M" title>`,
+    `Livro B: <input type="submit" name="livro" value="Livro B">`,
+    "formulário POST /moto/fila.php — campos: _token (oculto), livro",
+  ]);
+  // Nada da fila, nada da conta e nenhum valor de campo escondido.
+  assert.doesNotMatch(descreverBotoesDeLivro(html).join(" "), /A032|A199|segredo/);
+  assert.deepEqual(descreverBotoesDeLivro("<html><body><p>Sistema em manutenção.</p></body></html>"), []);
+  // Mais frouxo que a leitura: um botão com o texto um pouco diferente não é tocado, mas aparece no diagnóstico.
+  const comContagem = `<a href="/moto/fila?l=2">Livro B (27)</a><span>Livro M - Carreta</span><p>Livro B é o livro das carretas do interior, com fila própria.</p>`;
+  assert.deepEqual(comoTexto(comContagem), []);
+  assert.deepEqual(descreverBotoesDeLivro(comContagem), [`Livro B (27): <a href="/moto/fila?l=2">`, "Livro M - Carreta: <span>"]);
+  // No máximo quatro controles e dois formulários; números longos saem mascarados; a caixa dos três botões não conta.
+  const muitos =
+    `<div class="livros">${Array.from({ length: 7 }, (_, i) => `<a href="/x?doc=12345678${i}">Livro A ${i}</a>`).join("")}</div>` +
+    "<form><button>Livro M</button></form>".repeat(3);
+  assert.deepEqual(descreverBotoesDeLivro(muitos), [
+    ...[0, 1, 2, 3].map((i) => `Livro A ${i}: <a href="/x?doc=…">`),
+    "formulário GET (a própria página) — campos: nenhum",
+    "formulário GET (a própria página) — campos: nenhum",
+  ]);
+  assert.deepEqual(descreverBotoesDeLivro(`<div><button data-livro="A">Livro A</button><button data-livro="B">Livro B</button></div>`), [
+    `Livro A: <button data-livro="A">`,
+    `Livro B: <button data-livro="B">`,
+  ]);
+  // Botões que são caixas dentro de uma caixa da mesma tag: só os de dentro, cada um com os seus atributos.
+  assert.deepEqual(descreverBotoesDeLivro(`<div class="livros" data-grupo="x"><div data-livro="A">Livro A</div><div data-livro="B">Livro B</div></div>`), [
+    `Livro A: <div data-livro="A">`,
+    `Livro B: <div data-livro="B">`,
+  ]);
+});
+
+test("os livros lidos: os de sempre e o de cada ponto cadastrado; PORTAL_FILA_LIVROS_DOS_PONTOS=0 volta ao que era", () => {
+  comAmbiente({ PORTAL_FILA_LIVROS: undefined, PORTAL_FILA_LIVROS_DOS_PONTOS: undefined }, () => {
+    assert.deepEqual(livrosDaFila(), ["A"]);
+    assert.equal(livrosDosPontosLigados(), true);
+    assert.deepEqual(livrosALer([]), ["A"], "sem ponto nenhum: o Livro A, que é o que o visitante vê");
+    assert.deepEqual(livrosALer(["A"]), ["A"]);
+    assert.deepEqual(livrosALer(["B"]), ["A", "B"], "B032 cadastrado: o leitor toca em “Livro B”");
+    assert.deepEqual(livrosALer(["M"]), ["A", "M"]);
+    assert.deepEqual(livrosALer(["M", "B", "M", "A"]), ["A", "B", "M"], "na ordem dos botões, sem repetir");
+    assert.deepEqual(livrosALer(["m", " b "]), ["A", "B", "M"]);
+    assert.deepEqual(livrosALer(["X", "", "AB"]), ["A"], "o que não é livro não entra");
+  });
+  // `PORTAL_FILA_LIVROS` são os livros lidos SEMPRE; os dos pontos entram por cima.
+  comAmbiente({ PORTAL_FILA_LIVROS: "M", PORTAL_FILA_LIVROS_DOS_PONTOS: undefined }, () => {
+    assert.deepEqual(livrosALer([]), ["M"]);
+    assert.deepEqual(livrosALer(["B"]), ["B", "M"]);
+  });
+  for (const desligado of ["0", "desligado", "OFF", " não ", "nao", "Desligada"]) {
+    comAmbiente({ PORTAL_FILA_LIVROS: undefined, PORTAL_FILA_LIVROS_DOS_PONTOS: desligado }, () => {
+      assert.equal(livrosDosPontosLigados(), false, desligado);
+      assert.deepEqual(livrosALer(["B", "M"]), ["A"], `“${desligado}”: só o Livro A, como era`);
+    });
+  }
+  comAmbiente({ PORTAL_FILA_LIVROS: "A,B", PORTAL_FILA_LIVROS_DOS_PONTOS: "0" }, () => assert.deepEqual(livrosALer(["M"]), ["A", "B"]));
+  for (const ligado of ["1", "sim", "", "ligado", "true"]) {
+    comAmbiente({ PORTAL_FILA_LIVROS: undefined, PORTAL_FILA_LIVROS_DOS_PONTOS: ligado }, () => {
+      assert.equal(livrosDosPontosLigados(), true, ligado);
+      assert.deepEqual(livrosALer(["B"]), ["A", "B"], ligado);
+    });
+  }
+});
+
+const FORMAS_DE_BOTAO: BotoesDeLivroFalsos[] = ["links", "links-relativos", "form-get", "input-submit", "form-post", "form-post-unico", "onclick", "data-href"];
+for (const botoes of FORMAS_DE_BOTAO) {
+  test(`A32, B32 e M32 numa visita, com os botões de livro em “${botoes}”: um pedido por livro, sem login`, async () => {
+    const portal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]) }, fila: tresLivros({ botoes }) });
+    const sessao = await sessaoAberta(portal);
+    const antes = portal.pedidos.length;
+    const logins = portal.logins;
+
+    const lida = await lerFilaComSessao(sessao, { buscar: portal.buscar, livros: ["A", "B", "M"] });
+    assert.deepEqual(lida.falhas, {});
+    assert.deepEqual(lida.livros.A?.truck.codigos, TRUCKS);
+    assert.deepEqual(lida.livros.A?.cavalo.codigos, CARRETAS);
+    assert.deepEqual([lida.livros.B?.truck.ultimo, lida.livros.B?.truck.codigos], [164, [3, 7, 12]]);
+    assert.deepEqual([lida.livros.B?.cavalo.ultimo, lida.livros.B?.cavalo.codigos], [20, [30, 32, 40]]);
+    assert.deepEqual([lida.livros.M?.truck.ultimo, lida.livros.M?.truck.codigos], [107, [9]]);
+    assert.deepEqual([lida.livros.M?.cavalo.ultimo, lida.livros.M?.cavalo.codigos], [17, [11, 15, 32]]);
+    // A aba (que abre no Livro A) e um toque para cada um dos outros dois.
+    assert.equal(lida.pedidos, 3);
+    const porPost = botoes === "form-post" || botoes === "form-post-unico";
+    assert.deepEqual(portal.livrosPedidos, porPost ? ["POST B", "POST M"] : ["GET B", "GET M"]);
+    assert.equal(portal.livrosRecusados, 0);
+    assert.deepEqual([...new Set(portal.caminhos().slice(antes))].sort(), porPost ? ["GET moto/fila", "POST moto/fila"] : ["GET moto/fila"]);
+    assert.equal(portal.logins, logins, "a leitura da fila nunca faz login");
+    assert.deepEqual(portal.acoes, []);
+    assert.deepEqual(portal.foraDoSite, []);
+    assert.match(lida.diagnostico.join(" "), porPost ? /Fila do Livro B \(POST moto\/fila\): Truck 3 na fila \(último B164\)/ : /Fila do Livro B \(moto\/fila\?[^)]*livro=(?:Livro\+)?B\): Truck 3 na fila \(último B164\)/);
+
+    // Só o livro do ponto: quem tem só o M032 faz o leitor tocar só em “Livro M”.
+    const antesDoM = portal.livrosPedidos.length;
+    const soM = await lerFilaComSessao(sessao, { buscar: portal.buscar, livros: ["M"] });
+    assert.deepEqual(Object.keys(soM.livros), ["M"]);
+    assert.deepEqual(portal.livrosPedidos.slice(antesDoM).map((x) => x.split(" ")[1]), ["M"]);
+    assert.equal(soM.pedidos, 2);
+  });
+}
+
+test("portal que guarda o livro na sessão e troca o código escondido a cada tela: vale o botão da ÚLTIMA tela aberta", async () => {
+  for (const botoes of ["form-post", "form-post-unico", "form-get"] as const) {
+    const portal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]) }, fila: tresLivros({ botoes, lembraOLivro: true, codigoOculto: true }) });
+    const sessao = await sessaoAberta(portal);
+    const lida = await lerFilaComSessao(sessao, { buscar: portal.buscar, livros: ["A", "B", "M"] });
+    assert.deepEqual(lida.falhas, {}, botoes);
+    assert.equal(portal.livrosRecusados, 0, `${botoes}: o código enviado é o da última tela, não o da primeira`);
+    assert.deepEqual(lida.livros.M?.cavalo.codigos, [11, 15, 32], botoes);
+
+    // Na visita seguinte a aba abre no último livro visto (M): os outros dois vêm pelos botões, e nada se mistura.
+    const segunda = await lerFilaComSessao(sessao, { buscar: portal.buscar, livros: ["A", "B", "M"] });
+    assert.deepEqual(segunda.falhas, {}, botoes);
+    assert.deepEqual(segunda.livros.A?.truck.codigos, TRUCKS, botoes);
+    assert.deepEqual(segunda.livros.B?.cavalo.codigos, [30, 32, 40], botoes);
+    assert.deepEqual(segunda.livros.M?.truck.codigos, [9], botoes);
+    assert.deepEqual(portal.livrosPedidos.slice(-2).map((x) => x.split(" ")[1]), ["A", "B"], botoes);
+    assert.equal(portal.livrosRecusados, 0, botoes);
+    assert.deepEqual(portal.acoes, []);
+  }
+});
+
+test("botão de livro que a leitura não sabe usar: o Livro A vem, o B e o M ficam sem leitura e o diagnóstico diz o que a tela tem", async () => {
+  const portal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]) }, fila: tresLivros({ botoes: "script" }) });
+  const sessao = await sessaoAberta(portal);
+  const lida = await lerFilaComSessao(sessao, { buscar: portal.buscar, livros: ["A", "B", "M"] });
+  assert.deepEqual(lida.livros.A?.truck.codigos, TRUCKS);
+  assert.deepEqual(Object.keys(lida.livros), ["A"]);
+  assert.match(
+    lida.falhas.B ?? "",
+    /não trouxe os quadros do Livro B \(Truck e Carreta\), e não achei na tela um botão “Livro B” que eu saiba usar \(a tela tem: Livro A: <button type="button" data-livro="A"> \| Livro B: <button type="button" data-livro="B"> \| Livro M: <button type="button" data-livro="M">\)/,
+  );
+  assert.match(lida.falhas.M ?? "", /não achei na tela um botão “Livro M” que eu saiba usar/);
+  assert.equal(lida.pedidos, 1, "sem botão que sirva, nada mais é pedido");
+  assert.deepEqual(portal.livrosPedidos, []);
+  // A fila do Livro A, que estava na tela, nunca vira a do B.
+  assert.equal(lida.livros.B, undefined);
+});
+
+test("botão de livro que aponta para fora do portal não é tocado; toque que não troca a tela não vira fila", async () => {
+  // “Livro B” aponta para outro site; “Livro M” abre de novo a mesma tela (a do Livro A).
+  const tela = telaAtivos(tresLivros(), "A").replace('href="/moto/fila?livro=B"', 'href="https://outro-site.example/fila?livro=B"');
+  const portal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]), "moto/fila": tela } });
+  const sessao = await sessaoAberta(portal);
+  const lida = await lerFilaComSessao(sessao, { buscar: portal.buscar, livros: ["A", "B", "M"] });
+  assert.deepEqual(Object.keys(lida.livros), ["A"]);
+  assert.deepEqual(portal.foraDoSite, [], "nada é pedido fora do portal");
+  assert.match(lida.falhas.B ?? "", /não achei na tela um botão “Livro B” que eu saiba usar \(a tela tem: .*Livro B: <a href="https:\/\/outro-site\.example\/fila\?livro=B">/);
+  assert.match(lida.falhas.M ?? "", /toquei em “Livro M” \(link, moto\/fila\?livro=M\) e a tela não trouxe os quadros do Livro M/);
+  assert.equal(lida.pedidos, 2, "a aba e o toque em “Livro M”");
+  // O diagnóstico mostra o que veio depois do toque: a tela continuou no Livro A (sem o aviso “Seu ponto…”, que é da conta).
+  const depois = lida.diagnostico.find((l) => l.startsWith("Tela depois do toque em “Livro M”")) ?? "";
+  assert.match(depois, /primeiras linhas: Portal - Fila \| Tela de Ativos \| Livro A Livro B Livro M \| Livro A - Truck \| ÚLTIMO PONTO ESCALADO A196 \|/);
+  assert.doesNotMatch(depois, /Seu ponto|A777/);
+  assert.equal(lida.diagnostico.filter((l) => l.startsWith("Tela depois do toque")).length, 1, "só do livro em que o toque não trocou a tela");
+
+  // É a tela que veio DEPOIS do toque — não a primeira. Aqui o botão troca a tela, mas o Livro M não tem quadro nenhum.
+  const semM = tresLivros();
+  delete semM.livros.M;
+  const outroPortal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]) }, fila: semM });
+  const outraLida = await lerFilaComSessao(await sessaoAberta(outroPortal), { buscar: outroPortal.buscar, livros: ["A", "B", "M"] });
+  assert.deepEqual(Object.keys(outraLida.livros), ["A", "B"]);
+  assert.match(outraLida.falhas.M ?? "", /toquei em “Livro M” \(link, moto\/fila\?livro=M\) e a tela não trouxe os quadros do Livro M/);
+  const depoisDoM = outraLida.diagnostico.find((l) => l.startsWith("Tela depois do toque em “Livro M”")) ?? "";
+  assert.match(depoisDoM, /primeiras linhas: Portal - Fila \| Tela de Ativos \| Livro A Livro B Livro M \| Nenhum ponto ativo neste livro\./);
+  assert.doesNotMatch(depoisDoM, /A196|B164|Livro [AB] - /, "nada da primeira tela (Livro A) nem da do toque anterior (Livro B)");
+});
+
+test("o portal pede o login de novo no meio da visita: o livro que faltava fica sem leitura, sem login e sem perder o que já veio", async () => {
+  const portal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]) }, fila: tresLivros() });
+  const sessao = await sessaoAberta(portal);
+  const logins = portal.logins;
+  // O portal encerra a sessão logo depois de entregar a primeira tela.
+  const buscar = (async (entrada: string | URL | Request, init?: RequestInit) => {
+    const resposta = await portal.buscar(entrada, init);
+    if (String(entrada).endsWith("/moto/fila")) portal.sessoes.clear();
+    return resposta;
+  }) as typeof fetch;
+  const lida = await lerFilaComSessao(sessao, { buscar, livros: ["A", "B"] });
+  assert.deepEqual(lida.livros.A?.truck.codigos, TRUCKS);
+  assert.match(lida.falhas.B ?? "", /botão “Livro B” \(moto\/fila\?livro=B\): o portal pediu o login de novo/);
+  assert.equal(portal.logins, logins);
+});
+
 test("sessão encerrada pelo portal: a fila não é lida e NENHUM login é enviado", async () => {
   // O portal troca o cookie de quem chega com uma sessão encerrada: esse cookie
   // novo (de visitante) não pode ir parar na sessão guardada do motorista.
@@ -483,7 +783,7 @@ test("tela que não é a esperada: nenhuma fila, e o diagnóstico mostra o que v
   const lida = await lerFilaComSessao(sessao, { buscar: portal.buscar, livros: ["A"] });
   assert.equal(lida.abriu, true);
   assert.deepEqual(lida.livros, {});
-  assert.match(lida.falhas.A ?? "", /não trouxe os quadros do Livro A \(Truck e Carreta\), e a tela não tem um link “Livro A”/);
+  assert.match(lida.falhas.A ?? "", /não trouxe os quadros do Livro A \(Truck e Carreta\), e não achei na tela um botão “Livro A” que eu saiba usar \(nenhum controle com o texto “Livro …”\)/);
   assert.match(lida.diagnostico.join(" "), /Tela aberta \(moto\/fila\), primeiras linhas: Tela de Ativos \| Sistema em manutenção/);
 });
 
@@ -569,6 +869,25 @@ test("com o app aberto a fila é relida de 20 em 20 s; PORTAL_FILA_INTERVALO_S m
     assert.equal(esperaDaFilaMs(), 58_000);
   });
   assert.equal(intervaloDaFilaMs(15_000), null, "espera do Status menor que o intervalo: desligada");
+});
+
+test("livro pedido: o B e o M só são relidos entre as olhadas enquanto um app aberto com ponto neles pede", async () => {
+  const agora = Date.UTC(2026, 10, 12, 2, 30, 0);
+  const ha = (ms: number) => ({ pedidoEm: new Date(agora - ms) });
+  // O app pergunta de 5 em 5 s e a marca é regravada no máximo de 10 em 10 s: 45 s cobrem várias perguntas perdidas…
+  assert.equal(LIVRO_PEDIDO_VALE_MS, 45_000);
+  assert.equal(REGRAVAR_PEDIDO_A_CADA_MS, 10_000);
+  assert.ok(LIVRO_PEDIDO_VALE_MS >= 3 * (REGRAVAR_PEDIDO_A_CADA_MS + 5_000), "a marca não cai entre duas regravações");
+  // …e a marca nunca dura mais que a espera da carona: fechado o app, o livro volta ao minuto logo.
+  comAmbiente({ PORTAL_INTERVALO_MIN: undefined }, () => assert.ok(LIVRO_PEDIDO_VALE_MS <= esperaEntreLeiturasMs(), "a marca dura no máximo a espera da carona"));
+  assert.equal(pedidoHaPouco({ pedidoEm: null }, agora), false, "nunca pedido");
+  assert.equal(pedidoHaPouco(ha(0), agora), true);
+  assert.equal(pedidoHaPouco(ha(12_000), agora), true);
+  assert.equal(pedidoHaPouco(ha(45_000), agora), true, "até os 45 s, inclusive");
+  assert.equal(pedidoHaPouco(ha(45_001), agora), false);
+  assert.equal(pedidoHaPouco(ha(10 * 60_000), agora), false, "pedido de dez minutos atrás: ninguém está olhando");
+  // Sem banco configurado (como aqui) nada é gravado, nem tentado.
+  assert.deepEqual(await marcarLivrosPedidos(["B", "M"], agora), []);
 });
 
 test("leitura entre ciclos: a parte de rede muda a sessão que recebe — por isso ela recebe uma CÓPIA", async () => {

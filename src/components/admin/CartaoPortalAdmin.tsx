@@ -443,6 +443,11 @@ export default function CartaoPortalAdmin() {
                 O quadro público foi desligado pela Copadubo. A fila (card principal, posição e avisos de vez) é lida
                 na aba “Fila”, com a sessão de um dos motoristas acima, na carona da leitura do Status.
               </p>
+              <p className="mt-1 text-[11.5px] leading-snug text-gelo/55" data-fila="ritmo">
+                O Livro A é lido sempre. Os Livros B e M, só enquanto houver ponto cadastrado neles: o leitor toca no
+                botão do livro, de minuto em minuto — e de 20 em 20 s enquanto alguém com ponto nesse livro estiver com
+                o app aberto.
+              </p>
               {p.monitor.fila.livros.map((f) => {
                 const cod = (n: number) => (n ? `${f.livro}${String(n).padStart(3, "0")}` : "—");
                 return (

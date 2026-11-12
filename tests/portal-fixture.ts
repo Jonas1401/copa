@@ -129,7 +129,36 @@ export type FilaFalsa = {
   semCartao?: "truck" | "carreta";
   /** Ponto que a tela cita em “Seu ponto (…) não está na fila deste livro no momento.” */
   pontoDaConta?: string;
+  /**
+   * Como os botões “Livro A · Livro B · Livro M” são feitos — o HTML de verdade
+   * nunca foi visto, só a tela (padrão: `links`):
+   *   - `links`: `<a href="/moto/fila?livro=B">`;
+   *   - `links-relativos`: `<a href="?livro=B">`;
+   *   - `form-get`: um formulário GET com três botões com nome (`<button name="livro" value="B">`);
+   *   - `input-submit`: um formulário GET com `<input type="submit" name="livro" value="Livro B">`;
+   *   - `form-post`: um formulário POST por livro, o livro num campo escondido e o botão sem nome;
+   *   - `form-post-unico`: um formulário POST só, com três botões com nome;
+   *   - `onclick`: `<button type="button" onclick="window.location.href='/moto/fila?livro=B'">`;
+   *   - `data-href`: `<button type="button" data-href="/moto/fila?livro=B">`;
+   *   - `script`: `<button type="button" data-livro="B">` — só um script saberia trocar de livro.
+   */
+  botoes?: BotoesDeLivroFalsos;
+  /** O livro escolhido fica guardado na sessão: a aba abre de novo no último livro visto, e o POST responde com um redirecionamento. */
+  lembraOLivro?: boolean;
+  /** Os formulários de livro levam um código escondido que muda a cada tela (só vale o da última tela aberta). */
+  codigoOculto?: boolean;
 };
+
+export type BotoesDeLivroFalsos =
+  | "links"
+  | "links-relativos"
+  | "form-get"
+  | "input-submit"
+  | "form-post"
+  | "form-post-unico"
+  | "onclick"
+  | "data-href"
+  | "script";
 
 export type OpcoesPortalFalso = {
   cpf?: string;
@@ -295,8 +324,33 @@ export function quadroFalso(livro: string, ultimo: number | null, numeros: numbe
  * abas de livro, o aviso do ponto da conta e um cartão por quadro, com o
  * último ponto escalado, a tabela SEQ / PONTO / TIPO e o “Total”.
  */
-export function telaAtivos(fila: FilaFalsa, livro: "A" | "B" | "M"): string {
+export function telaAtivos(fila: FilaFalsa, livro: "A" | "B" | "M", codigo?: string): string {
   const forma = fila.forma ?? "tabela";
+  const LIVROS = ["A", "B", "M"] as const;
+  const classe = (l: string) => `aba${l === livro ? " ativa" : ""}`;
+  const oculto = codigo ? `<input type="hidden" name="_token" value="${codigo}">` : "";
+  const botoesDeLivro = (() => {
+    switch (fila.botoes ?? "links") {
+      case "links-relativos":
+        return `<div class="livros">${LIVROS.map((l) => `<a class="${classe(l)}" href="?livro=${l}">Livro ${l}</a>`).join("")}</div>`;
+      case "form-get":
+        return `<form class="livros" method="get" action="/moto/fila">${oculto}${LIVROS.map((l) => `<button class="${classe(l)}" type="submit" name="livro" value="${l}">Livro ${l}</button>`).join("")}</form>`;
+      case "input-submit":
+        return `<form class="livros" method="get" action="/moto/fila">${oculto}${LIVROS.map((l) => `<input class="${classe(l)}" type="submit" name="livro" value="Livro ${l}">`).join("")}</form>`;
+      case "form-post":
+        return `<div class="livros">${LIVROS.map((l) => `<form method="post" action="/moto/fila"><input type="hidden" name="livro" value="${l}">${oculto}<button class="${classe(l)}" type="submit"><span>Livro ${l}</span></button></form>`).join("")}</div>`;
+      case "form-post-unico":
+        return `<form class="livros" method="post" action="/moto/fila">${oculto}${LIVROS.map((l) => `<button class="${classe(l)}" name="livro" value="${l}">Livro ${l}</button>`).join("")}</form>`;
+      case "onclick":
+        return `<div class="livros">${LIVROS.map((l) => `<button type="button" class="${classe(l)}" onclick="window.location.href='/moto/fila?livro=${l}'">Livro ${l}</button>`).join("")}</div>`;
+      case "data-href":
+        return `<div class="livros">${LIVROS.map((l) => `<button type="button" class="${classe(l)}" data-href="/moto/fila?livro=${l}">Livro ${l}</button>`).join("")}</div>`;
+      case "script":
+        return `<div class="livros">${LIVROS.map((l) => `<button type="button" class="${classe(l)}" data-livro="${l}">Livro ${l}</button>`).join("")}</div>`;
+      default:
+        return `<div class="livros">${LIVROS.map((l) => `<a class="${classe(l)}" href="/moto/fila?livro=${l}">Livro ${l}</a>`).join("")}</div>`;
+    }
+  })();
   const linha = (i: number, p: { codigo: string; tipo: string }) =>
     forma === "tabela"
       ? `<tr><td>${i + 1}</td><td>${p.codigo}</td><td>${p.tipo}</td></tr>`
@@ -321,9 +375,7 @@ ${fila.semTotal ? "" : `<p class="total">Total: ${q.pontos.length}</p>`}
     : `<p>Nenhum ponto ativo neste livro.</p>`;
   const pagina = `<!doctype html><html><head><meta charset="utf-8"><title>Portal - Fila</title></head><body>
 <h1>Tela de Ativos</h1>
-<div class="livros">${(["A", "B", "M"] as const)
-    .map((l) => `<a class="aba${l === livro ? " ativa" : ""}" href="/moto/fila?livro=${l}">Livro ${l}</a>`)
-    .join("")}</div>
+${botoesDeLivro}
 <div class="aviso">Seu ponto (${fila.pontoDaConta ?? "A777"}) não está na fila deste livro no momento.</div>
 ${corpo}
 ${MENU_FALSO}
@@ -454,6 +506,10 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
     trocas: [] as string[],
     /** Escolhas recusadas (código escondido errado, ponto que não é da conta…). */
     trocasRecusadas: 0,
+    /** Toques nos botões de livro da Tela de Ativos, na ordem: `GET B`, `POST M`. */
+    livrosPedidos: [] as string[],
+    /** Toques de livro recusados (POST numa tela de links, código escondido velho, livro que não existe…). */
+    livrosRecusados: 0,
     aposLogin: opcoes.aposLogin ?? "redireciona",
     foraDoAr: Boolean(opcoes.foraDoAr),
     captcha: Boolean(opcoes.captcha),
@@ -482,6 +538,10 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
   const codigosOcultos = new Map<string, string>();
   /** Código escondido (uso único) do formulário do Ticket, por sessão. */
   const codigosDoTicket = new Map<string, string>();
+  /** Código escondido dos botões de livro (só vale o da última tela), por sessão. */
+  const codigosDaFila = new Map<string, string>();
+  /** Livro que a Tela de Ativos mostrou por último (com `lembraOLivro`), por sessão. */
+  const livroDaSessao = new Map<string, "A" | "B" | "M">();
   let serie = 0;
   let emAndamento = 0;
 
@@ -591,9 +651,43 @@ export function criarPortalFalso(opcoes: OpcoesPortalFalso = {}) {
         }
       }
       if (caminho === "moto/fila" && estado.fila) {
-        const pedido = (url.searchParams.get("livro") ?? "").toUpperCase();
-        const livro = pedido === "A" || pedido === "B" || pedido === "M" ? pedido : (estado.fila.padrao ?? "A");
-        return { status: 200, corpo: telaAtivos(estado.fila, livro) };
+        const f = estado.fila;
+        const botoes = f.botoes ?? "links";
+        // “B” ou “Livro B” (o valor de um <input type="submit">).
+        const letra = (v: string | null) => /(?:^|\s)([ABM])$/i.exec((v ?? "").trim())?.[1]?.toUpperCase() as "A" | "B" | "M" | undefined;
+        const mostrar = (livro: "A" | "B" | "M"): Resposta => {
+          if (f.lembraOLivro) livroDaSessao.set(sessao, livro);
+          let codigo: string | undefined;
+          if (f.codigoOculto) {
+            codigo = `fl${++serie}x`;
+            codigosDaFila.set(sessao, codigo);
+          }
+          return { status: 200, corpo: telaAtivos(f, livro, codigo) };
+        };
+        const codigoCerto = (campos: URLSearchParams) => !f.codigoOculto || (campos.get("_token") ?? "") === codigosDaFila.get(sessao);
+        if (metodo === "POST") {
+          const campos = new URLSearchParams(corpo);
+          const pedido = letra(campos.get("livro"));
+          if ((botoes !== "form-post" && botoes !== "form-post-unico") || !pedido || !codigoCerto(campos)) {
+            estado.livrosRecusados += 1;
+            return { status: 302, cabecalhos: { location: "/moto/fila" } };
+          }
+          estado.livrosPedidos.push(`POST ${pedido}`);
+          if (f.lembraOLivro) {
+            livroDaSessao.set(sessao, pedido);
+            return { status: 302, cabecalhos: { location: "/moto/fila" } };
+          }
+          return mostrar(pedido);
+        }
+        // Tela cujos botões são formulários POST (ou só script): `?livro=` no endereço não troca nada.
+        const porEndereco = botoes !== "form-post" && botoes !== "form-post-unico" && botoes !== "script";
+        const pedido = porEndereco ? letra(url.searchParams.get("livro")) : undefined;
+        if (pedido && (botoes === "form-get" || botoes === "input-submit") && !codigoCerto(url.searchParams)) {
+          estado.livrosRecusados += 1;
+          return mostrar(livroDaSessao.get(sessao) ?? f.padrao ?? "A");
+        }
+        if (pedido) estado.livrosPedidos.push(`GET ${pedido}`);
+        return mostrar(pedido ?? livroDaSessao.get(sessao) ?? f.padrao ?? "A");
       }
       const tela = telasDe(dono)[caminho === "moto" ? "moto/" : caminho];
       return tela === undefined ? { status: 404, corpo: PAGINA_404 } : { status: 200, corpo: tela };
