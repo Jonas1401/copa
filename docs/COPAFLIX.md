@@ -4,18 +4,19 @@ O **CopaFlix** é uma seção nova do CopaLinks: filmes, séries, novelas e TV a
 com a mesma identidade visual do aplicativo (fundo azul-marinho quase preto,
 detalhes em ciano e botões dourados). Ele **não reconstrói o app**: login,
 cadastro, fila de ponto, chat, notificações, painel administrativo, banco de
-dados e PWA continuam iguais. A única mudança visível fora do módulo é a seção
-**Entretenimento** no menu ⋮ do canto superior esquerdo.
+dados e PWA continuam iguais. A entrada pela seção **Entretenimento** no menu ⋮
+foi **removida** (não funcionou como porta de entrada); o módulo continua
+acessível pelo endereço direto `/copaflix`.
 
 ```
-menu ⋮  →  Entretenimento  →  /copaflix
-                              ├── Início        (roda 3D + destaques + fileiras)
-                              ├── Filmes
-                              ├── Séries
-                              ├── Novelas
-                              ├── TV ao vivo
-                              ├── Favoritos
-                              └── Continuar assistindo (+ histórico)
+/copaflix
+   ├── Início        (roda 3D + destaques + fileiras)
+   ├── Filmes
+   ├── Séries
+   ├── Novelas
+   ├── TV ao vivo
+   ├── Favoritos
+   └── Continuar assistindo (+ histórico)
 ```
 
 ---
@@ -25,7 +26,7 @@ menu ⋮  →  Entretenimento  →  /copaflix
 | Decisão | Por quê |
 | --- | --- |
 | Rota isolada `/copaflix` (App Router) | O módulo tem layout, CSS e metadados próprios. Nenhuma folha de estilo nova é carregada nas outras telas. |
-| Um único ponto de entrada no CopaLinks (`MenuConta.tsx`) | Só a seção "Entretenimento" e seus seis atalhos foram acrescentados ao menu existente. O restante do menu (nome, notificações, portal, admin) não mudou. |
+| Sem entrada no menu principal | O atalho "Entretenimento" no menu ⋮ foi removido depois que não funcionou; o módulo é aberto só pelo endereço `/copaflix`. O menu (nome, notificações, portal, admin) voltou ao que era antes. |
 | Nenhuma alteração em banco, login, sessões, push ou PWA | Favoritos/progresso/histórico ficam no `localStorage` do aparelho, como o resto das preferências locais do app. Não há tabela nova e não há migração. |
 | Fontes autorizadas configuradas por variável de ambiente | Trocar/adicionar fonte não exige mexer no código nem publicar outra versão do app. Credenciais ficam só no servidor. |
 | Catálogo de demonstração ligado por padrão | Sem configurar nada, a tela já mostra conteúdo **legal** (domínio público e Creative Commons) para validar a interface e o player. `COPAFLIX_DEMO=0` desliga. |
@@ -101,7 +102,7 @@ docs/COPAFLIX.md                            este guia
 
 | Arquivo | Alteração | Por quê |
 | --- | --- | --- |
-| `src/components/inicio/MenuConta.tsx` | acrescentada a seção **Entretenimento** com 6 atalhos | único ponto de entrada pedido; o resto do menu ficou intacto |
+| `src/components/inicio/MenuConta.tsx` | seção **Entretenimento** removida | o atalho no menu ⋮ não funcionou; o menu voltou ao estado anterior |
 | `.env.example` | bloco `COPAFLIX_*` no fim | documentar as fontes sem segredo |
 | `package.json` / `package-lock.json` | dependência `hls.js` | reprodução de HLS |
 | `README.md` | não alterado | o guia do módulo está neste arquivo |
@@ -264,8 +265,8 @@ npm install
 npm run dev          # http://localhost:3000/copaflix
 ```
 
-1. Abra `/` e clique no **⋮** no canto superior esquerdo → **Entretenimento**.
-2. Confira os seis atalhos (Filmes, Séries, Novelas, TV ao vivo, Favoritos,
+1. Abra `/copaflix` direto no navegador (o atalho no menu ⋮ foi removido).
+2. Confira as abas (Filmes, Séries, Novelas, TV ao vivo, Favoritos,
    Continuar assistindo).
 3. Arraste a roda 3D para os dois lados; use ← → com a roda focada; clique na
    capa central para abrir a ficha.
@@ -286,7 +287,7 @@ npm run dev          # http://localhost:3000/copaflix
 ### No PWA instalado
 
 1. Instale o CopaLinks normalmente (menu do Chrome → Instalar aplicativo).
-2. Abra pelo ícone, entre em ⋮ → Entretenimento.
+2. Abra pelo ícone e acesse `/copaflix`.
 3. Instalação, abertura offline do restante do app e notificações continuam
    iguais: o módulo não mexeu no service worker nem no manifest.
 
@@ -366,7 +367,7 @@ npm run build       # next build
 | `npm test` | 545 testes · 523 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
 | `tests/copaflix.test.ts` | 33/33 passam |
 | `npm run build` | sucesso; rotas `/copaflix`, `/copaflix/titulo/[id]` e `/api/copaflix/*` publicadas |
-| Navegação `/` → ⋮ → Entretenimento | OK no servidor de desenvolvimento |
+| Navegação `/copaflix` (endereço direto) | OK no servidor de desenvolvimento |
 | Roda 3D (arrasto e teclado) | OK (headless Chromium 390 px e 1440 px) |
 | Player com fonte indisponível | mensagem clara + "Tentar de novo" |
 | Continuar assistindo / favoritos / histórico | persistindo e reaparecendo após recarregar |
