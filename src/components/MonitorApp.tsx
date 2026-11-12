@@ -1340,9 +1340,9 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   }, [motorista?.id, garantirAssinatura]);
 
   const renomear = useCallback(
-    async (nome: string) => {
+    async (nome: string): Promise<{ ok: boolean; erro?: string }> => {
       const atual = motoristaRef.current;
-      if (!atual) return false;
+      if (!atual) return { ok: false, erro: "Perfil não confirmado neste aparelho. Feche e abra o aplicativo novamente." };
       try {
         const r = await fetch(`/api/motoristas/${atual.id}`, {
           method: "PATCH",
@@ -1354,14 +1354,14 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
         const m = await r.json().catch(() => ({}));
         if (!r.ok) {
           setAviso({ texto: m.erro ?? "Não foi possível trocar o nome.", erro: true });
-          return false;
+          return { ok: false, erro: m.erro ?? `Erro do servidor (${r.status}).` };
         }
         guardarMotorista(m);
         setAviso({ texto: "Nome atualizado.", erro: false });
-        return true;
+        return { ok: true };
       } catch {
         setAviso({ texto: "Sem conexão com o servidor.", erro: true });
-        return false;
+        return { ok: false, erro: "Sem conexão com o servidor. Confira a internet e tente novamente." };
       }
     },
     [guardarMotorista],
