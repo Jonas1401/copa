@@ -1,0 +1,749 @@
+/* ==========================================================================
+   COPAFLIX — camada visual do módulo de entretenimento do CopaLinks.
+
+   Paleta fechada do app (a mesma fonte de verdade de globals.css):
+     fundo #000D16 · cartão #071A28 · painel #002F3B · borda #183341
+     ciano #00B8BC · ouro #FFB82E · gelo #EAF4F7 · aço #8FA8AC
+   Nenhuma cor nova entra aqui. O brilho ciano e o botão dourado são os da
+   identidade do CopaLinks — o CopaFlix é uma seção do app, não outro app.
+   ========================================================================== */
+
+.copaflix {
+  --cf-altura-topo: 58px;
+  position: relative;
+  min-height: 100dvh;
+  background-color: #000D16;
+  color: #EAF4F7;
+  overflow-x: hidden;
+  isolation: isolate;
+}
+
+.cf-halo {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(120% 80% at 15% -10%, rgba(0, 184, 188, 0.16), transparent 55%),
+    radial-gradient(90% 70% at 95% 0%, rgba(0, 47, 59, 0.75), transparent 60%),
+    radial-gradient(80% 60% at 50% 110%, rgba(0, 47, 59, 0.55), transparent 65%),
+    #000D16;
+}
+
+/* --------------------------------------------------------------- topo */
+.cf-topo {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid rgba(24, 51, 65, 0.75);
+  background: rgba(0, 13, 22, 0.82);
+  backdrop-filter: blur(16px) saturate(120%);
+  padding-top: env(safe-area-inset-top);
+}
+
+.cf-marca-copaLinks {
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.55));
+}
+
+.cf-marca-copaflix {
+  font-family: var(--font-display);
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: #EAF4F7;
+  text-shadow: 0 0 22px rgba(0, 184, 188, 0.45);
+}
+
+.cf-marca-copaflix b {
+  color: #00B8BC;
+  font-weight: 900;
+}
+
+/* ------------------------------------------------------------ botões */
+.cf-botao-ouro {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 46px;
+  border-radius: 999px;
+  padding: 0 1.35rem;
+  background: #FFB82E;
+  color: #000D16;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 15px;
+  box-shadow: 0 14px 34px -16px rgba(255, 184, 46, 0.85);
+  transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease;
+}
+.cf-botao-ouro:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 40px -18px rgba(255, 184, 46, 0.95);
+}
+.cf-botao-ouro:active {
+  transform: translateY(1px) scale(0.99);
+}
+.cf-botao-ouro:disabled {
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
+.cf-botao-fantasma {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 46px;
+  border-radius: 999px;
+  padding: 0 1.2rem;
+  border: 1px solid rgba(234, 244, 247, 0.22);
+  background: rgba(7, 26, 40, 0.72);
+  color: #EAF4F7;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+.cf-botao-fantasma:hover {
+  border-color: rgba(0, 184, 188, 0.65);
+  color: #EAF4F7;
+  background: rgba(0, 47, 59, 0.6);
+}
+
+.cf-botao-icone {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid rgba(234, 244, 247, 0.16);
+  background: rgba(7, 26, 40, 0.72);
+  color: rgba(234, 244, 247, 0.82);
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+.cf-botao-icone:hover {
+  border-color: rgba(0, 184, 188, 0.65);
+  color: #EAF4F7;
+  background: rgba(0, 47, 59, 0.7);
+}
+.cf-botao-icone[data-ativo="true"] {
+  border-color: rgba(0, 184, 188, 0.7);
+  background: rgba(0, 184, 188, 0.16);
+  color: #00B8BC;
+}
+
+/* --------------------------------------------------------------- abas */
+.cf-aba {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  border-radius: 999px;
+  padding: 0 0.95rem;
+  border: 1px solid transparent;
+  color: rgba(143, 168, 172, 0.95);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.cf-aba:hover {
+  color: #EAF4F7;
+  border-color: rgba(24, 51, 65, 0.9);
+  background: rgba(7, 26, 40, 0.7);
+}
+.cf-aba[data-ativa="true"] {
+  color: #00B8BC;
+  border-color: rgba(0, 184, 188, 0.55);
+  background: rgba(0, 184, 188, 0.12);
+}
+
+.cf-abas-rolagem {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.cf-abas-rolagem::-webkit-scrollbar {
+  display: none;
+}
+
+/* ------------------------------------------------------- rodapé (celular) */
+.cf-rodape {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 45;
+  border-top: 1px solid rgba(24, 51, 65, 0.85);
+  background: rgba(0, 13, 22, 0.94);
+  backdrop-filter: blur(18px);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.cf-rodape-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 0 4px;
+  color: #8FA8AC;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.1;
+  border-radius: 16px;
+  transition: color 0.16s ease;
+}
+.cf-rodape-item[data-ativa="true"] {
+  color: #00B8BC;
+}
+.cf-rodape-item[data-ativa="true"] .cf-rodape-ponto {
+  background: #00B8BC;
+}
+.cf-rodape-ponto {
+  display: block;
+  width: 22px;
+  height: 2.5px;
+  margin-top: 3px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------- roda 3D */
+.cf-roda {
+  position: relative;
+  width: 100%;
+  perspective: 1400px;
+  perspective-origin: 50% 42%;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+.cf-roda[data-arrastando="true"] {
+  cursor: grabbing;
+}
+.cf-roda:focus-visible {
+  outline: 2px solid #00B8BC;
+  outline-offset: 6px;
+  border-radius: 22px;
+}
+.cf-roda-palco {
+  position: relative;
+  margin-inline: auto;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.cf-roda-item {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+.cf-roda-item[data-focada="true"] .cf-capa-moldura {
+  border-color: rgba(0, 184, 188, 0.85);
+  box-shadow:
+    0 0 0 1px rgba(0, 184, 188, 0.35),
+    0 30px 70px -30px rgba(0, 184, 188, 0.75),
+    0 24px 60px -30px rgba(0, 0, 0, 0.95);
+}
+.cf-roda-item[data-focada="true"] .cf-capa-brilho {
+  opacity: 1;
+}
+.cf-capa-brilho {
+  position: absolute;
+  inset: -18%;
+  z-index: -1;
+  border-radius: 999px;
+  opacity: 0;
+  background: radial-gradient(closest-side, rgba(0, 184, 188, 0.35), transparent 70%);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.cf-roda-dica {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(143, 168, 172, 0.72);
+}
+
+/* ---------------------------------------------------------------- capas */
+.cf-capa {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #071A28;
+}
+.cf-capa-moldura {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(24, 51, 65, 0.95);
+  box-shadow: 0 18px 40px -26px rgba(0, 0, 0, 0.95);
+  background: #071A28;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.cf-capa-foto {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cf-capa-veu {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 13, 22, 0) 0%,
+    rgba(0, 13, 22, 0.15) 52%,
+    rgba(0, 13, 22, 0.92) 100%
+  );
+}
+.cf-capa-texto {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  padding: 10px 11px 11px;
+}
+.cf-capa-titulo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(12px, 2.6vw, 15px);
+  line-height: 1.15;
+  color: #EAF4F7;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75);
+}
+.cf-capa-meta {
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(234, 244, 247, 0.72);
+}
+.cf-selo-tipo {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(0, 13, 22, 0.72);
+  border: 1px solid rgba(0, 184, 188, 0.35);
+  color: #00B8BC;
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  backdrop-filter: blur(6px);
+}
+.cf-selo-ouro {
+  border-color: rgba(255, 184, 46, 0.45);
+  color: #FFB82E;
+}
+
+/* arte procedural (quando não há cartaz autorizado) */
+.cf-arte {
+  position: absolute;
+  inset: 0;
+  background-color: #071A28;
+  overflow: hidden;
+}
+.cf-arte-foto {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.94) contrast(1.02);
+}
+.cf-arte::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(234, 244, 247, 0.035) 0 1px,
+    rgba(0, 13, 22, 0) 1px 3px
+  );
+  opacity: 0.85;
+  mix-blend-mode: overlay;
+}
+.cf-arte-0 {
+  background-image:
+    radial-gradient(70% 55% at 22% 18%, rgba(0, 184, 188, 0.55), transparent 62%),
+    linear-gradient(150deg, #002F3B 0%, #071A28 55%, #000D16 100%);
+}
+.cf-arte-1 {
+  background-image:
+    radial-gradient(65% 55% at 78% 20%, rgba(255, 184, 46, 0.42), transparent 60%),
+    radial-gradient(80% 60% at 20% 85%, rgba(0, 47, 59, 0.95), transparent 65%),
+    linear-gradient(200deg, #071A28 0%, #000D16 100%);
+}
+.cf-arte-2 {
+  background-image:
+    radial-gradient(55% 45% at 50% 12%, rgba(0, 184, 188, 0.32), transparent 60%),
+    repeating-linear-gradient(115deg, rgba(0, 47, 59, 0.65) 0 22px, rgba(0, 13, 22, 0.1) 22px 46px),
+    linear-gradient(180deg, #071A28 0%, #000D16 100%);
+}
+.cf-arte-3 {
+  background-image:
+    radial-gradient(45% 40% at 70% 30%, rgba(18, 157, 255, 0.42), transparent 62%),
+    radial-gradient(60% 50% at 25% 75%, rgba(0, 184, 188, 0.22), transparent 65%),
+    linear-gradient(160deg, #002F3B 0%, #000D16 85%);
+}
+.cf-arte-4 {
+  background-image:
+    conic-gradient(from 210deg at 50% 45%, rgba(0, 47, 59, 0.9), rgba(0, 184, 188, 0.3), rgba(7, 26, 40, 0.95), rgba(0, 47, 59, 0.9)),
+    linear-gradient(180deg, #071A28, #000D16);
+}
+.cf-arte-5 {
+  background-image:
+    repeating-linear-gradient(90deg, rgba(0, 184, 188, 0.16) 0 2px, rgba(0, 13, 22, 0) 2px 26px),
+    radial-gradient(60% 55% at 50% 100%, rgba(0, 184, 188, 0.28), transparent 65%),
+    linear-gradient(190deg, #071A28 0%, #000D16 100%);
+}
+
+/* ------------------------------------------------------------ destaques */
+.cf-destaque {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(24, 51, 65, 0.9);
+  background: #071A28;
+  box-shadow: 0 26px 60px -40px rgba(0, 0, 0, 0.95);
+}
+.cf-destaque-fundo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.85;
+}
+.cf-destaque-veu {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 13, 22, 0.96) 0%, rgba(0, 13, 22, 0.72) 45%, rgba(0, 13, 22, 0.18) 100%),
+    linear-gradient(0deg, rgba(0, 13, 22, 0.95) 0%, rgba(0, 13, 22, 0) 55%);
+}
+.cf-destaque-conteudo {
+  position: relative;
+  z-index: 1;
+  max-width: 640px;
+}
+
+.cf-fileira {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.cf-fileira::-webkit-scrollbar {
+  display: none;
+}
+.cf-fileira > * {
+  scroll-snap-align: start;
+}
+
+.cf-fileira-caixa {
+  position: relative;
+}
+.cf-fileira-caixa::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 10px;
+  right: 0;
+  width: 42px;
+  pointer-events: none;
+  background: linear-gradient(270deg, #000D16 0%, rgba(0, 13, 22, 0) 100%);
+}
+
+/* ---------------------------------------------------------------- player */
+.cf-player {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(24, 51, 65, 0.95);
+  background: #000D16;
+  box-shadow: 0 26px 60px -34px rgba(0, 0, 0, 0.95);
+}
+.cf-player video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000D16;
+  outline: none;
+}
+.cf-player:fullscreen,
+.cf-player video:fullscreen {
+  border-radius: 0;
+  border: none;
+}
+.cf-player-controles {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  padding: 26px 12px 10px;
+  background: linear-gradient(0deg, rgba(0, 13, 22, 0.96) 0%, rgba(0, 13, 22, 0.55) 55%, rgba(0, 13, 22, 0) 100%);
+  transition: opacity 0.22s ease;
+}
+.cf-player[data-ocioso="true"] .cf-player-controles {
+  opacity: 0;
+  pointer-events: none;
+}
+.cf-player[data-ocioso="true"] {
+  cursor: none;
+}
+
+.cf-barra {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.cf-barra-trilho {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(6, 35, 48, 0.95);
+  overflow: hidden;
+}
+.cf-barra-carregado,
+.cf-barra-visto {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: 999px;
+}
+.cf-barra-carregado {
+  background: rgba(143, 168, 172, 0.35);
+}
+.cf-barra-visto {
+  background: #00B8BC;
+}
+.cf-barra-alca {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: #EAF4F7;
+  border: 2px solid #00B8BC;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 12px rgba(0, 184, 188, 0.7);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.cf-barra:hover .cf-barra-alca,
+.cf-barra:focus-visible .cf-barra-alca {
+  opacity: 1;
+}
+
+.cf-controle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  color: rgba(234, 244, 247, 0.9);
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.cf-controle:hover {
+  background: rgba(0, 184, 188, 0.18);
+  color: #EAF4F7;
+}
+.cf-volume {
+  width: 76px;
+  accent-color: #00B8BC;
+}
+
+.cf-player-erro {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 13, 22, 0.94);
+  text-align: center;
+}
+
+.cf-select {
+  appearance: none;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 51, 65, 0.95);
+  background: rgba(7, 26, 40, 0.9);
+  color: #EAF4F7;
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 12px;
+}
+
+/* ------------------------------------------------------------ etiquetas */
+.cf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(24, 51, 65, 0.95);
+  background: rgba(7, 26, 40, 0.85);
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(234, 244, 247, 0.82);
+}
+.cf-chip-ciano {
+  border-color: rgba(0, 184, 188, 0.45);
+  color: #00B8BC;
+  background: rgba(0, 184, 188, 0.1);
+}
+.cf-chip-ouro {
+  border-color: rgba(255, 184, 46, 0.4);
+  color: #FFB82E;
+  background: rgba(255, 184, 46, 0.08);
+}
+
+.cf-card {
+  border-radius: 20px;
+  border: 1px solid rgba(24, 51, 65, 0.95);
+  background: #071A28;
+  box-shadow: 0 20px 50px -36px rgba(0, 0, 0, 0.95);
+}
+
+.cf-vazio {
+  border-radius: 18px;
+  border: 1px dashed rgba(24, 51, 65, 0.95);
+  background: rgba(7, 26, 40, 0.55);
+  padding: 22px 18px;
+  text-align: center;
+  color: rgba(143, 168, 172, 0.95);
+}
+
+.cf-canal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(24, 51, 65, 0.95);
+  background: rgba(7, 26, 40, 0.9);
+  padding: 10px;
+  text-align: left;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+.cf-canal:hover {
+  border-color: rgba(0, 184, 188, 0.55);
+  background: rgba(0, 47, 59, 0.55);
+}
+.cf-canal[data-ativo="true"] {
+  border-color: rgba(0, 184, 188, 0.8);
+  box-shadow: 0 0 0 1px rgba(0, 184, 188, 0.3) inset;
+}
+.cf-canal-logo {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 12px;
+  border: 1px solid rgba(24, 51, 65, 0.95);
+  background: #002F3B;
+  overflow: hidden;
+  color: #00B8BC;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 15px;
+}
+.cf-canal-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+}
+
+/* ----------------------------------------------------------- esqueleto */
+.cf-esqueleto {
+  border-radius: 16px;
+  background:
+    linear-gradient(100deg, rgba(0, 47, 59, 0.45) 20%, rgba(0, 184, 188, 0.16) 45%, rgba(0, 47, 59, 0.45) 70%),
+    #071A28;
+  background-size: 220% 100%;
+  animation: cf-brilho 1.6s ease-in-out infinite;
+}
+@keyframes cf-brilho {
+  0% {
+    background-position: 130% 0;
+  }
+  100% {
+    background-position: -30% 0;
+  }
+}
+
+/* ------------------------------------------------------------- rolagem */
+.cf-rolagem {
+  scrollbar-width: thin;
+  scrollbar-color: #183341 transparent;
+}
+.cf-rolagem::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.cf-rolagem::-webkit-scrollbar-thumb {
+  background: #183341;
+  border-radius: 999px;
+}
+
+.cf-ancora {
+  scroll-margin-top: 84px;
+}
+
+/* faixa de destaque com brilho suave na base (identidade CopaLinks) */
+.cf-linha-brilho {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(0, 184, 188, 0), rgba(0, 184, 188, 0.5), rgba(0, 184, 188, 0));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-esqueleto {
+    animation: none;
+  }
+  .cf-roda-item,
+  .cf-capa-moldura {
+    transition: none;
+  }
+}
+
+/* input de busca: o "x" nativo do Chrome duplicava o botão de limpar do app */
+.copaflix input[type="search"]::-webkit-search-cancel-button,
+.copaflix input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
