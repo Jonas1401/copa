@@ -54,19 +54,14 @@ const lerArquivosCopaFlix = () =>
 
 /* ------------------------------------------------------------------ menu */
 
-test("o menu ⋮ ganhou a seção Entretenimento com as seis áreas do CopaFlix", () => {
+test("o menu ⋮ não exibe mais Entretenimento e preserva as funções existentes", () => {
   const menu = ler("src/components/inicio/MenuConta.tsx");
-  assert.ok(menu.includes("Entretenimento"), "sem a seção Entretenimento no menu ⋮");
-  assert.match(menu, /href="\/copaflix"/, "Entretenimento não abre o CopaFlix");
-  for (const area of ["Filmes", "Séries", "Novelas", "TV ao vivo", "Favoritos", "Continuar assistindo"]) {
-    assert.ok(menu.includes(area), `menu ⋮ sem a área ${area}`);
-  }
-  for (const aba of ["filmes", "series", "novelas", "tv", "favoritos", "continuar"]) {
-    assert.ok(menu.includes(`/copaflix?aba=${aba}`), `menu ⋮ sem o atalho da aba ${aba}`);
-  }
-  // O resto do menu continua intacto (o teste específico confere o conteúdo).
+  assert.ok(!menu.includes("Entretenimento"), "a seção Entretenimento ainda aparece no menu ⋮");
+  assert.ok(!menu.includes("/copaflix"), "há um atalho para o CopaFlix no menu ⋮");
   assert.ok(menu.includes("EllipsisVertical"));
   assert.ok(menu.includes("Trocar meu nome"));
+  assert.ok(menu.includes("Ativar notificações"));
+  assert.ok(menu.includes("Portal do motorista"));
   assert.ok(menu.includes('href="/admin"'));
 });
 
