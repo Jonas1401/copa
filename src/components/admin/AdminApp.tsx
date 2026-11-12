@@ -9,7 +9,6 @@ import CartaoFigurinhasAdmin from "@/components/admin/CartaoFigurinhasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
 import CartaoPortalAdmin from "@/components/admin/CartaoPortalAdmin";
 import CartaoDivulgacaoAdmin from "@/components/admin/CartaoDivulgacaoAdmin";
-import InternetEsimAdmin from "@/components/admin/InternetEsimAdmin";
 import {
   BellRing,
   Bot,
@@ -27,7 +26,6 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
-  Smartphone,
   Trash2,
   X,
 } from "lucide-react";
@@ -639,7 +637,6 @@ export default function AdminApp({ url }: { url: string }) {
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
   const [remover, setRemover] = useState<Integracao | null>(null);
-  const [monitorAberto, setMonitorAberto] = useState(false);
   const [auditoriaAberta, setAuditoriaAberta] = useState(false);
 
   const sair401 = useCallback((status: number) => {
@@ -802,43 +799,6 @@ export default function AdminApp({ url }: { url: string }) {
             {/* biblioteca de figurinhas do chat (publicadas para todos) */}
             <CartaoFigurinhasAdmin api={api} onSessaoExpirada={sair401} />
 
-            <InternetEsimAdmin api={api} onSessaoExpirada={sair401} />
-
-            <section className="mt-4 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/90 p-4">
-              <button
-                type="button"
-                onClick={() => setMonitorAberto((v) => !v)}
-                aria-expanded={monitorAberto}
-                className="flex w-full items-center justify-between gap-3 text-left"
-              >
-                <div className="min-w-0">
-                  <h2 className="flex items-center gap-2.5 font-display text-[17px] font-bold tracking-[0.03em] text-[#00B8BC] uppercase">
-                    <Smartphone size={22} /> Monitor WhatsApp
-                  </h2>
-                  <p className="mt-0.5 text-[12.5px] text-gelo/60">
-                    Parear Android monitor, acompanhar códigos e notificações FCM
-                  </p>
-                </div>
-                <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-gelo/70">
-                  {monitorAberto ? "Fechar" : "Abrir"}
-                  {monitorAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                </span>
-              </button>
-              {monitorAberto && (
-                <div className="mt-3 border-t border-[#183341]/35 pt-3">
-                  <p className="text-[13.5px] leading-snug text-gelo/80">
-                    Gerencie o pareamento do Android monitor, acompanhe códigos enviados pelo grupo, configure o filtro sem APK (webhook) e simule avisos para os motoristas.
-                  </p>
-                  <Link
-                    href="/monitor"
-                    className="mt-3 inline-flex items-center justify-between gap-3 rounded-full border border-ciano/60 bg-[#071A28] px-5 py-2.5 font-display text-[14px] font-bold text-ciano uppercase transition-colors hover:border-ciano hover:bg-ciano/10"
-                  >
-                    <span>Abrir Monitor WhatsApp</span>
-                    <span aria-hidden className="text-lg">→</span>
-                  </Link>
-                </div>
-              )}
-            </section>
 
             {/* portal do motorista: quem cadastrou CPF/senha e o que a página mostra */}
             <CartaoPortalAdmin />
