@@ -10,6 +10,7 @@ import {
   contarFalhasSeguidas,
   lerEGuardarPortal,
   lerFilaNaSessaoGuardada,
+  sessaoServeParaAFilaEntreCiclos,
   lerTelasNaSessaoGuardada,
   marcarProximaLeitura,
   monitorarMotorista as lerPortalComLoginNovo,
@@ -19,14 +20,17 @@ import {
 } from "@/lib/portal-copadubo";
 import { normalizarCodigoPortal } from "@/lib/portal-copadubo-parse";
 import {
+  esperaDaFilaMs,
   filaGuardada,
   fonteDaFila,
   guardarFilaLida,
+  intervaloDaFilaMs,
   livrosDaFila,
   motivoDaFilaSumida,
   registrarFalhaDaFila,
   reservarLivrosDaFila,
   resumoDaFila,
+  validadeDaFilaMs,
 } from "@/lib/portal-fila";
 import type { LivroDaFila } from "@/lib/portal-fila-parse";
 import { lerTicketsDevidos } from "@/lib/portal-ticket";
@@ -219,17 +223,20 @@ async function avisarTroca(dados: {
  * Da tela só se guarda a fila (igual para todos); nada da conta de quem abriu.
  * `forcar`: alguém tocou em “Ler agora” — lê sem esperar a hora, e o que a
  * tela trouxe (ou por que não serviu) volta no diagnóstico.
+ * `entreCiclos`: a leitura não veio de uma olhada do Status
+ * (`atualizarFilaEntreCiclos`) — a sessão guardada é só usada, nada dela é
+ * gravado de volta.
  */
 export async function atualizarFilaDoPortal(
   motoristaId: number,
-  opcoes: { buscar?: typeof fetch; forcar?: boolean } = {},
+  opcoes: { buscar?: typeof fetch; forcar?: boolean; entreCiclos?: boolean } = {},
 ): Promise<{ tentou: boolean; lidos: LivroDaFila[]; diagnostico: string[] }> {
   const nada = { tentou: false, lidos: [] as LivroDaFila[], diagnostico: [] as string[] };
   if (!temBancoConfigurado || fonteDaFila() !== "portal") return nada;
   const devidos = await reservarLivrosDaFila(livrosDaFila(), { forcar: opcoes.forcar });
   if (!devidos.length) return nada;
 
-  const lida = await lerFilaNaSessaoGuardada(motoristaId, { buscar: opcoes.buscar, livros: devidos });
+  const lida = await lerFilaNaSessaoGuardada(motoristaId, { buscar: opcoes.buscar, livros: devidos, somenteLeitura: opcoes.entreCiclos });
   if (!lida) {
     const motivo = "a conta não tem mais acesso ativo ao portal";
     for (const livro of devidos) await registrarFalhaDaFila(livro, motivo, motoristaId).catch(() => null);
@@ -562,6 +569,74 @@ export async function resumoDoMonitor() {
     })),
     fila,
   };
+}
+
+/* ------------------------------------------- a fila entre as olhadas do Status */
+
+let filaEntreCiclosEmAndamento = false;
+let ultimaConferenciaDaFilaEm = 0;
+/** Nesta instância, a fila guardada é conferida no máximo uma vez a cada tanto (o app pergunta a cada 5 s). */
+const CONFERENCIA_DA_FILA_A_CADA_MS = 4_000;
+
+/**
+ * A FILA ENTRE AS OLHADAS DO STATUS — chamada pelo app aberto, depois da
+ * resposta (`/api/estado`).
+ *
+ * A carona do Status abre a aba “Fila” uma vez por ciclo de 1 minuto. Com
+ * alguém olhando o app, esperar um minuto inteiro é muito: aqui a aba é aberta
+ * de novo de `PORTAL_FILA_INTERVALO_S` em `PORTAL_FILA_INTERVALO_S` segundos
+ * (20 por padrão) — UM pedido, para o app inteiro (a reserva no banco é a
+ * mesma da carona: duas funções nunca abrem a aba juntas).
+ *
+ * Só CONTINUA uma leitura que está dando certo:
+ *   - todos os livros configurados têm uma fila boa, ainda valendo, e a última
+ *     tentativa não falhou — depois de qualquer falha, quem volta a ler é a
+ *     carona do Status (é ela que entra de novo no portal, com o freio);
+ *   - quem lê é a conta que leu por último, com a sessão guardada. NUNCA faz
+ *     login e não grava nada da sessão de volta (`somenteLeitura`);
+ *   - a sessão dessa conta tem de estar assentada: sem login há 30 minutos
+ *     (`SESSAO_ASSENTADA_PARA_A_FILA_MS`). Se as consultas a mais derrubarem a
+ *     sessão de alguém, a leitura entre ciclos se afasta sozinha dessa conta.
+ *
+ * Sem app aberto nada muda: o despertador de 1 minuto continua lendo o Status
+ * e a fila, na carona.
+ */
+export async function atualizarFilaEntreCiclos(opcoes: { buscar?: typeof fetch } = {}) {
+  const nada = { tentou: false, lidos: [] as LivroDaFila[], motoristaId: null as number | null };
+  if (!temBancoConfigurado || fonteDaFila() !== "portal" || intervaloDaFilaMs() === null) return nada;
+  if (filaEntreCiclosEmAndamento || Date.now() - ultimaConferenciaDaFilaEm < CONFERENCIA_DA_FILA_A_CADA_MS) return nada;
+  filaEntreCiclosEmAndamento = true;
+  ultimaConferenciaDaFilaEm = Date.now();
+  try {
+    const livros = livrosDaFila();
+    const guardadas = (await filaGuardada()).filter((g) => livros.includes(g.livro));
+    const agora = Date.now();
+    const validade = validadeDaFilaMs();
+    const emDia = guardadas.filter(
+      (g) => g.dados && g.lidoEm && !g.erro && g.motoristaId != null && agora - g.lidoEm.getTime() <= validade,
+    );
+    if (!emDia.length || emDia.length < livros.length) return nada;
+    // Cedo demais: nem tenta a reserva (que é quem decide de verdade, no banco).
+    const ultimaTentativa = Math.max(...emDia.map((g) => g.tentativaEm?.getTime() ?? g.lidoEm?.getTime() ?? 0));
+    if (agora - ultimaTentativa < esperaDaFilaMs()) return nada;
+    const leitor = [...emDia].sort((a, b) => (b.lidoEm?.getTime() ?? 0) - (a.lidoEm?.getTime() ?? 0))[0].motoristaId as number;
+    // A sessão do leitor tem de servir (conta ativa, endereço da aba guardado, nenhum login há
+    // pouco). Conferido ANTES da reserva: uma leitura que não vai acontecer não pode segurar a
+    // carona do Status, nem deixar um erro registrado.
+    if (!(await sessaoServeParaAFilaEntreCiclos(leitor))) return nada;
+    const r = await atualizarFilaDoPortal(leitor, { buscar: opcoes.buscar, entreCiclos: true });
+    return { tentou: r.tentou, lidos: r.lidos, motoristaId: leitor };
+  } catch (e) {
+    console.error("[portal-monitor] leitura da fila entre ciclos falhou:", e instanceof Error ? e.message : e);
+    return nada;
+  } finally {
+    filaEntreCiclosEmAndamento = false;
+  }
+}
+
+/** Só para os testes: esquece a última conferência desta instância. */
+export function esquecerConferenciaDaFila() {
+  ultimaConferenciaDaFilaEm = 0;
 }
 
 /* ------------------------------------------------- app aberto (sem esperar) */

@@ -9,7 +9,7 @@ import {
 import { motoristaDaSessao } from "@/lib/motorista-sessao";
 import { acessoPortalDoMotorista, garantirTabelasPortal, INTERVALO_LEITURA_MS, monitorarSeDevido, ultimaLeituraPortal } from "@/lib/portal-copadubo";
 import { normalizarCodigoPortal } from "@/lib/portal-copadubo-parse";
-import { monitorarStatusEmSegundoPlano } from "@/lib/portal-monitor";
+import { atualizarFilaEntreCiclos, monitorarStatusEmSegundoPlano } from "@/lib/portal-monitor";
 import { fontePortal, situacaoFresca, situacoesDoMotorista } from "@/lib/portal-situacao";
 import { pontoEmDispensa } from "@/lib/portal-status-ponto";
 
@@ -21,6 +21,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const PRAZO_RESPOSTA = 1500;
+/** Depois disto (contado do fim da resposta) a leitura da fila entre ciclos não começa mais nesta chamada. */
+const PRAZO_PARA_COMECAR_A_FILA_MS = 35_000;
 
 function comPrazo<T>(tarefa: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([
@@ -106,6 +108,7 @@ export async function GET() {
     // portal rodam em segundo plano, depois da resposta.
     const temPontoFora = estado.pontos.some((p) => p.status === "SAIU");
     after(async () => {
+      const inicioDoSegundoPlano = Date.now();
       await garantirTabelasPortal().catch(() => null);
       // A varredura desta chamada pode ainda estar em andamento — e é ela que
       // descobre que um ponto saiu do quadro.
@@ -122,6 +125,11 @@ export async function GET() {
       } else if (motorista && portalAtivo && temPontoFora && (!ultimaPortal || Date.now() - ultimaPortal.criadoEm.getTime() >= INTERVALO_LEITURA_MS)) {
         await atualizarPortal(motorista.id);
       }
+      // A fila entre as olhadas do Status: com o app aberto, a aba “Fila” do
+      // portal é relida sem esperar o próximo ciclo de 1 minuto. Vem por
+      // último (o Status é quem avisa a saída) e só começa se ainda sobra
+      // tempo folgado desta função para a leitura inteira (até 14 s).
+      if (Date.now() - inicioDoSegundoPlano < PRAZO_PARA_COMECAR_A_FILA_MS) await atualizarFilaEntreCiclos().catch(() => null);
     });
     return NextResponse.json(estado, {
       headers: { "Cache-Control": "private, no-store" },

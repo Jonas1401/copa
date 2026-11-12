@@ -12,9 +12,11 @@ import { esperaEntreLeiturasMs, intervaloStatusMs } from "@/lib/portal-situacao"
  * O quadro público foi desligado pela Copadubo. A fila agora é a aba “Fila” do
  * Portal do Motorista, que só abre com a sessão de um motorista. A leitura
  * pega carona na olhada do Status: quando a conta de um motorista acabou de
- * ser aberta e a fila guardada já tem mais de um ciclo, a mesma sessão abre a
- * aba Fila (um pedido a mais) e o resultado fica guardado AQUI, uma linha por
- * livro, para todos os motoristas do app.
+ * ser aberta e a fila guardada já pode ser relida, a mesma sessão abre a aba
+ * Fila (um pedido a mais) e o resultado fica guardado AQUI, uma linha por
+ * livro, para todos os motoristas do app. Com alguém com o app aberto, a aba é
+ * relida também ENTRE as olhadas do Status (`intervaloDaFilaMs`), com a
+ * sessão de quem leu por último.
  *
  * O que fica guardado é só a fila geral — os pontos de cada quadro, na ordem,
  * e o último escalado. Nada da conta de quem abriu a tela.
@@ -62,6 +64,43 @@ export function validadeDaFilaMs(intervaloMs = intervaloStatusMs()): number {
 
 /** Depois de uma tentativa que não serviu, outra conta pode tentar em seguida. */
 export const ESPERA_APOS_FALHA_DA_FILA_MS = 20_000;
+
+/** De quanto em quanto tempo a fila é relida com o app aberto, se nada for configurado. */
+export const INTERVALO_DA_FILA_PADRAO_S = 20;
+/** Folga da reserva: o pedido do app (um a cada 5 s) nunca cai exatamente em cima da marca. */
+export const FOLGA_DA_FILA_MS = 2_000;
+
+/**
+ * A fila ENTRE as olhadas do Status. Com alguém com o app aberto, a aba “Fila”
+ * é aberta de novo sem esperar o próximo ciclo de 1 minuto: um pedido, com a
+ * sessão de quem leu por último, sem login (`atualizarFilaEntreCiclos`).
+ *
+ * `PORTAL_FILA_INTERVALO_S` (10 a 60 segundos) diz de quanto em quanto tempo.
+ * `0` ou `desligado` volta a ler a fila só na carona do Status, uma vez por
+ * ciclo — é a chave de retorno se o portal reclamar de tantas consultas. Um
+ * intervalo que não seja menor que a espera do próprio Status também desliga:
+ * a carona já lê nesse ritmo.
+ *
+ * Devolve `null` quando a leitura entre ciclos está desligada.
+ */
+export function intervaloDaFilaMs(esperaDoStatusMs = esperaEntreLeiturasMs()): number | null {
+  const bruto = (process.env.PORTAL_FILA_INTERVALO_S ?? "").trim().toLowerCase();
+  if (["0", "desligado", "desligada", "off", "nao", "não"].includes(bruto)) return null;
+  const pedido = Number(bruto);
+  const segundos = bruto !== "" && Number.isFinite(pedido) && pedido >= 10 && pedido <= 60 ? Math.round(pedido) : INTERVALO_DA_FILA_PADRAO_S;
+  return segundos * 1000 < esperaDoStatusMs ? segundos * 1000 : null;
+}
+
+/**
+ * Quanto a próxima abertura da aba “Fila” espera depois de uma reserva. Com a
+ * leitura entre ciclos ligada é o intervalo dela (menos a folga); desligada, é
+ * a espera do Status, como sempre foi. Vale para toda reserva — a da carona
+ * também: assim a fila fica livre para ser relida logo depois dela.
+ */
+export function esperaDaFilaMs(): number {
+  const intervalo = intervaloDaFilaMs();
+  return intervalo === null ? esperaEntreLeiturasMs() : Math.max(5_000, intervalo - FOLGA_DA_FILA_MS);
+}
 
 /* ------------------------------------------------------------ o que guarda */
 
@@ -134,7 +173,7 @@ export async function reservarLivrosDaFila(
 ): Promise<LivroDaFila[]> {
   if (!temBancoConfigurado || !livros.length) return [];
   await garantirTabelasPortal();
-  const espera = Math.max(5_000, Math.round(opcoes.esperaMs ?? esperaEntreLeiturasMs()));
+  const espera = Math.max(5_000, Math.round(opcoes.esperaMs ?? esperaDaFilaMs()));
   const reservados: LivroDaFila[] = [];
   for (const livro of livros) {
     await comBanco(() => db.insert(portalFila).values({ livro }).onConflictDoNothing());

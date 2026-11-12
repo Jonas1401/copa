@@ -280,6 +280,7 @@ aviso de saída — o padrão):
 | --- | --- |
 | **de minuto em minuto** (`/api/cron`; com o app aberto, também em segundo plano no `/api/estado`) | abre a tela de Status com a **sessão guardada** — um pedido só — e compara a situação de cada ponto do motorista com a que estava guardada |
 | a situação **mudou** | abre também as abas do menu, na mesma sessão, para o aviso sair sem o menu e o rodapé do site |
+| **com o app aberto, de 20 em 20 s** (depois da resposta do `/api/estado`) | reabre **só a aba “Fila”**, com a sessão guardada da conta que leu a fila por último — um pedido, para o app inteiro; nunca faz login nem mexe na sessão guardada ([a fila entre os ciclos](#com-o-app-aberto-a-fila-entre-os-ciclos)) |
 | o portal **encerrou a sessão** | entra de novo **na leitura seguinte**. Se o portal continuar derrubando a sessão, o freio segura: depois de 2 logins em seguida, **um login automático a cada 10 min** por conta — e 10 min de espera depois de um login que não abriu a conta |
 | o motorista toca em **Ler agora** | uma leitura na hora (até 6 por hora), sem o freio de logins |
 | o administrador usa **Ler agora** / **Ler o portal agora** | uma leitura na hora, registrada na auditoria |
@@ -339,16 +340,49 @@ olhada do Status (`src/lib/portal-monitor.ts`, `atualizarFilaDoPortal`). Quando
 a conta de um motorista acabou de abrir e a fila guardada já tem um ciclo, a
 **mesma sessão** abre a aba “Fila” — **um pedido a mais por ciclo, para o app
 inteiro** (não um por motorista; a reserva em `portal_fila.proxima_leitura_em`
-é atômica). Com o intervalo padrão de 1 minuto, a leitura automática abre a aba
-no máximo uma vez a cada 45 s — com o despertador de 1 minuto, cerca de 1.440
-aberturas por dia. Depois de uma tentativa que não serviu, outra conta pode
-tentar 20 s depois. Fora do ciclo, a aba só é aberta quando o motorista salva o
+é atômica). Sem ninguém com o app aberto é só isso: o despertador de 1 minuto
+abre a aba uma vez por rodada — cerca de 1.440 aberturas por dia. Depois de uma
+tentativa que não serviu, outra conta pode tentar 20 s depois. Fora do ciclo, a aba só é aberta quando o motorista salva o
 acesso ou toca em ler o portal, e no “Ler agora” do `/admin`. Se o portal
 estiver lento e a conta levar mais de 12 s para abrir (25 s no “Ler agora”), a
 aba fica para a próxima leitura — a abertura da aba pode levar até 14 s e não
 pode estourar o tempo da função. É preciso **pelo menos um motorista com o
 acesso ao portal cadastrado**; sem nenhum, não há de onde ler e o card mostra
 “sem leitura da fila”.
+
+### Com o app aberto: a fila entre os ciclos
+
+Esperar o próximo ciclo de 1 minuto deixava o card até 65 s atrás do portal.
+Com alguém com o app aberto, a aba “Fila” é relida também **entre** as olhadas
+do Status (`atualizarFilaEntreCiclos`, chamada pelo `/api/estado` depois da
+resposta — o app não espera por ela):
+
+- **de 20 em 20 s**, um pedido só, para o app inteiro — a reserva no banco é a
+  mesma da carona (agora de 18 s), então duas funções nunca abrem a aba juntas.
+  O teto é **uma abertura a cada 18 s**: cerca de 3 por minuto com o app aberto
+  (4.800 por dia se houvesse app aberto 24 h), em vez de 1 por minuto;
+- com a **sessão guardada da conta que leu a fila por último**. Nunca faz login
+  e não grava nada da sessão de volta: quem cuida da sessão continua sendo só a
+  olhada do Status. Sem o endereço da aba já guardado nessa conta, não há pedido;
+- só **continua uma leitura que está dando certo**: todos os livros
+  configurados precisam ter uma fila boa, ainda valendo e sem erro. Depois de
+  qualquer falha ela para, e quem volta a ler é a carona do Status;
+- só usa uma **sessão assentada**: a conta precisa estar há **30 minutos sem
+  login** no portal. É o freio dela: se as consultas a mais fizerem o portal
+  encerrar a sessão de uma conta, ela entra de novo na olhada do Status (como
+  sempre) e a leitura entre ciclos passa meia hora sem usá-la — no pior caso é
+  um login a mais a cada meia hora, nunca um por minuto. Nesse intervalo nada é
+  reservado nem registrado como erro: a fila segue na carona, de minuto em minuto;
+- **desiste cedo**: 6 s para a leitura inteira (a carona tem 14 s), para um
+  portal lento não segurar a sessão que a olhada do Status também usa;
+- a fila nova passa pela varredura na hora: posição, “perto da vez” e “na vez”
+  saem mais cedo.
+
+`PORTAL_FILA_INTERVALO_S` muda o intervalo (10 a 60 segundos; padrão 20).
+**`PORTAL_FILA_INTERVALO_S=0`** (ou `desligado`) é a chave de retorno: a fila
+volta a ser lida só na carona do Status, no máximo uma vez a cada 45 s, como
+era — use se o portal reclamar de tantas consultas. Um valor que não seja menor
+que a espera do próprio Status (45 s no intervalo padrão) também desliga.
 
 **O que fica guardado** (`portal_fila`, uma linha por livro): os pontos de cada
 quadro, na ordem, e o último escalado — a fila geral, igual para todos — e o
@@ -400,8 +434,9 @@ A leitura da aba “Fila” depende da rodada do Status: com
 `PORTAL_FONTE_SAIDA=quadro` essa rodada não existe e a aba não é lida.
 
 Testes: `tests/portal-fila.test.ts` (a leitura da tela, sem rede e sem banco),
-`tests/fila-card.test.ts` (o card) e `tests/portal-fila-cron.test.ts` (o ciclo
-inteiro, com PostgreSQL local).
+`tests/fila-card.test.ts` (o card), `tests/portal-fila-cron.test.ts` (o ciclo
+inteiro, com PostgreSQL local) e `tests/portal-fila-entre-ciclos-cron.test.ts`
+(a leitura entre os ciclos, também com PostgreSQL local).
 
 
 ## Saldo de Ganhos: as viagens da semana (aba “Ticket” do portal)
@@ -892,6 +927,44 @@ Mantenha as notificações do WhatsApp habilitadas no aparelho monitor. Testes:
 `tests/grupo-filtro.test.ts` (filtro) e `tests/grupo-aviso.test.ts` (ponta a
 ponta, banco `fila_push_test_*`); no Android, `GroupMessageFilterTest`.
 
+## A tela sempre em dia: dados e versão
+
+**Dados.** O app pede `/api/estado` a cada 5 s. Ao voltar do segundo plano — ou
+quando a rede volta — ele pede **na hora** o estado, a contagem do chat, os
+motoristas e os navios, sem esperar a próxima volta de cada ciclo
+(`useAoVoltarParaATela`). Cada pedido de estado leva um número: uma resposta
+atrasada nunca passa por cima de uma mais nova, e o estado que vem na resposta
+de uma ação (reler, corrigir, remover, cadastrar) deixa velhos os pedidos que
+ainda estavam a caminho.
+
+**Versão.** A página é sempre buscada de novo ao **abrir** o app (`no-store`),
+mas a tela que fica aberta guarda o código — e os textos — da publicação
+antiga. O `VigiaDeVersao` (no layout raiz: vale para todas as páginas) pergunta
+`/api/versao` quando a pessoa volta para o app (no máximo uma vez por minuto) e,
+com a tela à vista, a cada 5 minutos. Se o carimbo for outro, a página se
+recarrega sozinha — só num momento em que não atrapalha:
+
+- **logo que a pessoa volta** para o app (1,2 s depois, se ela ainda não tocou
+  em nada), ou com a tela à vista e **parada há 5 minutos**;
+- nunca em segundo plano; nunca se algo foi digitado ou escolhido na página,
+  com um campo em foco, com áudio tocando ou com uma janela aberta por cima (a
+  conversa, um alerta — tudo que usa `aria-modal`, ou um trecho marcado com
+  `data-sem-recarga`); nunca em `/admin` e `/monitor`;
+- só logo depois de o servidor responder, em até 4 s — sem rede, ou com rede
+  ruim, a tela fica como está;
+- nunca em laço: a mesma aba recarrega no máximo 2 vezes atrás da mesma versão,
+  com 10 minutos entre uma e outra (anotado no `sessionStorage`).
+
+O carimbo é o commit (12 caracteres) mais o fim do número da publicação na
+Vercel (`VERCEL_GIT_COMMIT_SHA`, `VERCEL_DEPLOYMENT_ID`), posto no código na
+compilação (`next.config.ts` → `NEXT_PUBLIC_VERSAO_APP`). **`GET /api/versao`**
+responde `{ "versao": "…" }`: é também o jeito de conferir qual publicação está
+no ar. `VERSAO_APP` fixa o carimbo à mão; fora da Vercel e sem ela o carimbo
+fica vazio e o vigia não liga.
+
+As regras e a ligação com o navegador estão em `src/lib/atualizacao-da-tela.ts`;
+os testes, em `tests/atualizar-rapido.test.ts`.
+
 ## Rodar localmente
 
 ```bash
@@ -932,9 +1005,11 @@ no SQL Editor do Supabase (idempotente, não apaga dados) e confira com
 | `PORTAL_FONTE_SAIDA` | não | quem decide a saída do ponto: vazio/`portal` = o Status do Portal do Motorista (padrão); `quadro` = o quadro da intranet, com uma consulta ao portal na saída |
 | `FONTE_FILA` | não | de onde vem a fila: vazio/`portal` = a aba “Fila” do Portal do Motorista (padrão); `quadro` = o quadro público antigo, desligado pela Copadubo em 10/11/2026 |
 | `PORTAL_FILA_LIVROS` | não | livros lidos na aba “Fila” (padrão `A`); ex.: `A,B,M` — cada livro a mais é uma página a mais por ciclo |
+| `PORTAL_FILA_INTERVALO_S` | não | com o app aberto, de quantos em quantos segundos a aba “Fila” é relida entre as olhadas do Status (10 a 60; padrão 20). `0` ou `desligado` = só na carona do Status, uma vez por ciclo |
 | `PORTAL_INTERVALO_MIN` | não | de quantos em quantos minutos o Status de cada motorista é lido (1 a 60; padrão 1) |
 | `PORTAL_TICKET` | não | Saldo de Ganhos: vazio = a aba “Ticket” é lida, com todos os pontos do app, para quem cadastrou a porcentagem (padrão); `desligado` = nenhuma leitura do Ticket |
 | `PORTAL_TICKET_INTERVALO_MIN` | não | de quantos em quantos minutos o Ticket de cada motorista é lido (2 a 60; padrão 5) |
+| `VERSAO_APP` | não | fixa à mão o carimbo da publicação que a tela compara com `/api/versao` (na Vercel ele é montado sozinho, do commit e do número da publicação) |
 | `PORTAL_MOTORISTA_URL` | não | base do portal, só para teste/homologação; em produção fica vazia |
 | `ADMIN_SETUP_CODE` | só no primeiro cadastro | código para criar o primeiro administrador |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | não | chaves de notificação (o app gera e guarda no banco se ausentes) |
