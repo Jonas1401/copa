@@ -10,6 +10,7 @@ import "@fontsource/space-grotesk/500.css";
 import "@fontsource/space-grotesk/700.css";
 import "./globals.css";
 import { headers } from "next/headers";
+import VigiaDeVersao from "@/components/VigiaDeVersao";
 import { DESCRICAO_CURTA, IMAGEM_COMPARTILHAR, NOME_APP } from "@/lib/compartilhar";
 import { urlPublicaDoApp } from "@/lib/url-app";
 
@@ -80,7 +81,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Publicação nova: a tela que ficou aberta com o código antigo se recarrega sozinha. */}
+        <VigiaDeVersao />
+      </body>
     </html>
   );
 }

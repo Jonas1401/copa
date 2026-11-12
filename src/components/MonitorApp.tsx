@@ -41,6 +41,8 @@ import BoasVindas, { type DadosBoasVindas } from "@/components/motoristas/BoasVi
 import CarregamentoLogo from "@/components/inicio/CarregamentoLogo";
 import { CHAVE_MOTORISTA, COOKIE_MOTORISTA, primeiroNome, type Motorista } from "@/lib/motoristas";
 import { PRAZO_SESSAO_MS } from "@/lib/carregamento";
+import { respostaAindaVale } from "@/lib/atualizacao-da-tela";
+import { useAoVoltarParaATela } from "@/components/useAoVoltarParaATela";
 import {
   carregarArquivoCompartilhar,
   compartilharAplicativo,
@@ -804,6 +806,12 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     [motoristaId, motoristaNome],
   );
   const motoristaRef = useRef<Motorista | null>(null);
+  // A ordem das respostas do estado: cada pedido leva um número; só entra a
+  // resposta de um pedido mais novo que o último que já entrou.
+  const pedidoDeEstado = useRef(0);
+  const estadoQueEntrou = useRef(0);
+  // Quantas vezes a tela voltou a aparecer (refaz na hora a contagem do chat).
+  const [voltas, setVoltas] = useState(0);
   const [perfilPronto, setPerfilPronto] = useState(false);
   // Saldo de Ganhos do motorista deste aparelho (só consulta quem tem cadastro).
   const ticket = useResumoDoTicket(motoristaId !== null, 60_000, motoristaId);
@@ -972,7 +980,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     void contar();
     const t = setInterval(() => void contar(), 20_000);
     return () => clearInterval(t);
-  }, [chatAberto, motorista?.id]);
+  }, [chatAberto, motorista?.id, voltas]);
 
   // Contagem de motoristas (ícone "Sobre"): só o número, sem nomes.
   const carregarContagem = useCallback(async () => {
@@ -1016,6 +1024,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   // enquanto a resposta vinha, descarta (nunca mostra pontos de outro).
   const buscarEstado = useCallback(async () => {
     const id = motoristaRef.current?.id ?? 0;
+    const pedido = ++pedidoDeEstado.current;
     try {
       const r = await fetch("/api/estado", { cache: "no-store" });
       if (!r.ok) return;
@@ -1023,11 +1032,31 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       // O monitor respondeu (mesmo que a resposta seja de outro motorista e não entre).
       setSemRespostaMs(0);
       setRespondeu(true);
-      if ((motoristaRef.current?.id ?? 0) === id) setEstado(novo);
+      if ((motoristaRef.current?.id ?? 0) !== id) return;
+      // Resposta atrasada (uma mais nova já entrou): não passa por cima.
+      if (!respostaAindaVale(pedido, estadoQueEntrou.current)) return;
+      estadoQueEntrou.current = pedido;
+      setEstado(novo);
     } catch {
       /* próxima varredura */
     }
   }, []);
+
+  // Estado que veio na resposta de uma ação (reler, corrigir, remover, cadastrar):
+  // entra já, e os pedidos que ainda estavam a caminho ficam velhos.
+  const entrarEstadoDaAcao = useCallback((novo: EstadoDTO) => {
+    estadoQueEntrou.current = ++pedidoDeEstado.current;
+    setEstado(novo);
+  }, []);
+
+  // Voltou para o app (saiu do segundo plano, a rede voltou): pede tudo na hora,
+  // sem esperar a próxima volta de cada ciclo.
+  useAoVoltarParaATela(() => {
+    void buscarEstado();
+    void carregarContagem();
+    void carregarNaviosAtracados();
+    setVoltas((n) => n + 1);
+  });
 
   useEffect(() => {
     let anterior = Date.now();
@@ -1077,7 +1106,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
         body: JSON.stringify({ motoristaId: motoristaRef.current?.id ?? null }),
       });
       if (r.ok) {
-        setEstado(await r.json());
+        entrarEstadoDaAcao(await r.json());
         setSemRespostaMs(0);
         setRespondeu(true);
       } else setAviso({ texto: "Falha ao reler o monitor.", erro: true });
@@ -1086,7 +1115,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     } finally {
       setOcupado(false);
     }
-  }, []);
+  }, [entrarEstadoDaAcao]);
 
   const salvar = useCallback(
     async (
@@ -1101,12 +1130,12 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       });
       const dados = await r.json();
       if (dados.estado) {
-        setEstado(dados.estado);
+        entrarEstadoDaAcao(dados.estado);
         setAviso({ texto: "Ponto corrigido · varredura feita.", erro: false });
       }
       if (dados.erro) setAviso({ texto: dados.erro, erro: true });
     },
-    [],
+    [entrarEstadoDaAcao],
   );
 
   const remover = useCallback(async (id: number) => {
@@ -1118,11 +1147,11 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
     });
     const dados = await r.json();
     if (dados.estado) {
-      setEstado(dados.estado);
+      entrarEstadoDaAcao(dados.estado);
       setAviso({ texto: "Ponto removido do monitoramento.", erro: false });
     }
     if (dados.erro) setAviso({ texto: dados.erro, erro: true });
-  }, []);
+  }, [entrarEstadoDaAcao]);
 
   // ------------------------------------------------------- cadastro
   const enviarCadastro = useCallback(
@@ -1137,7 +1166,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       });
       const resposta = await r.json();
       if (resposta.estado) {
-        setEstado(resposta.estado);
+        entrarEstadoDaAcao(resposta.estado);
         setIdx(resposta.estado.pontos.length - 1);
         setNumero("");
         setCadastroAberto(false);
@@ -1155,7 +1184,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
       });
       return false;
     },
-    [],
+    [entrarEstadoDaAcao],
   );
 
   // ---------------------------------------------- web push (navegador)

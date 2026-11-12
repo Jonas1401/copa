@@ -8,8 +8,25 @@ import {
   quadrosDoLivro,
   resumoDoLivro,
 } from "../src/lib/portal-fila-parse";
-import { lerFilaComSessao, lerPortalDoMotorista, sessaoVazia } from "../src/lib/portal-copadubo";
-import { FILA_QUE_NAO_SOME, PRAZO_DA_FILA_QUE_SOME_MS, motivoDaFilaSumida } from "../src/lib/portal-fila";
+import {
+  PRAZO_FILA_ENTRE_CICLOS_MS,
+  SESSAO_ASSENTADA_PARA_A_FILA_MS,
+  lerFilaComSessao,
+  lerPortalDoMotorista,
+  motivoParaNaoLerAFilaEntreCiclos,
+  sessaoVazia,
+} from "../src/lib/portal-copadubo";
+import {
+  FILA_QUE_NAO_SOME,
+  FOLGA_DA_FILA_MS,
+  INTERVALO_DA_FILA_PADRAO_S,
+  PRAZO_DA_FILA_QUE_SOME_MS,
+  esperaDaFilaMs,
+  intervaloDaFilaMs,
+  motivoDaFilaSumida,
+  validadeDaFilaMs,
+} from "../src/lib/portal-fila";
+import { esperaEntreLeiturasMs } from "../src/lib/portal-situacao";
 import {
   BASE_FALSA,
   CPF_FALSO,
@@ -479,4 +496,153 @@ test("fila recusada na leitura: o livro fica sem leitura e o motivo aparece", as
   assert.match(lida.falhas.A ?? "", /Livro A - Carreta: a página veio cortada/);
   // Quadro recusado não faz a leitura sair procurando o livro em outra aba.
   assert.equal(lida.pedidos, 1);
+});
+
+/* ------------------------------------------- a fila entre as olhadas do Status */
+
+/** Roda `f` com as variáveis do ambiente trocadas e devolve tudo ao lugar. */
+function comAmbiente<T>(valores: Record<string, string | undefined>, f: () => T): T {
+  const antes: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(valores)) {
+    antes[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  try {
+    return f();
+  } finally {
+    for (const [k, v] of Object.entries(antes)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+test("com o app aberto a fila é relida de 20 em 20 s; PORTAL_FILA_INTERVALO_S muda (10 a 60) ou desliga", () => {
+  const limpo = { PORTAL_FILA_INTERVALO_S: undefined, PORTAL_INTERVALO_MIN: undefined };
+  comAmbiente(limpo, () => {
+    assert.equal(INTERVALO_DA_FILA_PADRAO_S, 20);
+    assert.equal(intervaloDaFilaMs(), 20_000);
+    // A reserva fica 2 s abaixo: o pedido do app (um a cada 5 s) nunca cai exatamente em cima da marca.
+    assert.equal(FOLGA_DA_FILA_MS, 2_000);
+    assert.equal(esperaDaFilaMs(), 18_000);
+    // A olhada do Status continua no minuto, e a fila continua valendo por 3 min sem leitura nova.
+    assert.equal(esperaEntreLeiturasMs(), 45_000);
+    assert.equal(validadeDaFilaMs(), 3 * 60_000);
+  });
+  for (const [texto, esperado] of [
+    ["10", 10_000],
+    ["15", 15_000],
+    [" 30 ", 30_000],
+    ["12.4", 12_000],
+    // Fora da faixa ou ilegível: vale o padrão (nunca mais rápido que 10 s por engano).
+    ["5", 20_000],
+    ["9.9", 20_000],
+    ["61", 20_000],
+    ["600", 20_000],
+    ["-20", 20_000],
+    ["rápido", 20_000],
+    ["", 20_000],
+  ] as const) {
+    comAmbiente({ ...limpo, PORTAL_FILA_INTERVALO_S: texto }, () => {
+      assert.equal(intervaloDaFilaMs(), esperado, `PORTAL_FILA_INTERVALO_S=“${texto}”`);
+      assert.equal(esperaDaFilaMs(), esperado - 2_000);
+    });
+  }
+  // A chave de retorno: só a carona do Status, com a espera de sempre.
+  for (const texto of ["0", "desligado", "DESLIGADO", "desligada", "off", "nao", "não"]) {
+    comAmbiente({ ...limpo, PORTAL_FILA_INTERVALO_S: texto }, () => {
+      assert.equal(intervaloDaFilaMs(), null, `PORTAL_FILA_INTERVALO_S=“${texto}”`);
+      assert.equal(esperaDaFilaMs(), 45_000);
+    });
+  }
+  // Intervalo que não é menor que a espera do Status: a carona já lê nesse ritmo.
+  comAmbiente({ ...limpo, PORTAL_FILA_INTERVALO_S: "45" }, () => {
+    assert.equal(intervaloDaFilaMs(), null);
+    assert.equal(esperaDaFilaMs(), 45_000);
+  });
+  comAmbiente({ ...limpo, PORTAL_FILA_INTERVALO_S: "44" }, () => assert.equal(intervaloDaFilaMs(), 44_000));
+  comAmbiente({ ...limpo, PORTAL_FILA_INTERVALO_S: "60" }, () => assert.equal(intervaloDaFilaMs(), null));
+  // Com o Status de 5 em 5 minutos, a fila entre ciclos continua no ritmo dela.
+  comAmbiente({ PORTAL_FILA_INTERVALO_S: "60", PORTAL_INTERVALO_MIN: "5" }, () => {
+    assert.equal(intervaloDaFilaMs(), 60_000);
+    assert.equal(esperaDaFilaMs(), 58_000);
+  });
+  assert.equal(intervaloDaFilaMs(15_000), null, "espera do Status menor que o intervalo: desligada");
+});
+
+test("leitura entre ciclos: a parte de rede muda a sessão que recebe — por isso ela recebe uma CÓPIA", async () => {
+  const portal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]) }, fila: filaDaTela() });
+  const sessao = await sessaoAberta(portal);
+  // Sem o endereço da aba, a parte de rede procura no menu e ANOTA o endereço na sessão que recebeu.
+  sessao.filaUrl = null;
+  const guardada = JSON.stringify(sessao);
+  const copia = structuredClone(sessao);
+  const lida = await lerFilaComSessao(copia, { buscar: portal.buscar, livros: ["A"] });
+  assert.equal(lida.abriu, true);
+  assert.equal(copia.filaUrl, `${BASE_FALSA}/moto/fila`);
+  assert.equal(JSON.stringify(sessao), guardada, "a sessão guardada não foi tocada: nada volta para o banco");
+});
+
+/* ------------------------------------------- a leitura entre as olhadas do Status */
+
+test("a leitura entre ciclos só usa uma sessão assentada: 30 minutos sem o portal pedir login de novo", () => {
+  const agora = 1_800_000_000_000;
+  const MIN = 60_000;
+  const sessao = (logins: number[], extra: { cookies?: Record<string, string>; filaUrl?: string | null } = {}) => ({
+    cookies: { PHPSESSID: "logado1" },
+    filaUrl: `${BASE_FALSA}/moto/fila` as string | null,
+    logins,
+    ...extra,
+  });
+  const motivo = (...argumentos: Parameters<typeof sessao>) => motivoParaNaoLerAFilaEntreCiclos(sessao(...argumentos), agora);
+  assert.equal(SESSAO_ASSENTADA_PARA_A_FILA_MS, 30 * MIN);
+
+  assert.equal(motivo([]), null, "nenhum login na última hora: serve");
+  assert.equal(motivo([agora - 59 * MIN]), null);
+  assert.equal(motivo([agora - 30 * MIN]), null, "30 minutos exatos: serve");
+  assert.match(motivo([agora - 30 * MIN + 1]) ?? "", /^esta conta entrou no portal há 29 min; a leitura entre as olhadas do Status só usa uma sessão aberta há 30 min ou mais$/);
+  assert.match(motivo([agora - 12 * MIN - 5_000]) ?? "", /há 12 min;/);
+  assert.match(motivo([agora - 20_000]) ?? "", /há menos de 1 min;/);
+  // Vale o login MAIS RECENTE, em qualquer ordem da lista.
+  assert.match(motivo([agora - 50 * MIN, agora - 5 * MIN]) ?? "", /há 5 min;/);
+  assert.match(motivo([agora - 5 * MIN, agora - 50 * MIN]) ?? "", /há 5 min;/);
+  assert.equal(motivo([agora - 50 * MIN, agora - 31 * MIN]), null);
+  // Sem sessão aberta ou sem o endereço da aba guardado: também não (e nada é pedido para descobrir).
+  assert.match(motivo([], { cookies: {} }) ?? "", /^sem sessão aberta no portal nesta conta$/);
+  assert.match(motivo([], { filaUrl: null }) ?? "", /^o endereço da aba “Fila” ainda não está guardado nesta conta/);
+  assert.match(motivo([], { filaUrl: "" }) ?? "", /^o endereço da aba “Fila” ainda não está guardado nesta conta/);
+  assert.match(motivo([agora - 5 * MIN], { cookies: {} }) ?? "", /^sem sessão aberta/);
+});
+
+test("a leitura da fila aceita um prazo próprio: com o portal lento, a leitura entre ciclos desiste cedo", async () => {
+  const portal = criarPortalFalso({ telas: { "moto/status": telaStatus([CARTAO]) }, fila: filaDaTela() });
+  const sessao = await sessaoAberta(portal);
+  /** O portal leva `ms` para responder — e, como o fetch de verdade, o pedido falha se for cancelado antes. */
+  const lento =
+    (ms: number): typeof fetch =>
+    (input, init) =>
+      new Promise((resolver, rejeitar) => {
+        const espera = setTimeout(() => resolver(portal.buscar(input, init)), ms);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(espera);
+          rejeitar(init.signal?.reason ?? new DOMException("cancelado", "AbortError"));
+        });
+      });
+  assert.equal(PRAZO_FILA_ENTRE_CICLOS_MS, 6_000, "o prazo da leitura entre ciclos");
+
+  const antes = portal.pedidos.length;
+  const inicio = Date.now();
+  const curta = await lerFilaComSessao(structuredClone(sessao), { buscar: lento(1_500), livros: ["A"], prazoMs: 600 });
+  const levou = Date.now() - inicio;
+  assert.equal(curta.abriu, false);
+  assert.deepEqual(curta.livros, {});
+  assert.match(curta.falhas.A ?? "", /demorou demais/);
+  assert.ok(levou >= 450 && levou < 1_300, `desistiu em ${levou} ms`);
+  assert.equal(portal.pedidos.length, antes, "o pedido foi cancelado antes de o portal responder");
+
+  // Sem prazo próprio vale o de sempre (14 s): a mesma demora não atrapalha a carona do Status.
+  const normal = await lerFilaComSessao(structuredClone(sessao), { buscar: lento(1_500), livros: ["A"] });
+  assert.equal(normal.abriu, true);
+  assert.equal(normal.livros.A?.truck.codigos.length, 5);
 });

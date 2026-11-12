@@ -1746,6 +1746,27 @@ async function comSessaoGuardada<T>(
   }
 }
 
+/**
+ * A sessão guardada deste motorista serve para a leitura da fila entre as
+ * olhadas do Status? Conta ativa, sessão aberta, endereço da aba guardado e
+ * nenhum login há pouco (`motivoParaNaoLerAFilaEntreCiclos`). Só consulta o
+ * banco: nenhum pedido ao portal e nada é gravado.
+ */
+export async function sessaoServeParaAFilaEntreCiclos(motoristaId: number): Promise<boolean> {
+  const acesso = await acessoPortalDoMotorista(motoristaId);
+  if (!acesso || acesso.ativo !== 1) return false;
+  return motivoParaNaoLerAFilaEntreCiclos(await abrirSessaoGuardada(acesso.sessaoCifrada)) === null;
+}
+
+/** Só para os testes: faz de conta que os logins desta conta foram enviados `ms` mais cedo. */
+export async function envelhecerLoginsDaSessao(motoristaId: number, ms: number) {
+  const acesso = await acessoPortalDoMotorista(motoristaId);
+  if (!acesso) return;
+  const sessao = await abrirSessaoGuardada(acesso.sessaoCifrada);
+  sessao.logins = sessao.logins.map((t) => t - ms);
+  await guardarSessao(motoristaId, sessao, acesso.senhaCifrada);
+}
+
 export type LeituraGuardada =
   | { rodou: false; motivo: "sem_acesso" }
   | {
@@ -1868,6 +1889,39 @@ export function lerTelasNaSessaoGuardada(
 
 /** Prazo da leitura da fila (a tela e, se preciso, a aba de outro livro). */
 const PRAZO_FILA_MS = 14_000;
+/**
+ * A leitura da fila ENTRE as olhadas do Status desiste cedo. Ela usa a sessão
+ * de uma conta que a olhada do Status também usa: com o portal lento, um
+ * pedido demorado dela não pode ficar no caminho de quem avisa a saída.
+ */
+export const PRAZO_FILA_ENTRE_CICLOS_MS = 6_000;
+/**
+ * A leitura entre ciclos só usa uma sessão ASSENTADA: aberta há este tempo sem
+ * o portal ter pedido login de novo. É o freio dela. Se o portal encerrar a
+ * sessão de uma conta por causa das consultas a mais, a conta entra de novo
+ * (na olhada do Status, como sempre) e a leitura entre ciclos passa este tempo
+ * sem usá-la: no pior caso é um login a mais a cada meia hora, nunca um por
+ * minuto — o freio de logins da olhada do Status não chega a ser acionado.
+ */
+export const SESSAO_ASSENTADA_PARA_A_FILA_MS = 30 * 60_000;
+
+/**
+ * Por que a sessão guardada NÃO serve para a leitura da fila entre as olhadas
+ * do Status (`null` = serve). Só olha o que está guardado: nenhum pedido.
+ */
+export function motivoParaNaoLerAFilaEntreCiclos(
+  sessao: Pick<SessaoGuardada, "cookies" | "filaUrl" | "logins">,
+  agora = Date.now(),
+): string | null {
+  if (!Object.keys(sessao.cookies).length) return "sem sessão aberta no portal nesta conta";
+  if (!sessao.filaUrl) return "o endereço da aba “Fila” ainda não está guardado nesta conta (a próxima olhada do Status procura)";
+  const ultimoLogin = sessao.logins.length ? Math.max(...sessao.logins) : null;
+  if (ultimoLogin !== null && agora - ultimoLogin < SESSAO_ASSENTADA_PARA_A_FILA_MS) {
+    const minutos = Math.floor((agora - ultimoLogin) / 60_000);
+    return `esta conta entrou no portal há ${minutos < 1 ? "menos de 1" : minutos} min; a leitura entre as olhadas do Status só usa uma sessão aberta há ${SESSAO_ASSENTADA_PARA_A_FILA_MS / 60_000} min ou mais`;
+  }
+  return null;
+}
 
 export type FilaLidaNoPortal = {
   /** A aba “Fila” abriu com a sessão guardada. */
@@ -1917,7 +1971,7 @@ function podeAbrir(visita: SessaoPortal, url: string): boolean {
  */
 export async function lerFilaComSessao(
   sessao: SessaoGuardada,
-  opcoes: { buscar?: typeof fetch; livros: LivroDaFila[] },
+  opcoes: { buscar?: typeof fetch; livros: LivroDaFila[]; /** Prazo da leitura inteira (padrão: 14 s). */ prazoMs?: number },
 ): Promise<FilaLidaNoPortal> {
   const diagnostico: string[] = [];
   const livros: FilaLidaNoPortal["livros"] = {};
@@ -1930,7 +1984,7 @@ export async function lerFilaComSessao(
   };
 
   if (!Object.keys(sessao.cookies).length) return semLeitura("sem sessão aberta no portal nesta conta");
-  visita = new SessaoPortal(opcoes.buscar ?? fetch, urlPortal(""), { cookies: sessao.cookies, prazoTotalMs: PRAZO_FILA_MS });
+  visita = new SessaoPortal(opcoes.buscar ?? fetch, urlPortal(""), { cookies: sessao.cookies, prazoTotalMs: opcoes.prazoMs ?? PRAZO_FILA_MS });
 
   // 1) O endereço da aba: o que o menu do portal informou. Sem ele, abre a
   //    tela de Status (ou a área do motorista) só para ler o menu.
@@ -2010,6 +2064,15 @@ export async function lerFilaComSessao(
  *
  * O que sai daqui é a fila geral (igual para todos os motoristas). `null` =
  * o motorista não tem acesso ativo.
+ *
+ * `somenteLeitura` (a leitura ENTRE as olhadas do Status): a sessão guardada é
+ * usada mas NADA é gravado de volta — nem cookies, nem endereços, nem o freio
+ * de logins. Quem cuida da sessão é só a olhada do Status; assim uma leitura
+ * da fila que corra ao mesmo tempo que ela, em outra instância, nunca passa
+ * por cima do que ela gravou. Sem o endereço da aba já guardado não há pedido
+ * nenhum: procurar a aba no menu fica para a carona do Status. Também não há
+ * pedido com uma sessão recém-aberta (`motivoParaNaoLerAFilaEntreCiclos`), e a
+ * leitura desiste cedo (`PRAZO_FILA_ENTRE_CICLOS_MS`).
  */
 export function lerFilaNaSessaoGuardada(
   motoristaId: number,
@@ -2018,9 +2081,21 @@ export function lerFilaNaSessaoGuardada(
     livros: LivroDaFila[];
     /** Quem chama já está dentro do `umPorVez` deste motorista. */
     jaNaFila?: boolean;
+    somenteLeitura?: boolean;
   },
 ): Promise<FilaLidaNoPortal | null> {
-  const ler = () => comSessaoGuardada(motoristaId, (_credenciais, sessao) => lerFilaComSessao(sessao, opcoes));
+  const ler = () =>
+    comSessaoGuardada(motoristaId, (_credenciais, sessao) => {
+      if (!opcoes.somenteLeitura) return lerFilaComSessao(sessao, opcoes);
+      const motivo = motivoParaNaoLerAFilaEntreCiclos(sessao);
+      if (motivo) {
+        const falhas: FilaLidaNoPortal["falhas"] = {};
+        for (const livro of opcoes.livros) falhas[livro] = motivo;
+        return Promise.resolve<FilaLidaNoPortal>({ abriu: false, livros: {}, falhas, diagnostico: [`Fila: ${motivo}.`], pedidos: 0 });
+      }
+      // Uma cópia: o que a leitura mudar nela (cookies, endereços) não volta para o banco.
+      return lerFilaComSessao(structuredClone(sessao), { buscar: opcoes.buscar, livros: opcoes.livros, prazoMs: PRAZO_FILA_ENTRE_CICLOS_MS });
+    });
   return opcoes.jaNaFila ? ler() : umPorVez(motoristaId, ler);
 }
 
