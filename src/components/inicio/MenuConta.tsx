@@ -4,18 +4,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
-  Bookmark,
   CheckCircle2,
-  CirclePlay,
-  Clapperboard,
   EllipsisVertical,
-  Film,
-  Heart,
   KeyRound,
   Pencil,
-  Radio,
   ShieldCheck,
-  Tv,
   X,
 } from "lucide-react";
 
@@ -133,21 +126,6 @@ export default function MenuConta({
 
   const item =
     "flex min-h-11 w-full items-center gap-3 rounded-[14px] px-3 text-left text-[13px] font-semibold text-gelo/90 transition-colors hover:bg-white/[.07] disabled:opacity-45";
-  // Atalhos do CopaFlix: mesmos destinos do rodapé do módulo, em letra menor
-  // para caber no menu sem empurrar o restante para fora da tela.
-  const atalho =
-    "flex min-h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left text-[12.5px] font-semibold text-gelo/75 transition-colors hover:bg-white/[.07] hover:text-gelo";
-
-  /** Seções do novo ambiente de entretenimento (ver docs/COPAFLIX.md). */
-  const ENTRETENIMENTO = [
-    { rotulo: "Filmes", href: "/copaflix?aba=filmes", Icone: Film },
-    { rotulo: "Séries", href: "/copaflix?aba=series", Icone: Tv },
-    { rotulo: "Novelas", href: "/copaflix?aba=novelas", Icone: Heart },
-    { rotulo: "TV ao vivo", href: "/copaflix?aba=tv", Icone: Radio },
-    { rotulo: "Favoritos", href: "/copaflix?aba=favoritos", Icone: Bookmark },
-    { rotulo: "Continuar assistindo", href: "/copaflix?aba=continuar", Icone: CirclePlay },
-  ] as const;
-
   return (
     <>
       <button
@@ -287,42 +265,6 @@ export default function MenuConta({
                   </button>
                 )}
                 <div className="my-1 h-px bg-white/[.08]" />
-
-                {/* ------------------------------------ Entretenimento (CopaFlix) */}
-                <Link
-                  href="/copaflix"
-                  role="menuitem"
-                  onClick={fechar}
-                  className={item}
-                >
-                  <Clapperboard size={16} className="shrink-0 text-ouro" />
-                  <span className="min-w-0 flex-1">
-                    Entretenimento
-                    <span className="mt-0.5 block truncate text-[11px] leading-tight font-medium text-gelo/50">
-                      Filmes, séries e TV ao vivo
-                    </span>
-                  </span>
-                  <span
-                    aria-hidden
-                    className="shrink-0 rounded-full border border-ciano/45 bg-ciano/10 px-1.5 py-0.5 font-display text-[8.5px] leading-none font-extrabold tracking-[0.1em] text-ciano uppercase"
-                  >
-                    novo
-                  </span>
-                </Link>
-                <div className="mt-0.5 mb-1 ml-[26px] border-l border-white/10 pl-1.5">
-                  {ENTRETENIMENTO.map(({ rotulo, href, Icone }) => (
-                    <Link
-                      key={href}
-                      href={href}
-                      role="menuitem"
-                      onClick={fechar}
-                      className={atalho}
-                    >
-                      <Icone size={13} className="shrink-0 text-ciano" aria-hidden />
-                      {rotulo}
-                    </Link>
-                  ))}
-                </div>
 
                 <div className="my-1 h-px bg-white/[.08]" />
                 <Link
