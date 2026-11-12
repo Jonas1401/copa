@@ -25,7 +25,7 @@ export type ItemAba = {
   icone: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
 };
 
-/** Ordem das abas — a mesma do menu ⋮ (Entretenimento). */
+/** Ordem das abas do CopaFlix. */
 export const ABAS: ItemAba[] = [
   { id: "inicio", rotulo: "Início", rotuloCurto: "Início", icone: House },
   { id: "filmes", rotulo: "Filmes", rotuloCurto: "Filmes", icone: Film },
