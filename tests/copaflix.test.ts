@@ -281,6 +281,36 @@ test("preset desconhecido e regex inválida são ignorados sem derrubar o app", 
   assert.deepEqual(invalida.listasM3U, ["https://exemplo.com/lista.m3u"]);
 });
 
+test("sem configuração nenhuma, nenhuma lista de terceiros é carregada", () => {
+  const padrao = lerConfiguracao({} as unknown as NodeJS.ProcessEnv);
+  assert.deepEqual(padrao.listasM3U, []);
+  assert.deepEqual(padrao.presetsM3U, []);
+  assert.deepEqual(padrao.listasRecusadas, []);
+  assert.equal(padrao.filtroM3U.incluir, undefined);
+});
+
+test("índice completo de lista pública é recusado sem curadoria", () => {
+  const semCuradoria = lerConfiguracao({
+    COPAFLIX_M3U_URLS: "https://iptv-org.github.io/iptv/index.m3u",
+  } as unknown as NodeJS.ProcessEnv);
+  assert.deepEqual(semCuradoria.listasM3U, [], "não pode sair carregando 5.000 canais de terceiros");
+  assert.deepEqual(semCuradoria.listasRecusadas, ["https://iptv-org.github.io/iptv/index.m3u"]);
+
+  const comCuradoria = lerConfiguracao({
+    COPAFLIX_M3U_URLS: "https://iptv-org.github.io/iptv/index.m3u",
+    COPAFLIX_M3U_INCLUIR: "TVBrasil|CanalGov",
+  } as unknown as NodeJS.ProcessEnv);
+  assert.deepEqual(comCuradoria.listasRecusadas, []);
+  assert.deepEqual(comCuradoria.listasM3U, ["https://iptv-org.github.io/iptv/index.m3u"]);
+
+  // Lista por país (já é um recorte) continua aceita sem filtro.
+  const porPais = lerConfiguracao({
+    COPAFLIX_M3U_URLS: "https://iptv-org.github.io/iptv/countries/br.m3u",
+  } as unknown as NodeJS.ProcessEnv);
+  assert.deepEqual(porPais.listasRecusadas, []);
+  assert.equal(porPais.listasM3U.length, 1);
+});
+
 test("a curadoria do operador sobrepõe a do preset e as listas não repetem", () => {
   const config = lerConfiguracao({
     COPAFLIX_M3U_PRESET: "br-publicos",

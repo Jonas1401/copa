@@ -45,11 +45,26 @@ export const PRESETS_M3U: Record<string, { nome: string; url: string; incluir: s
   },
 };
 
+/**
+ * Índices "completos" de listas públicas (milhares de canais de terceiros, sem
+ * autorização verificada). São recusados de propósito quando não há curadoria:
+ * copiar tudo contraria a regra do módulo (só fonte autorizada) e enche a tela
+ * de canais instáveis, geo-bloqueados e sem direitos.
+ */
+const LISTAS_PUBLICAS_COMPLETAS = ["iptv-org.github.io/iptv/index.m3u", "iptv-org.github.io/iptv/all.m3u"];
+
+export function ehListaPublicaCompleta(url: string) {
+  const alvo = url.toLowerCase();
+  return LISTAS_PUBLICAS_COMPLETAS.some((marca) => alvo.includes(marca));
+}
+
 export type ConfiguracaoCopaFlix = {
   demo: boolean;
   permitirRedeInterna: boolean;
   listasM3U: string[];
   presetsM3U: string[];
+  /** Listas amplas recusadas por faltar curadoria (aparecem no painel). */
+  listasRecusadas: string[];
   filtroM3U: FiltroM3U;
   epgUrl?: string;
   jellyfin?: { base: string; chave: string; usuarioId?: string };
@@ -93,7 +108,7 @@ export function lerConfiguracao(ambiente: NodeJS.ProcessEnv = process.env): Conf
     console.warn("[copaflix] preset de lista desconhecido — ignorado");
   }
 
-  const listasM3U = [
+  const todasAsListas = [
     ...new Set([
       ...presetsM3U.map((id) => PRESETS_M3U[id].url),
       ...listaDeUrls(ambiente.COPAFLIX_M3U_URLS || ambiente.COPAFLIX_M3U_URL),
@@ -109,6 +124,17 @@ export function lerConfiguracao(ambiente: NodeJS.ProcessEnv = process.env): Conf
     excluir: compilarRegex(ambiente.COPAFLIX_M3U_EXCLUIR),
   };
 
+  // Lista completa de terceiros só entra com curadoria declarada.
+  const listasRecusadas = filtroM3U.incluir
+    ? []
+    : todasAsListas.filter((url) => ehListaPublicaCompleta(url));
+  if (listasRecusadas.length) {
+    console.warn(
+      "[copaflix] lista pública completa recusada sem curadoria — defina COPAFLIX_M3U_INCLUIR",
+    );
+  }
+  const listasM3U = todasAsListas.filter((url) => !listasRecusadas.includes(url));
+
   const epg = textoLimpo(ambiente.COPAFLIX_EPG_URL);
   const epgUrl = epg && validarUrlExterna(epg, opcoesRede).ok ? epg : undefined;
 
@@ -122,6 +148,7 @@ export function lerConfiguracao(ambiente: NodeJS.ProcessEnv = process.env): Conf
     permitirRedeInterna,
     listasM3U,
     presetsM3U,
+    listasRecusadas,
     filtroM3U,
     epgUrl,
     jellyfin: jellyfinOk
@@ -303,6 +330,7 @@ async function montarAcervo(config: ConfiguracaoCopaFlix): Promise<Acervo> {
     canaisExtras.push(...canaisDasListas);
 
     const curadoria = config.filtroM3U.incluir || config.filtroM3U.excluir;
+    const recusadas = config.listasRecusadas.length;
     const nomeDoPreset = config.presetsM3U
       .map((id) => PRESETS_M3U[id]?.nome ?? id)
       .join(", ");
@@ -315,6 +343,7 @@ async function montarAcervo(config: ConfiguracaoCopaFlix): Promise<Acervo> {
         `${config.listasM3U.length} lista(s)`,
         nomeDoPreset || null,
         curadoria ? "com curadoria" : null,
+        recusadas ? `${recusadas} recusada(s) sem curadoria` : null,
         falhas ? `${falhas} indisponível(is)` : null,
       ]
         .filter(Boolean)
@@ -327,7 +356,10 @@ async function montarAcervo(config: ConfiguracaoCopaFlix): Promise<Acervo> {
       nome: "Listas M3U autorizadas",
       configurada: false,
       itens: 0,
-      detalhe: "Configure COPAFLIX_M3U_URLS com uma lista obtida legalmente",
+      detalhe: config.listasRecusadas.length
+        ? "Lista pública completa recusada sem curadoria — informe COPAFLIX_M3U_INCLUIR"
+        : "Configure COPAFLIX_M3U_URLS com uma lista obtida legalmente",
+      erro: config.listasRecusadas.length ? "Sem lista autorizada" : undefined,
     });
   }
 

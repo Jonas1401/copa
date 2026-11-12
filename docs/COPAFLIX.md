@@ -92,7 +92,7 @@ src/lib/copaflix/url-segura.ts              validação de URL (anti-SSRF)
 src/lib/copaflix/armazenamento.ts           favoritos/progresso/histórico locais
 
 public/images/copaflix/arte-0..5.webp        arte cinematográfica do app
-tests/copaflix.test.ts                      29 testes do módulo
+tests/copaflix.test.ts                      31 testes do módulo
 docs/COPAFLIX.md                            este guia
 ```
 
@@ -170,6 +170,11 @@ COPAFLIX_M3U_EXCLUIR="\[Not 24/7\]"
   `tvg-id + nome + grupo` e contra variantes sem espaço/acento (`TV Senado` casa
   com `TVSenado`). `COPAFLIX_M3U_INCLUIR` do operador **sobrepõe** a do preset.
 - Expressão inválida é ignorada (com aviso no log) em vez de derrubar a página.
+- **Índice completo recusado:** `https://iptv-org.github.io/iptv/index.m3u` (ou
+  `all.m3u`) sem `COPAFLIX_M3U_INCLUIR` **não é carregado**. Nada de 5.000 canais
+  de terceiros sem autorização: a fonte aparece no painel como "recusada sem
+  curadoria". Listas por país/categoria continuam aceitas; com o filtro, o
+  índice completo também.
 - O painel "Fontes e licenças" mostra a lista, o preset e se há curadoria
   ativa em cada carregamento.
 - Continua valendo a regra: **você responde** pelo que a sua operação exibe.
@@ -354,8 +359,8 @@ npm run build       # next build
 | --- | --- |
 | `npm run typecheck` | sem erros |
 | `npm run lint` | 0 erros (7 avisos de `<img>` já existentes no projeto) |
-| `npm test` | 541 testes · 519 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
-| `tests/copaflix.test.ts` | 29/29 passam |
+| `npm test` | 543 testes · 521 passam · 21 pulados · **1 falha pré-existente** (`#ff4d4d` em `.led-vermelho` do `globals.css`, fora do CopaFlix) |
+| `tests/copaflix.test.ts` | 31/31 passam |
 | `npm run build` | sucesso; rotas `/copaflix`, `/copaflix/titulo/[id]` e `/api/copaflix/*` publicadas |
 | Navegação `/` → ⋮ → Entretenimento | OK no servidor de desenvolvimento |
 | Roda 3D (arrasto e teclado) | OK (headless Chromium 390 px e 1440 px) |
