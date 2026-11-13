@@ -70,6 +70,19 @@ const COR_TIPO: Record<string, string> = {
 
 const pad = (n: number) => String(n).padStart(3, "0");
 
+/** A escolha de ocultar os ganhos é deste aparelho: fecha o app e continua oculto. */
+const CHAVE_GANHOS_OCULTOS = "copalinks-ganhos-ocultos-v1";
+
+function lerGanhosOcultos(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(CHAVE_GANHOS_OCULTOS) === "true";
+  } catch {
+    /* navegador sem armazenamento: fica com o padrão desta visita */
+    return false;
+  }
+}
+
 type DadosCadastro = { tipo: string; livro: string; numero: number };
 
 function decorrido(iso: string, agora: number) {
@@ -754,6 +767,32 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const [estado, setEstado] = useState<EstadoDTO>(inicial);
   const [idx, setIdx] = useState(0);
   const [ganhosOcultos, setGanhosOcultos] = useState(false);
+  // Só depois de montar (no cliente) dá para ler o localStorage sem quebrar a
+  // hidratação feita pelo servidor. O padrão é valores visíveis; o guardado
+  // vale a partir da próxima renderização, ainda antes do dinheiro aparecer.
+  useEffect(() => {
+    let vivo = true;
+    try {
+      if (vivo) setGanhosOcultos(lerGanhosOcultos());
+    } catch {
+      /* sem armazenamento: fica com o padrão desta visita */
+    }
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  // Persiste a escolha: continua oculto depois de fechar o aplicativo, e só
+  // mostra os valores quando o usuário tocar no ícone de olho para deixá-los
+  // visíveis.
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAVE_GANHOS_OCULTOS, String(ganhosOcultos));
+    } catch {
+      /* sem armazenamento: vale só nesta visita */
+    }
+  }, [ganhosOcultos]);
+
   const [agora, setAgora] = useState(() => Date.now());
   // Diferença entre o relógio do servidor e o do celular (ms). Sem ela, um
   // celular com relógio atrasado mostrava "Atualizado há 0s" o tempo todo.
