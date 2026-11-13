@@ -74,7 +74,7 @@ const CORES: Record<CorServico, { cartao: string; icone: string }> = {
  * leitura é antiga ou parcial, uma linha miúda dizendo isso. Enquanto falta a
  * porcentagem de algum ponto, a comissão dá lugar a “Falta %” (em âmbar).
  */
-function NumerosDoTicket({ c }: { c: Extract<CartaoDoTicket, { modo: "numeros" }> }) {
+function NumerosDoTicket({ c, ganhosOcultos }: { c: Extract<CartaoDoTicket, { modo: "numeros" }>; ganhosOcultos: boolean }) {
   // Dinheiro nunca é cortado com “…”: quando o valor não cabe ao lado do
   // rótulo (card estreito, valor grande), ele desce inteiro para a linha de baixo.
   const linha = "flex flex-wrap items-baseline justify-between gap-x-2";
@@ -88,11 +88,11 @@ function NumerosDoTicket({ c }: { c: Extract<CartaoDoTicket, { modo: "numeros" }
       </span>
       <span className={linha}>
         <span className={rotulo}>Bruto</span>
-        <span className={`${valor} text-white`}>{c.bruto}</span>
+        <span className={`${valor} text-white`}>{ganhosOcultos ? "*****" : c.bruto}</span>
       </span>
       <span className={linha}>
         <span className={rotulo}>Comissão</span>
-        <span className={`${valor} ${c.faltaPorcentagem ? "text-ambar" : "text-ouro"}`}>{c.comissao}</span>
+        <span className={`${valor} ${c.faltaPorcentagem ? "text-ambar" : "text-ouro"}`}>{ganhosOcultos ? "*****" : c.comissao}</span>
       </span>
       {c.nota && <span className={`block pt-0.5 text-[11px] leading-tight ${c.velho || c.faltaPorcentagem ? "text-ambar" : "text-gelo/65"}`}>{c.nota}</span>}
     </span>
@@ -104,12 +104,14 @@ function CartaoServico({
   largo = false,
   onSemLink,
   ticket,
+  ganhosOcultos,
 }: {
   s: Servico;
   largo?: boolean;
   onSemLink: (s: Servico) => void;
   /** Só no card “Saldo de Ganhos”: o que a leitura do Ticket trouxe. */
   ticket?: CartaoDoTicket | null;
+  ganhosOcultos: boolean;
 }) {
   const Icone = ICONES[s.icone];
   const cor = CORES[s.cor];
@@ -130,7 +132,7 @@ function CartaoServico({
         {s.titulo}
       </span>
       {ticket?.modo === "numeros" ? (
-        <NumerosDoTicket c={ticket} />
+        <NumerosDoTicket c={ticket} ganhosOcultos={ganhosOcultos} />
       ) : (
         <span className="mt-1 block text-[13px] leading-snug text-gelo/80">{ticket?.modo === "texto" ? ticket.texto : s.subtitulo}</span>
       )}
@@ -158,6 +160,7 @@ function CartaoServico({
 export default function Servicos({
   onSemLink,
   ticket = null,
+  ganhosOcultos = false,
 }: {
   onSemLink: (s: Servico) => void;
   /**
@@ -167,6 +170,7 @@ export default function Servicos({
    * receber” do cartão do número. null = visitante, ou ainda sem resposta.
    */
   ticket?: CartaoDoTicket | null;
+  ganhosOcultos?: boolean;
 }) {
   // Como na referência: uma linha de cards e o "Ver todos" para revelar o resto.
   const [mostrarTodos, setMostrarTodos] = useState(false);
@@ -205,6 +209,7 @@ export default function Servicos({
             largo={visiveis.length % 2 === 1 && i === visiveis.length - 1}
             onSemLink={onSemLink}
             ticket={s.id === "consulta-ponto" ? ticket : undefined}
+            ganhosOcultos={ganhosOcultos}
           />
         ))}
       </div>

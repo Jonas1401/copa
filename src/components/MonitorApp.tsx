@@ -753,6 +753,7 @@ function CadastroInline({
 export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const [estado, setEstado] = useState<EstadoDTO>(inicial);
   const [idx, setIdx] = useState(0);
+  const [ganhosOcultos, setGanhosOcultos] = useState(false);
   const [agora, setAgora] = useState(() => Date.now());
   // Diferença entre o relógio do servidor e o do celular (ms). Sem ela, um
   // celular com relógio atrasado mostrava "Atualizado há 0s" o tempo todo.
@@ -1529,6 +1530,8 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   trocar o nome, ativar notificações e o painel do admin */}
               <Cabecalho
                 onCompartilhar={compartilhar}
+                ganhosOcultos={ganhosOcultos}
+                onAlternarGanhos={() => setGanhosOcultos((ocultos) => !ocultos)}
                 nome={motorista?.nome ?? null}
                 assinada={assinada}
                 totalMotoristas={totalMotoristas}
@@ -1681,7 +1684,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                     } ${saldo.velho ? "opacity-70" : ""}`}
                     style={{ fontSize: letraDoSaldo(saldo.valor) }}
                   >
-                    {saldo.valor}
+                    {ganhosOcultos ? "*****" : saldo.valor}
                   </span>
                   {saldo.nota && (
                     <span
@@ -1770,7 +1773,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               transition={{ duration: 0.45, delay: 0.12 }}
               className="mt-4"
             >
-              <Servicos onSemLink={semLink} ticket={cartaoTicket} />
+              <Servicos onSemLink={semLink} ticket={cartaoTicket} ganhosOcultos={ganhosOcultos} />
             </motion.div>
           </>
         )}

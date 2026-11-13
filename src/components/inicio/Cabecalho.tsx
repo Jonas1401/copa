@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Share2 } from "lucide-react";
+import { Eye, EyeOff, Share2 } from "lucide-react";
 import type { Icone } from "@/lib/tempo";
 import { IconeLinha } from "@/components/tempo/IconeTempo";
 import MenuConta from "@/components/inicio/MenuConta";
@@ -56,6 +56,8 @@ function ChipClima() {
  */
 export default function Cabecalho({
   onCompartilhar,
+  ganhosOcultos,
+  onAlternarGanhos,
   nome,
   assinada,
   totalMotoristas = null,
@@ -64,6 +66,8 @@ export default function Cabecalho({
   onAbrirPortal,
 }: {
   onCompartilhar: () => void;
+  ganhosOcultos: boolean;
+  onAlternarGanhos: () => void;
   /** Nome do motorista neste aparelho (null = ainda sem perfil). */
   nome: string | null;
   /** Este aparelho já recebe os avisos. */
@@ -73,7 +77,7 @@ export default function Cabecalho({
    * (mesmo número da aba "Sobre"); enquanto não chega, o selo não aparece.
    */
   totalMotoristas?: number | null;
-  onRenomear: (nome: string) => Promise<boolean>;
+  onRenomear: (nome: string) => Promise<{ ok: boolean; erro?: string }>;
   onAtivarNotificacoes: () => void;
   /** Abre o cadastro do CPF/senha do portal da Copadubo (menu ⋮). */
   onAbrirPortal?: () => void;
@@ -90,6 +94,17 @@ export default function Cabecalho({
         onAtivarNotificacoes={onAtivarNotificacoes}
         onAbrirPortal={onAbrirPortal}
       />
+
+      <button
+        type="button"
+        onClick={onAlternarGanhos}
+        aria-label={ganhosOcultos ? "Mostrar ganhos" : "Esconder ganhos"}
+        title={ganhosOcultos ? "Mostrar ganhos" : "Esconder ganhos"}
+        aria-pressed={ganhosOcultos}
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20 text-gelo/65 backdrop-blur-[2px] transition-colors hover:border-white/25 hover:bg-black/40 hover:text-white sm:h-12 sm:w-12"
+      >
+        {ganhosOcultos ? <EyeOff size={19} aria-hidden /> : <Eye size={19} aria-hidden />}
+      </button>
 
       {/* controles discretos no canto: ícones pequenos, quase sem "caixa",
           para não brigar com a foto do caminhão. Ganhos de toque mantidos

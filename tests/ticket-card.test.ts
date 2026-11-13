@@ -303,7 +303,7 @@ test("o card dos SERVIÇOS mostra os três números do motorista logado", () => 
   assert.match(numeros, /flex-wrap/);
   assert.match(numeros, /whitespace-nowrap/);
   // “Falta %” não é dinheiro: aparece na cor de aviso (âmbar), e não na cor da comissão.
-  assert.match(numeros, /\$\{c\.faltaPorcentagem \? "text-ambar" : "text-ouro"\}`\}>\{c\.comissao\}</);
+  assert.match(numeros, /\$\{c\.faltaPorcentagem \? "text-ambar" : "text-ouro"\}`\}>\{ganhosOcultos \? "\*\*\*\*\*" : c\.comissao\}</);
   // Quem consulta o servidor é a tela inicial, UMA vez só: o mesmo resumo vai para este card e para o
   // “Você vai receber” do cartão do número (dois pedidos por minuto, não; dois números diferentes, nunca).
   const inicio = ler("src/components/MonitorApp.tsx");
@@ -311,7 +311,7 @@ test("o card dos SERVIÇOS mostra os três números do motorista logado", () => 
   assert.equal((inicio.match(/useResumoDoTicket\(/g) ?? []).length, 1);
   assert.match(inicio, /const ticket = useResumoDoTicket\(motoristaId !== null, 60_000, motoristaId\);/);
   assert.match(inicio, /const cartaoTicket = motorista && ticket\.resumo \? cartaoDoTicket\(ticket\.resumo, ticket\.agora\) : null;/);
-  assert.match(inicio, /<Servicos onSemLink=\{semLink\} ticket=\{cartaoTicket\} \/>/);
+  assert.match(inicio, /<Servicos onSemLink=\{semLink\} ticket=\{cartaoTicket\} ganhosOcultos=\{ganhosOcultos\} \/>/);
   // Visitante sem cadastro não consulta o servidor.
   const gancho = ler("src/components/consulta/useResumoDoTicket.ts");
   assert.match(gancho, /if \(!ativo\) return;/);
