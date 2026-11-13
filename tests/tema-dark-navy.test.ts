@@ -79,7 +79,9 @@ test("fundo sólido quase preto azul-marinho, sem degradê chamativo", () => {
 });
 
 test("nenhuma cor fora da paleta nas telas (nem cobalto, violeta ou WhatsApp antigos)", () => {
-  const permitidas = new Set([...PALETA.map((c) => c.toLowerCase()), "#000", "#ffffff", "#fff"]);
+  const coresValoresPainel = ["#12C8D4", "#FFB52E", "#20D879", "#FFC02E"] as const;
+  const permitidasBase = new Set([...PALETA.map((c) => c.toLowerCase()), "#000", "#ffffff", "#fff"]);
+  const permitidasPainel = new Set([...permitidasBase, ...coresValoresPainel.map((c) => c.toLowerCase())]);
   // #000 = máscara/sombra sobre foto; #ffffff/#fff = módulo claro do QR Code e
   // fundo de canvas de leitura (OCR) — funcionais, não são superfície da UI.
   const proibidas = [
@@ -88,6 +90,9 @@ test("nenhuma cor fora da paleta nas telas (nem cobalto, violeta ou WhatsApp ant
   ];
   for (const arquivo of arquivos("src")) {
     if (arquivo.includes("figurinhas-pacote")) continue; // arte gerada das figurinhas, não é tema
+    const ehPainelValores = arquivo.endsWith("MonitorApp.tsx") || arquivo.endsWith("globals.css");
+    const permitidas = ehPainelValores ? permitidasPainel : permitidasBase;
+    const paletaRgba = ehPainelValores ? [...PALETA, ...coresValoresPainel] : PALETA;
     const s = ler(arquivo);
     for (const cor of proibidas) {
       assert.ok(!s.toLowerCase().includes(cor), `${arquivo} ainda usa a cor antiga ${cor}`);
@@ -98,7 +103,7 @@ test("nenhuma cor fora da paleta nas telas (nem cobalto, violeta ou WhatsApp ant
     }
     for (const m of s.matchAll(/rgba?\((\d+),\s*(\d+),\s*(\d+)/g)) {
       const rgb = `rgb(${m[1]}, ${m[2]}, ${m[3]})`;
-      const naPaleta = PALETA.some((hex) => {
+      const naPaleta = paletaRgba.some((hex) => {
         const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
         return rgb === `rgb(${r}, ${g}, ${b})`;
       });

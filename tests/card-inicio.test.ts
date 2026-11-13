@@ -44,7 +44,7 @@ const linhaDoSaldo = (largura: number) => largura - 61;
 
 /** A largura do número na tela, com os mesmos limites das classes dele. */
 const numeroPx = (codigo: string, largura: number) => {
-  const [min, max] = codigo.length > 3 ? [50, 66] : [64, 92];
+  const [min, max] = codigo.length > 3 ? [42, 56] : [54, 78];
   return larguraDoCodigoEm(codigo) * Math.max(min, Math.min((letraDoCodigoVw(codigo) * largura) / 100, max));
 };
 
@@ -54,10 +54,11 @@ test("a largura do número bate com a medida na fonte do app (Archivo 900, letra
   for (const [codigo, em] of medidas) assert.ok(Math.abs(larguraDoCodigoEm(codigo) - em) < 0.012, `${codigo}: ${larguraDoCodigoEm(codigo)} ≠ ${em}`);
   // Letra de um livro que ainda não existe conta como a mais larga (nunca de menos).
   assert.ok(larguraDoCodigoEm("W32") >= larguraDoCodigoEm("M32"));
-  // O tamanho da letra é o das classes do número: 21,5vw até 3 caracteres, 15,5vw com 4.
-  assert.equal(letraDoCodigoVw("A32"), 21.5);
-  assert.equal(letraDoCodigoVw("A196"), 15.5);
-  assert.match(CARTAO, /alvo && alvo\.codigo\.length > 3\s+\? "text-\[clamp\(50px,15\.5vw,66px\)\]"\s+: "text-\[clamp\(64px,21\.5vw,92px\)\]"/);
+  // O tamanho da letra é o das classes do número (~15% menor): 18,3vw até 3 caracteres, 13,2vw com 4.
+  assert.equal(letraDoCodigoVw("A32"), 18.3);
+  assert.equal(letraDoCodigoVw("A196"), 13.2);
+  assert.match(CARTAO, /alvo && alvo\.codigo\.length > 3\s+\? "text-\[clamp\(42px,13\.2vw,56px\)\]"\s+: "text-\[clamp\(54px,18\.3vw,78px\)\]"/);
+  assert.match(CARTAO, /text-\[#12C8D4\]/);
 });
 
 test("na tela de 412 px o selo tem o tamanho do desenho: 17 px, ao lado do A32", () => {
@@ -69,7 +70,7 @@ test("na tela de 412 px o selo tem o tamanho do desenho: 17 px, ao lado do A32",
   const selo = (m.seloEm / 1.02) * letra + 2;
   assert.ok(Math.abs(selo - 154) < 2, `selo de ${selo} px`);
   // E é esse o tamanho que vai para a tela (a mesma conta, escrita em CSS).
-  assert.equal(m.letra, "clamp(9px, min(4.15vw, calc((53.772vw - 62px) / 9.068)), 18px)");
+  assert.equal(m.letra, "clamp(9px, min(4.15vw, calc((60.146vw - 62px) / 9.068)), 18px)");
   assert.deepEqual(SELO, { folga: 0.82, bolinha: 0.8, vao: 0.78 });
   assert.equal(VAO_NUMERO_SELO, "min(3.4vw, 15px)");
 });
@@ -106,8 +107,8 @@ test("o selo cabe SEMPRE ao lado do número — em qualquer tela, com qualquer p
       }
     }
   }
-  // A letra só chega ao piso (9 px) no pior caso de todos: tela de 320 px, livro M, “EM ATENDIMENTO”.
-  assert.equal(menor, 9);
+  // No pior caso (tela de 320 px, livro M, “EM ATENDIMENTO”) a letra continua acima do piso (9 px).
+  assert.ok(menor >= 9 && menor <= 12.5);
   assert.ok(letraDoSeloPx(medidasDoSelo("A32", "ESCALADO"), 360) > 14);
   assert.ok(letraDoSeloPx(medidasDoSelo("A32", "ATIVO", "12 na frente"), 320) > 13);
 });
@@ -163,9 +164,9 @@ test("a largura do valor bate com a medida na fonte do app (Archivo 900)", () =>
 });
 
 test("o dinheiro cabe SEMPRE inteiro numa linha — e, enquanto cabe, tem o tamanho do desenho", () => {
-  // Na tela de 412 px: 12vw ≈ 49 px, o mesmo “Você vai receber” do Cálculo de Frete.
-  assert.ok(Math.abs(letraDoSaldoPx("R$ 0,00", 412) - 49.44) < 0.01);
-  assert.equal(letraDoSaldo("R$ 0,00"), "clamp(28px, min(12vw, calc((100vw - 72px) / 3.904)), 54px)");
+  // Na tela de 412 px: 10vw ≈ 41,2 px (~17% menor que antes, mantendo boa legibilidade e destaque financeiro).
+  assert.ok(Math.abs(letraDoSaldoPx("R$ 0,00", 412) - 41.2) < 0.01);
+  assert.equal(letraDoSaldo("R$ 0,00"), "clamp(24px, min(10vw, calc((100vw - 72px) / 3.904)), 44px)");
   assert.match(ler("src/components/frete/FreteApp.tsx"), /text-\[clamp\(38px,12vw,54px\)\]/);
   const valores = ["R$ 0,00", "R$ 9,99", "R$ 507,92", "R$ 1.234,56", "R$ 12.345,67", "R$ 99.999,99", "R$ 888.888,88", "Falta %", "R$ —"];
   for (const largura of LARGURAS) {
@@ -173,14 +174,14 @@ test("o dinheiro cabe SEMPRE inteiro numa linha — e, enquanto cabe, tem o tama
       const letra = letraDoSaldoPx(valor, largura);
       const sobra = linhaDoSaldo(largura) - letra * larguraDoSaldoEm(valor);
       assert.ok(sobra >= 0, `${largura} px, ${valor}: faltam ${(-sobra).toFixed(1)} px (letra de ${letra.toFixed(1)} px)`);
-      assert.ok(letra >= 28 && letra <= 54);
+      assert.ok(letra >= 24 && letra <= 44);
     }
     // Até R$ 9.999,99 o valor nunca encolhe: é sempre o tamanho do desenho.
-    for (const valor of ["R$ 0,00", "R$ 507,92", "R$ 9.999,99"]) assert.equal(letraDoSaldoPx(valor, largura), Math.min(54, (12 * largura) / 100));
+    for (const valor of ["R$ 0,00", "R$ 507,92", "R$ 9.999,99"]) assert.equal(letraDoSaldoPx(valor, largura), Math.min(44, (10 * largura) / 100));
   }
-  // Valor maior encolhe só o que precisa.
-  assert.ok(letraDoSaldoPx("R$ 12.345,67", 412) > 49);
-  assert.ok(letraDoSaldoPx("R$ 888.888,88", 360) > 37);
+  // Valor maior cabe com folga ou encolhe só o que precisa.
+  assert.ok(letraDoSaldoPx("R$ 12.345,67", 412) >= 41);
+  assert.ok(letraDoSaldoPx("R$ 888.888,88", 360) >= 35);
 });
 
 test("a tela: “Você vai receber” fica dentro do cartão do número, abre o Saldo de Ganhos e nunca corta o dinheiro", () => {
@@ -194,8 +195,8 @@ test("a tela: “Você vai receber” fica dentro do cartão do número, abre o 
   assert.match(saldo, /style=\{\{ fontSize: letraDoSaldo\(saldo\.valor\) \}\}/);
   assert.match(saldo, /whitespace-nowrap/);
   assert.ok(!/\btruncate\b|line-clamp|text-ellipsis|overflow-hidden/.test(saldo), "o saldo não pode ser cortado");
-  // Dinheiro em ouro; “Falta %” em âmbar (não é dinheiro); o traço, apagado. Leitura antiga, mais apagada.
-  assert.match(saldo, /saldo\.temValor \? "text-ouro" : saldo\.valor === FALTA_PORCENTAGEM \? "text-ambar" : "text-ouro\/45"/);
+  // Dinheiro em dourado (#FFC02E); “Falta %” em âmbar (não é dinheiro); o traço, apagado. Leitura antiga, mais apagada.
+  assert.match(saldo, /saldo\.temValor[\s\S]*?"text-\[#FFC02E\][\s\S]*?saldo\.valor === FALTA_PORCENTAGEM[\s\S]*?"text-ambar"[\s\S]*?"text-\[#FFC02E\]\/45"/);
   assert.match(saldo, /\$\{saldo\.velho \? "opacity-70" : ""\}/);
   // A linha miúda só existe quando há o que dizer.
   assert.match(saldo, /\{saldo\.nota && \(/);
@@ -217,14 +218,18 @@ test("a tela: a faixa “Último escalado” saiu, e os dois quadros da fila sã
   const faixa = TELA.slice(TELA.indexOf("function FaixaInfo("), TELA.indexOf("function LinhaDaLeitura("));
   assert.match(faixa, /data-faixa=\{faixa\}/);
   assert.match(faixa, /className="cartao-monitor flex min-h-\[67px\] w-full items-center /);
-  // As medidas do desenho valem na tela de 412 px (anel de 48, vãos de 15, letras de 14,5 e 13, número de 33);
+  // As medidas do desenho valem na tela de 412 px (anel de 48, vãos de 15, letras de 14,5 e 13, número proporcional);
   // em tela estreita encolhem juntas, para o texto não encostar no número.
-  for (const medida of ["gap-[clamp(10px,3.64vw,15px)]", "h-[clamp(40px,11.65vw,48px)]", "text-[clamp(13px,3.52vw,14.5px)]", "text-[clamp(11.5px,3.16vw,13px)]", "text-[clamp(26px,8.1vw,35px)]"]) {
+  for (const medida of ["gap-[clamp(10px,3.64vw,15px)]", "h-[clamp(40px,11.65vw,48px)]", "text-[clamp(13px,3.52vw,14.5px)]", "text-[clamp(11.5px,3.16vw,13px)]", "text-[clamp(24px,7.3vw,31px)]"]) {
     assert.ok(faixa.includes(medida), `o quadro da fila sem ${medida}`);
   }
   const em412 = (vw: number) => (vw * 412) / 100;
   assert.ok(Math.abs(em412(3.64) - 15) < 0.05 && Math.abs(em412(11.65) - 48) < 0.05 && Math.abs(em412(3.52) - 14.5) < 0.05 && Math.abs(em412(3.16) - 13) < 0.05);
   assert.match(depois, /<div className="mt-3\.5 flex flex-col gap-\[13px\]">\s+<FaixaInfo/);
+  assert.match(depois, /destaque=\{\{ texto: "TRUCK", cor: "text-\[#FFB52E\]" \}\}/);
+  assert.match(depois, /corValor="text-\[#FFB52E\]/);
+  assert.match(depois, /destaque=\{\{ texto: "CAVALO\/C", cor: "text-\[#20D879\]" \}\}/);
+  assert.match(depois, /corValor="text-\[#20D879\]/);
   // O “último escalado” de cada quadro continua na linha de baixo dele (vem de `cardDaFila`).
   assert.match(depois, /sub=\{cardFila\.truck\.sub\}/);
   assert.match(depois, /sub=\{cardFila\.cavalo\.sub\}/);
