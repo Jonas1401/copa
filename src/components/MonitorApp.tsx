@@ -53,6 +53,7 @@ import { chamadaDoAvisoDeSaida, foraDaFilaPeloPortal, seloDoPortal } from "@/lib
 import { cardDaFila } from "@/lib/fila-card";
 import { LETRA_DA_SEGUNDA_LINHA, SELO, VAO_NUMERO_SELO, letraDoSaldo, medidasDoSelo, monitorEmDia } from "@/lib/cartao-inicio";
 import { FALTA_PORCENTAGEM, cartaoDoTicket, saldoDoInicio } from "@/lib/ticket-card";
+import { lerGanhosOcultos, salvarGanhosOcultos } from "@/lib/ocultar-ganhos";
 import { useResumoDoTicket } from "@/components/consulta/useResumoDoTicket";
 
 
@@ -754,6 +755,16 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const [estado, setEstado] = useState<EstadoDTO>(inicial);
   const [idx, setIdx] = useState(0);
   const [ganhosOcultos, setGanhosOcultos] = useState(false);
+  useEffect(() => {
+    const sincronizar = () => setGanhosOcultos(lerGanhosOcultos());
+    sincronizar();
+    window.addEventListener("storage", sincronizar);
+    window.addEventListener("pageshow", sincronizar);
+    return () => {
+      window.removeEventListener("storage", sincronizar);
+      window.removeEventListener("pageshow", sincronizar);
+    };
+  }, []);
   const [agora, setAgora] = useState(() => Date.now());
   // Diferença entre o relógio do servidor e o do celular (ms). Sem ela, um
   // celular com relógio atrasado mostrava "Atualizado há 0s" o tempo todo.
@@ -1531,7 +1542,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
               <Cabecalho
                 onCompartilhar={compartilhar}
                 ganhosOcultos={ganhosOcultos}
-                onAlternarGanhos={() => setGanhosOcultos((ocultos) => !ocultos)}
+                onAlternarGanhos={() => setGanhosOcultos((ocultos) => salvarGanhosOcultos(!ocultos))}
                 nome={motorista?.nome ?? null}
                 assinada={assinada}
                 totalMotoristas={totalMotoristas}
