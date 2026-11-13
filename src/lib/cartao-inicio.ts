@@ -30,10 +30,10 @@ export function larguraDoCodigoEm(codigo: string): number {
 
 /**
  * O tamanho da letra do número, em centésimos da largura da tela (vw): o código
- * de até 3 caracteres usa 21,5; o de 4 ou mais, 15,5 (as mesmas classes de
- * sempre: `clamp(64px,21.5vw,92px)` e `clamp(50px,15.5vw,66px)`).
+ * de até 3 caracteres usa 18,3; o de 4 ou mais, 13,2 (as classes do número:
+ * `clamp(54px,18.3vw,78px)` e `clamp(42px,13.2vw,56px)`).
  */
-export const letraDoCodigoVw = (codigo: string) => (codigo.length > 3 ? 15.5 : 21.5);
+export const letraDoCodigoVw = (codigo: string) => (codigo.length > 3 ? 13.2 : 18.3);
 
 /* -------------------------------------------------------------- o selo */
 
@@ -145,10 +145,10 @@ export function larguraDoSaldoEm(valor: string): number {
   return Math.round((1.57 + 0.667 * algarismos + 0.333 * separadores) * 1000) / 1000;
 }
 
-/** A letra do saldo na tela de 412 px (≈ 49 px, a mesma do “Você vai receber” do Cálculo de Frete), em vw, com piso e teto. */
-const LETRA_DO_SALDO_VW = 12;
-const LETRA_DO_SALDO_MIN = 28;
-const LETRA_DO_SALDO_MAX = 54;
+/** A letra do saldo na tela de 412 px (≈ 41,2 px), em vw, com piso e teto equilibrados. */
+const LETRA_DO_SALDO_VW = 10;
+const LETRA_DO_SALDO_MIN = 24;
+const LETRA_DO_SALDO_MAX = 44;
 /** Margens e bordas do cartão, o recuo do valor e a folga da direita, em px. */
 const FIXO_DO_SALDO_PX = 72;
 

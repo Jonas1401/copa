@@ -195,9 +195,10 @@ body {
   color: var(--color-abismo);
 }
 
-/* --- número gigante do cartão: ciano sólido (sem degradê no texto) --- */
+/* --- número gigante do cartão: azul turquesa/ciano (#12C8D4) com brilho discreto --- */
 .numero-gradiente {
-  color: var(--color-ciano);
+  color: #12C8D4;
+  text-shadow: 0 0 14px rgba(18, 200, 212, 0.25);
 }
 
 /* --- micro rótulos em versalete travado ------------------------------ */

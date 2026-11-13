@@ -589,7 +589,7 @@ function FaixaInfo({
       </span>
       <span className="flex shrink-0 items-center">
         <span
-          className={`tabular font-display text-[clamp(26px,8.1vw,35px)] leading-none font-extrabold ${corValor}`}
+          className={`tabular font-display text-[clamp(24px,7.3vw,31px)] leading-none font-extrabold ${corValor}`}
         >
           {valor}
         </span>
@@ -1626,10 +1626,10 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   >
                     <span
                       data-numero
-                      className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] drop-shadow-[0_0_26px_rgba(0, 184, 188, 0.45)] ${
+                      className={`numero-gradiente tabular shrink-0 font-display leading-[0.9] font-black tracking-[-0.04em] text-[#12C8D4] ${
                         alvo && alvo.codigo.length > 3
-                          ? "text-[clamp(50px,15.5vw,66px)]"
-                          : "text-[clamp(64px,21.5vw,92px)]"
+                          ? "text-[clamp(42px,13.2vw,56px)]"
+                          : "text-[clamp(54px,18.3vw,78px)]"
                       }`}
                     >
                       {alvo ? alvo.codigo : "—"}
@@ -1691,7 +1691,11 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
                   <span
                     data-saldo-valor
                     className={`tabular -mt-px block pl-[11px] font-display leading-none font-black whitespace-nowrap ${
-                      saldo.temValor ? "text-ouro" : saldo.valor === FALTA_PORCENTAGEM ? "text-ambar" : "text-ouro/45"
+                      saldo.temValor
+                        ? "text-[#FFC02E] [text-shadow:0_0_12px_rgba(255,192,46,0.22)]"
+                        : saldo.valor === FALTA_PORCENTAGEM
+                          ? "text-ambar"
+                          : "text-[#FFC02E]/45"
                     } ${saldo.velho ? "opacity-70" : ""}`}
                     style={{ fontSize: letraDoSaldo(saldo.valor) }}
                   >
@@ -1737,22 +1741,22 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
             <div className="mt-3.5 flex flex-col gap-[13px]">
               <FaixaInfo
                 faixa="truck"
-                icone={<Truck strokeWidth={2} className="h-[52%] w-[52%] text-[#FFB82E]" />}
-                anel="border-[#FFB82E]/70 bg-[#FFB82E]/10 shadow-[0_0_20px_-6px_rgba(255, 184, 46, 0.9)]"
+                icone={<Truck strokeWidth={2} className="h-[52%] w-[52%] text-[#FFB52E]" />}
+                anel="border-[#FFB52E]/70 bg-[#FFB52E]/10 shadow-[0_0_14px_-5px_rgba(255,181,46,0.38)]"
                 rotulo="Pontos no quadro"
-                destaque={{ texto: "TRUCK", cor: "text-[#FFB82E]" }}
+                destaque={{ texto: "TRUCK", cor: "text-[#FFB52E]" }}
                 valor={cardFila.truck.valor}
-                corValor="text-[#FFB82E]"
+                corValor="text-[#FFB52E] [text-shadow:0_0_10px_rgba(255,181,46,0.22)]"
                 sub={cardFila.truck.sub}
               />
               <FaixaInfo
                 faixa="cavalo"
-                icone={<Truck strokeWidth={2} className="h-[52%] w-[52%] text-[#00C853]" />}
-                anel="border-[#00C853]/70 bg-[#00C853]/10 shadow-[0_0_20px_-6px_rgba(0, 200, 83, 0.9)]"
+                icone={<Truck strokeWidth={2} className="h-[52%] w-[52%] text-[#20D879]" />}
+                anel="border-[#20D879]/70 bg-[#20D879]/10 shadow-[0_0_14px_-5px_rgba(32,216,121,0.38)]"
                 rotulo="Pontos no quadro"
-                destaque={{ texto: "CAVALO/C", cor: "text-[#00C853]" }}
+                destaque={{ texto: "CAVALO/C", cor: "text-[#20D879]" }}
                 valor={cardFila.cavalo.valor}
-                corValor="text-[#00C853]"
+                corValor="text-[#20D879] [text-shadow:0_0_10px_rgba(32,216,121,0.22)]"
                 sub={cardFila.cavalo.sub}
               />
             </div>
