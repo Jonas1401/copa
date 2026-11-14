@@ -9,6 +9,7 @@ import CartaoFigurinhasAdmin from "@/components/admin/CartaoFigurinhasAdmin";
 import CartaoRadarPrevisaoAdmin from "@/components/admin/CartaoRadarPrevisaoAdmin";
 import CartaoPortalAdmin from "@/components/admin/CartaoPortalAdmin";
 import CartaoDivulgacaoAdmin from "@/components/admin/CartaoDivulgacaoAdmin";
+import WhatsAppSemApkCard from "@/components/monitor/WhatsAppSemApkCard";
 import {
   BellRing,
   Bot,
@@ -638,6 +639,7 @@ export default function AdminApp({ url }: { url: string }) {
   const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
   const [remover, setRemover] = useState<Integracao | null>(null);
   const [auditoriaAberta, setAuditoriaAberta] = useState(false);
+  const [monitorAberto, setMonitorAberto] = useState(false);
 
   const sair401 = useCallback((status: number) => {
     // Só desloga com "Sessão expirada" se realmente havia um token salvo que falhou
@@ -817,6 +819,20 @@ export default function AdminApp({ url }: { url: string }) {
             </div>
 
             <CartaoNotificacoesAdmin />
+
+            <section className="mt-4 rounded-[22px] border border-[#183341]/60 bg-[#071A28]/90 p-4">
+              <button type="button" onClick={() => setMonitorAberto((v) => !v)} aria-expanded={monitorAberto}
+                className="flex w-full items-center justify-between gap-3 text-left">
+                <span className="font-display text-[17px] font-bold text-[#00B8BC]">Monitor WhatsApp</span>
+                <span className="flex items-center gap-1 text-[13px] font-semibold text-gelo/70">
+                  {monitorAberto ? "Fechar" : "Abrir"}
+                  {monitorAberto ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </span>
+              </button>
+              {monitorAberto && (
+                <WhatsAppSemApkCard cabecalho={() => ({})} />
+              )}
+            </section>
 
             <TrocarSenha onAviso={setAviso} onSessaoExpirada={sair401} />
 

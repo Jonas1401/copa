@@ -228,8 +228,8 @@ body {
   color: var(--color-verde);
 }
 .led-vermelho {
-  background: #ff4d4d;
-  box-shadow: 0 0 14px #ff4d4d99;
+  background: var(--color-erro);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--color-erro) 60%, transparent);
 }
 .led-ambar {
   color: var(--color-ambar);
