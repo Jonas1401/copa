@@ -237,7 +237,7 @@ function LinhaPonto({
           <Led cor={cor} pulsante={p.status === "NA VEZ"} />
           <span
             className={`font-display text-[15px] font-bold tracking-[0.06em] ${
-              cor === "vermelho" ? "text-[#ff4d4d]" : cor === "verde" ? "text-verde" : "text-ambar"
+              cor === "vermelho" ? "text-[var(--color-erro)]" : cor === "verde" ? "text-verde" : "text-ambar"
             }`}
           >
             {selo ? selo.texto : p.status}
@@ -1420,7 +1420,7 @@ export default function MonitorApp({ inicial }: { inicial: EstadoDTO }) {
   const alvoForaDaFila = alvo ? foraDaFilaPeloPortal(alvo) : false;
   const corLedAlvo = seloAlvo ? seloAlvo.cor : alvo?.status === "AGUARDANDO" ? "verde" : "ambar";
   const corStatus =
-    corLedAlvo === "vermelho" ? "text-[#ff4d4d]" : corLedAlvo === "verde" ? "text-verde" : "text-ambar";
+    corLedAlvo === "vermelho" ? "text-[var(--color-erro)]" : corLedAlvo === "verde" ? "text-verde" : "text-ambar";
   // O selo fica SEMPRE ao lado do número: a letra dele é a maior que cabe ali.
   const textoDoSelo = alvo ? (seloAlvo ? seloAlvo.texto : alvo.status === "AGUARDANDO" ? "ATIVO" : alvo.status) : "";
   // Embaixo de ATIVO: quantos pontos estão na frente.

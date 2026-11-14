@@ -43,16 +43,18 @@ export async function POST(req: Request) {
 
   // O nome não é senha: duas pessoas podem ter o mesmo nome. Nunca dar acesso
   // aos pontos de outra pessoa só porque o nome digitado é igual.
-  const [m] = await db
-    .insert(motoristas)
-    .values({
-      nome,
-      pontoTipo: ponto?.tipo ?? null,
-      pontoLivro: ponto?.livro ?? null,
-      pontoNumero: ponto?.numero ?? null,
-      ultimoAcessoEm: new Date(),
-    })
-    .returning();
+  const [m] = await comBanco(() =>
+    db
+      .insert(motoristas)
+      .values({
+        nome,
+        pontoTipo: ponto?.tipo ?? null,
+        pontoLivro: ponto?.livro ?? null,
+        pontoNumero: ponto?.numero ?? null,
+        ultimoAcessoEm: new Date(),
+      })
+      .returning(),
+  );
   const resposta = await iniciarSessaoMotorista(
     m.id,
     NextResponse.json(paraMotorista(m), { status: 201, headers: { "Cache-Control": "no-store" } }),
